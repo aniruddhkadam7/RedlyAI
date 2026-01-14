@@ -127,6 +127,17 @@ const RELATIONSHIP_CONCEPTS_3X: Readonly<Record<string, RelationshipAlignment>> 
       'Best-fit: expresses structural decomposition. If you intend “process realizes capability”, consider Realization (direction may invert).',
   },
 
+  // Internal: CapabilityCategory/Capability/SubCapability -> (same family)
+  COMPOSED_OF: {
+    version: ARCHIMATE_3_LATEST,
+    internalRelationshipType: 'COMPOSED_OF',
+    status: 'Supported',
+    concept: { id: 'Composition', name: 'Composition' },
+    direction: 'SameDirection',
+    notes:
+      'Preferred internal semantic for capability hierarchy/composition. Exported as Composition (best-fit) in ArchiMate alignment.',
+  },
+
   // Internal: BusinessProcess -> Application
   REALIZED_BY: {
     version: ARCHIMATE_3_LATEST,
@@ -139,6 +150,28 @@ const RELATIONSHIP_CONCEPTS_3X: Readonly<Record<string, RelationshipAlignment>> 
   },
 
   // Internal: Application -> Application
+  INTEGRATES_WITH: {
+    version: ARCHIMATE_3_LATEST,
+    internalRelationshipType: 'INTEGRATES_WITH',
+    status: 'Supported',
+    concept: { id: 'Association', name: 'Association' },
+    direction: 'NotApplicable',
+    notes:
+      'Preferred internal semantic for application-to-application integration. Exported as a broad ArchiMate Association (loss of specificity).',
+  },
+
+  // Internal: ApplicationService -> ApplicationService
+  CONSUMES: {
+    version: ARCHIMATE_3_LATEST,
+    internalRelationshipType: 'CONSUMES',
+    status: 'Supported',
+    concept: { id: 'Association', name: 'Association' },
+    direction: 'SameDirection',
+    notes:
+      'Preferred internal semantic for service-to-service consumption. Exported as a broad ArchiMate Association (loss of specificity).',
+  },
+
+  // Legacy internal: Application -> Application
   DEPENDS_ON: {
     version: ARCHIMATE_3_LATEST,
     internalRelationshipType: 'DEPENDS_ON',

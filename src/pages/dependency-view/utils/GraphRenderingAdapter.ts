@@ -3,6 +3,7 @@ import type { ElementDefinition, LayoutOptions } from 'cytoscape';
 import type { BaseArchitectureElement } from '../../../../backend/repository/BaseArchitectureElement';
 import type { BaseArchitectureRelationship } from '../../../../backend/repository/BaseArchitectureRelationship';
 import type { Orientation, LayoutType } from '../../../../backend/views/ViewDefinition';
+import { getLifecycleStateFromAttributes } from '../../../repository/lifecycleCoveragePolicy';
 
 export type CytoscapeGraph = {
   elements: ElementDefinition[];
@@ -70,34 +71,45 @@ export class GraphRenderingAdapter {
     const layoutName = layoutNameFor(input.layoutType);
 
     // Seed deterministic initial positions for any layout that may otherwise randomize.
-    const orderedNodeIds = (input.elements ?? []).map((e) => normalizeId(e.id));
+    const orderedNodeIds = [...(input.elements ?? [])]
+      .map((e) => normalizeId(e.id))
+      .sort((a, b) => a.localeCompare(b));
     const seededPositions = deterministicPositions(orderedNodeIds, input.orientation);
 
     const nodeIds = new Set<string>();
-    const nodes: ElementDefinition[] = (input.elements ?? []).map((e) => {
-      const id = normalizeId(e.id);
-      nodeIds.add(id);
-      return {
-        data: {
-          id,
-          label: e.name,
-          elementType: e.elementType,
-        },
-        position: seededPositions[id],
-      };
-    });
+    const nodes: ElementDefinition[] = [...(input.elements ?? [])]
+      .slice()
+      .sort((a, b) => normalizeId(a.id).localeCompare(normalizeId(b.id)))
+      .map((e) => {
+        const id = normalizeId(e.id);
+        nodeIds.add(id);
+        const lifecycleState = getLifecycleStateFromAttributes((e as any)?.attributes);
+        return {
+          data: {
+            id,
+            label: e.name,
+            elementType: e.elementType,
+            layer: e.layer,
+            lifecycleState,
+          },
+          position: seededPositions[id],
+        };
+      });
 
-    const edges: ElementDefinition[] = (input.relationships ?? []).map((r, index) => {
-      const id = normalizeId(r.id) || `rel-${index}`;
-      return {
-        data: {
-          id,
-          source: normalizeId(r.sourceElementId),
-          target: normalizeId(r.targetElementId),
-          relationshipType: r.relationshipType,
-        },
-      };
-    });
+    const edges: ElementDefinition[] = [...(input.relationships ?? [])]
+      .slice()
+      .sort((a, b) => normalizeId(a.id).localeCompare(normalizeId(b.id)))
+      .map((r, index) => {
+        const id = normalizeId(r.id) || `rel-${index}`;
+        return {
+          data: {
+            id,
+            source: normalizeId(r.sourceElementId),
+            target: normalizeId(r.targetElementId),
+            relationshipType: r.relationshipType,
+          },
+        };
+      });
 
     // Adapter is filtering-free, but we defensively avoid emitting edges with missing endpoints.
     const normalizedEdges = edges.filter((e) => {

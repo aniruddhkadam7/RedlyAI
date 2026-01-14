@@ -111,7 +111,10 @@ export class TraceabilityMatrix {
 
     const capOutgoing = await this.graph.getOutgoingEdges(capId);
     const decomposes = sortRelationshipsDeterministically(
-      capOutgoing.filter((r) => (r.relationshipType ?? '').trim() === 'DECOMPOSES_TO'),
+      capOutgoing.filter((r) => {
+        const t = (r.relationshipType ?? '').trim();
+        return t === 'DECOMPOSES_TO' || t === 'COMPOSED_OF';
+      }),
     );
 
     const paths: TraceabilityPath[] = [];
@@ -119,7 +122,8 @@ export class TraceabilityMatrix {
     const involved = new Set<string>();
     involved.add(capId);
 
-    if (decomposes.length === 0) warnings.push(`No DECOMPOSES_TO relationships found for Capability "${capId}".`);
+    if (decomposes.length === 0)
+      warnings.push(`No DECOMPOSES_TO/COMPOSED_OF relationships found for Capability "${capId}".`);
 
     for (const capToProc of decomposes) {
       const processId = normalizeId(capToProc.targetElementId);

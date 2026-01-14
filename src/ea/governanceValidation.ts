@@ -54,7 +54,7 @@ const toBackendElementType = (eaType: string): string => {
 export function buildGovernanceDebt(
   eaRepository: EaRepository,
   nowDate: Date = new Date(),
-  options?: { lifecycleCoverage?: LifecycleCoverage | null },
+  options?: { lifecycleCoverage?: LifecycleCoverage | null; governanceMode?: 'Strict' | 'Advisory' | null },
 ): GovernanceDebt {
   const repo = new ArchitectureRepository();
   const now = nowDate.toISOString();
@@ -220,6 +220,7 @@ export function buildGovernanceDebt(
         createdBy: getString(attrs.createdBy),
         lastModifiedAt: getString(attrs.lastModifiedAt) || now,
         lastModifiedBy: getString(attrs.lastModifiedBy),
+        parentEnterpriseId: getString(attrs.parentEnterpriseId) || null,
       } as any);
       continue;
     }
@@ -364,10 +365,12 @@ export function buildGovernanceDebt(
     elementType: string;
     collection: string;
   }) => {
+    const severity: 'Info' | 'Warning' | 'Error' =
+      options?.governanceMode === 'Advisory' && args.severity === 'Error' ? 'Warning' : args.severity;
     extraRepoFindings.push({
       id: `${args.checkId}:${args.elementId}`,
       checkId: args.checkId,
-      severity: args.severity,
+      severity,
       message: args.message,
       elementId: args.elementId,
       elementType: args.elementType,
@@ -377,6 +380,13 @@ export function buildGovernanceDebt(
   };
 
   const getObj = (id: string) => eaRepository.objects.get(id);
+
+  const displayName = (obj: { id: string; attributes?: Record<string, unknown> } | null | undefined): string => {
+    if (!obj) return '';
+    const raw = (obj.attributes as any)?.name;
+    const name = typeof raw === 'string' ? raw.trim() : '';
+    return name || obj.id;
+  };
 
   const activeObjects = Array.from(eaRepository.objects.values()).filter((o) => !isSoftDeleted(o.attributes));
 
@@ -389,6 +399,54 @@ export function buildGovernanceDebt(
     if (isSoftDeleted(from.attributes) || isSoftDeleted(to.attributes)) return null;
     return { from, to };
   };
+
+  // 1) Ownership: every Capability, Application, Programme must be owned by exactly one Enterprise.
+  // 0) Required fields (repository-level).
+  for (const obj of activeObjects) {
+    const name = typeof (obj.attributes as any)?.name === 'string' ? String((obj.attributes as any).name).trim() : '';
+    if (!name) {
+      addRepoFinding({
+        checkId: 'EA_REQUIRED_NAME',
+        severity: 'Error',
+        message: `${obj.type} ‘${obj.id}’ has no name.`,
+        elementId: obj.id,
+        elementType: obj.type,
+        collection: 'elements',
+      });
+    }
+
+    const ownerId = typeof (obj.attributes as any)?.ownerId === 'string'
+      ? String((obj.attributes as any).ownerId).trim()
+      : '';
+    if (!ownerId) {
+      addRepoFinding({
+        checkId: 'EA_REQUIRED_OWNER',
+        severity: 'Error',
+        message: `${obj.type} ‘${displayName(obj)}’ has no owner (Enterprise/Department).`,
+        elementId: obj.id,
+        elementType: obj.type,
+        collection: 'elements',
+      });
+      continue;
+    }
+
+    // Allow self-ownership for owner types to support bootstrapping.
+    if ((obj.type === 'Enterprise' || obj.type === 'Department') && ownerId === obj.id) {
+      continue;
+    }
+
+    const owner = getObj(ownerId);
+    if (!owner || isSoftDeleted(owner.attributes) || (owner.type !== 'Enterprise' && owner.type !== 'Department')) {
+      addRepoFinding({
+        checkId: 'EA_INVALID_OWNER',
+        severity: 'Error',
+        message: `${obj.type} ‘${displayName(obj)}’ has an invalid owner (must reference an existing Enterprise/Department).`,
+        elementId: obj.id,
+        elementType: obj.type,
+        collection: 'elements',
+      });
+    }
+  }
 
   // 1) Ownership: every Capability, Application, Programme must be owned by exactly one Enterprise.
   const ownedTypes = new Set<string>(['Capability', 'SubCapability', 'Application', 'Programme']);
@@ -408,7 +466,7 @@ export function buildGovernanceDebt(
       addRepoFinding({
         checkId: 'EA_ENTERPRISE_OWNERSHIP',
         severity: 'Error',
-        message: `${obj.type} must have ${expected} via OWNS (found ${got}).`,
+        message: `${obj.type} ‘${displayName(obj)}’ must have ${expected} via OWNS (found ${got}).`,
         elementId: obj.id,
         elementType: obj.type,
         collection: obj.type === 'Application' ? 'applications' : obj.type === 'Programme' ? 'programmes' : 'capabilities',
@@ -429,7 +487,7 @@ export function buildGovernanceDebt(
       addRepoFinding({
         checkId: 'EA_DEPARTMENT_REQUIRES_ENTERPRISE',
         severity: 'Error',
-        message: `Department must belong to exactly one Enterprise via HAS (found ${owningEnterpriseLinks.length}).`,
+        message: `Department ‘${displayName(dept)}’ must belong to exactly one Enterprise via HAS (found ${owningEnterpriseLinks.length}).`,
         elementId: dept.id,
         elementType: dept.type,
         collection: 'departments',
@@ -450,10 +508,49 @@ export function buildGovernanceDebt(
       addRepoFinding({
         checkId: 'EA_BUSINESS_SERVICE_REQUIRES_CAPABILITY',
         severity: 'Error',
-        message: 'BusinessService must be linked to at least one Capability via REALIZED_BY.',
+        message: `BusinessService ‘${displayName(svc)}’ must be linked to at least one Capability via REALIZED_BY.`,
         elementId: svc.id,
         elementType: svc.type,
         collection: 'businessServices',
+      });
+    }
+  }
+
+  // 3b) Capability must be supported by at least one ApplicationService.
+  // We currently model this indirectly:
+  //   Capability --REALIZED_BY--> BusinessService --SUPPORTED_BY--> ApplicationService
+  // This keeps Capability->ApplicationService out of the core metamodel while still enforcing traceability.
+  for (const cap of activeObjects.filter((o) => o.type === 'Capability')) {
+    const realizedBusinessServiceIds = new Set<string>();
+    for (const r of eaRelationships) {
+      if (r.type !== 'REALIZED_BY') continue;
+      if (normalizeId(r.fromId) !== cap.id) continue;
+      const endpoints = activeRelEndpoints(r);
+      if (!endpoints) continue;
+      if (endpoints.to.type !== 'BusinessService') continue;
+      realizedBusinessServiceIds.add(endpoints.to.id);
+    }
+
+    const supportingAppServiceIds = new Set<string>();
+    for (const svcId of realizedBusinessServiceIds) {
+      for (const r of eaRelationships) {
+        if (r.type !== 'SUPPORTED_BY') continue;
+        if (normalizeId(r.fromId) !== svcId) continue;
+        const endpoints = activeRelEndpoints(r);
+        if (!endpoints) continue;
+        if (endpoints.to.type !== 'ApplicationService') continue;
+        supportingAppServiceIds.add(endpoints.to.id);
+      }
+    }
+
+    if (supportingAppServiceIds.size === 0) {
+      addRepoFinding({
+        checkId: 'EA_CAPABILITY_REQUIRES_APPLICATION_SERVICE_SUPPORT',
+        severity: 'Error',
+        message: `Capability ‘${displayName(cap)}’ has no supporting Application Service.`,
+        elementId: cap.id,
+        elementType: cap.type,
+        collection: 'capabilities',
       });
     }
   }
@@ -471,7 +568,7 @@ export function buildGovernanceDebt(
       addRepoFinding({
         checkId: 'EA_APPLICATION_SERVICE_REQUIRES_APPLICATION',
         severity: 'Error',
-        message: `ApplicationService must belong to exactly one Application via PROVIDES (found ${providers.length}).`,
+        message: `Application Service ‘${displayName(svc)}’ must belong to exactly one Application via PROVIDES (found ${providers.length}).`,
         elementId: svc.id,
         elementType: svc.type,
         collection: 'applicationServices',
@@ -496,7 +593,7 @@ export function buildGovernanceDebt(
       addRepoFinding({
         checkId: 'EA_FORBIDDEN_TECHNOLOGY_BUSINESS_LINK',
         severity: 'Error',
-        message: `Forbidden cross-layer relationship: Technology must not link directly to Business (got ${endpoints.from.type} -> ${endpoints.to.type} via ${rel.type}).`,
+        message: `Forbidden cross-layer relationship: Technology must not link directly to Business (got ${endpoints.from.type} ‘${displayName(endpoints.from)}’ → ${endpoints.to.type} ‘${displayName(endpoints.to)}’ via ${rel.type}).`,
         elementId: `${normalizeId(rel.fromId)}->${normalizeId(rel.toId)}`,
         elementType: 'Relationship',
         collection: 'relationships',
@@ -549,8 +646,14 @@ export function buildGovernanceDebt(
       createdBy: 'ui',
     };
 
-    if (relationshipAny.relationshipType === 'DEPENDS_ON') {
+    if (
+      relationshipAny.relationshipType === 'INTEGRATES_WITH' ||
+      relationshipAny.relationshipType === 'CONSUMES' ||
+      relationshipAny.relationshipType === 'DEPENDS_ON'
+    ) {
       relationshipAny.dependencyStrength = (rel as any)?.attributes?.dependencyStrength;
+      relationshipAny.dependencyType = (rel as any)?.attributes?.dependencyType;
+      relationshipAny.runtimeCritical = (rel as any)?.attributes?.runtimeCritical;
     }
 
     const addRes = relationships.addRelationship(relationshipAny);

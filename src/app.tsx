@@ -16,7 +16,7 @@ import IdeShellLayout from '@/components/IdeShellLayout';
 import ExplorerTree from '@/components/IdeShellLayout/ExplorerTree';
 import DiagramsTree from '@/components/IdeShellLayout/DiagramsTree';
 import AnalysisTree from '@/components/IdeShellLayout/AnalysisTree';
-import MetamodelTree from '@/components/IdeShellLayout/MetamodelTree';
+import MetamodelSidebar from '@/components/IdeShellLayout/MetamodelSidebar';
 import SettingsPanel from '@/components/IdeShellLayout/SettingsPanel';
 import CreateEaProjectPage from '@/pages/project/create';
 import defaultSettings from '../config/defaultSettings';
@@ -39,9 +39,25 @@ import {
   canCreateObjectTypeForLifecycleCoverage,
   defaultLifecycleStateForLifecycleCoverage,
 } from '@/repository/lifecycleCoveragePolicy';
+import {
+  isLifecycleStateAllowedForReferenceFramework,
+  isObjectTypeAllowedForReferenceFramework,
+} from '@/repository/referenceFrameworkPolicy';
+import { isCustomFrameworkModelingEnabled, isObjectTypeEnabledForFramework } from '@/repository/customFrameworkConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const isDevOrTest = isDev || process.env.CI;
+
+const defaultLifecycleStateForFramework = (
+  referenceFramework: string | null | undefined,
+  lifecycleCoverage: string | null | undefined,
+): string => {
+  // Lifecycle Coverage uses As-Is/To-Be. TOGAF uses Baseline/Target.
+  if (referenceFramework === 'TOGAF') {
+    return lifecycleCoverage === 'To-Be' ? 'Target' : 'Baseline';
+  }
+  return defaultLifecycleStateForLifecycleCoverage(lifecycleCoverage as any);
+};
 
 type MetamodelSelection =
   | { kind: 'objectType'; layer: EaLayer; type: ObjectType }
@@ -175,7 +191,7 @@ const defaultIdPrefixForType = (type: ObjectType) => {
 const EaExplorerSiderContent: React.FC<{
   view?: 'explorer' | 'metamodel' | 'catalogues' | 'diagrams';
 }> = ({ view = 'explorer' }) => {
-  const { eaRepository, setEaRepository, metadata } = useEaRepository();
+  const { eaRepository, setEaRepository, trySetEaRepository, metadata } = useEaRepository();
   if (!eaRepository) return null;
 
   const location = useLocation();
@@ -329,6 +345,22 @@ const EaExplorerSiderContent: React.FC<{
 
   const createNewElement = React.useCallback(
     (type: ObjectType) => {
+      if (metadata?.referenceFramework === 'Custom') {
+        if (!isCustomFrameworkModelingEnabled('Custom', metadata?.frameworkConfig ?? undefined)) {
+          message.warning('Custom framework: define at least one element type in Metamodel to enable modeling.');
+          return;
+        }
+        if (!isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, type)) {
+          message.warning(`Custom framework: element type "${type}" is not enabled.`);
+          return;
+        }
+      }
+
+      if (!isObjectTypeAllowedForReferenceFramework(metadata?.referenceFramework, type)) {
+        message.warning(`Type "${type}" is not enabled for the selected Reference Framework.`);
+        return;
+      }
+
       const lifecycleGuard = canCreateObjectTypeForLifecycleCoverage(metadata?.lifecycleCoverage, type);
       if (!lifecycleGuard.ok) {
         message.warning(lifecycleGuard.reason);
@@ -351,14 +383,23 @@ const EaExplorerSiderContent: React.FC<{
 
       const id = makeUniqueId(existingIds, `${prefix}${nextNumber}`);
       const name = `New ${type}`;
+      const lifecycleState = defaultLifecycleStateForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
+      if (!isLifecycleStateAllowedForReferenceFramework(metadata?.referenceFramework, lifecycleState)) {
+        message.warning('Lifecycle state is not allowed for the selected Reference Framework.');
+        return;
+      }
       const attributes: Record<string, unknown> = {
         name,
         hiddenFromDiagrams: true,
-        lifecycleState: defaultLifecycleStateForLifecycleCoverage(metadata?.lifecycleCoverage),
+        lifecycleState,
       };
       if (type === 'Application') {
         attributes.criticality = 'low';
         attributes.lifecycle = 'planned';
+      }
+
+      if (metadata?.referenceFramework === 'TOGAF') {
+        attributes.admPhase = 'A';
       }
 
       const next = eaRepository.clone();
@@ -367,10 +408,11 @@ const EaExplorerSiderContent: React.FC<{
         message.error(res.error);
         return;
       }
-      setEaRepository(next);
+      const applied = trySetEaRepository(next);
+      if (!applied.ok) return;
       selectCatalogueObject(id);
     },
-    [eaRepository, metadata?.lifecycleCoverage, selectCatalogueObject, setEaRepository],
+    [eaRepository, metadata?.frameworkConfig, metadata?.lifecycleCoverage, metadata?.referenceFramework, selectCatalogueObject, trySetEaRepository],
   );
 
   const duplicateElement = React.useCallback(
@@ -378,6 +420,22 @@ const EaExplorerSiderContent: React.FC<{
       const source = eaRepository.objects.get(objectId);
       if (!source) {
         message.error('Cannot duplicate: object not found.');
+        return;
+      }
+
+      if (metadata?.referenceFramework === 'Custom') {
+        if (!isCustomFrameworkModelingEnabled('Custom', metadata?.frameworkConfig ?? undefined)) {
+          message.warning('Custom framework: define at least one element type in Metamodel to enable modeling.');
+          return;
+        }
+        if (!isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, source.type)) {
+          message.warning(`Custom framework: element type "${source.type}" is not enabled.`);
+          return;
+        }
+      }
+
+      if (!isObjectTypeAllowedForReferenceFramework(metadata?.referenceFramework, source.type)) {
+        message.warning(`Type "${source.type}" is not enabled for the selected Reference Framework.`);
         return;
       }
 
@@ -389,12 +447,23 @@ const EaExplorerSiderContent: React.FC<{
 
       const existingIds = new Set<string>(eaRepository.objects.keys());
       const id = makeUniqueId(existingIds, `${source.id}-copy`);
+      const lifecycleState = defaultLifecycleStateForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
+      if (!isLifecycleStateAllowedForReferenceFramework(metadata?.referenceFramework, lifecycleState)) {
+        message.warning('Lifecycle state is not allowed for the selected Reference Framework.');
+        return;
+      }
       const attributes = {
         ...source.attributes,
-        lifecycleState: defaultLifecycleStateForLifecycleCoverage(metadata?.lifecycleCoverage),
+        lifecycleState,
       } as typeof source.attributes & { name?: string };
       if (typeof attributes.name === 'string' && attributes.name.trim()) {
         attributes.name = `${attributes.name} (copy)`;
+      }
+
+      if (metadata?.referenceFramework === 'TOGAF') {
+        if (typeof (attributes as any).admPhase !== 'string' || !(attributes as any).admPhase.trim()) {
+          (attributes as any).admPhase = 'A';
+        }
       }
 
       const next = eaRepository.clone();
@@ -403,10 +472,11 @@ const EaExplorerSiderContent: React.FC<{
         message.error(res.error);
         return;
       }
-      setEaRepository(next);
+      const applied = trySetEaRepository(next);
+      if (!applied.ok) return;
       selectCatalogueObject(id);
     },
-    [eaRepository, metadata?.lifecycleCoverage, selectCatalogueObject, setEaRepository],
+    [eaRepository, metadata?.frameworkConfig, metadata?.lifecycleCoverage, metadata?.referenceFramework, selectCatalogueObject, trySetEaRepository],
   );
 
   const softDeleteElement = React.useCallback(
@@ -428,13 +498,14 @@ const EaExplorerSiderContent: React.FC<{
         return;
       }
 
-      setEaRepository(next);
+      const applied = trySetEaRepository(next);
+      if (!applied.ok) return;
       if (selection?.kind === 'catalogueObject' && selection.objectId === objectId) {
         setDrawerOpen(false);
         setSelection(undefined);
       }
     },
-    [eaRepository, selection, setEaRepository],
+    [eaRepository, selection, trySetEaRepository],
   );
 
   const renderCatalogueTitle = React.useCallback(
@@ -587,7 +658,8 @@ const EaExplorerSiderContent: React.FC<{
               }
               const next = eaRepository.clone();
               const res = next.updateObjectAttributes(obj.id, patch, 'merge');
-              if (res.ok) setEaRepository(next);
+              if (!res.ok) return;
+              trySetEaRepository(next);
             },
           }}
         />
@@ -738,8 +810,14 @@ export async function getInitialState(): Promise<{
   loading?: boolean;
   fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
 }> {
+  const { ensureLocalUser } = await import('@/repository/localUserBootstrap');
+  const bootstrap = ensureLocalUser();
+
   return {
     settings: defaultSettings as Partial<LayoutSettings>,
+    currentUser: bootstrap.ok
+      ? { name: bootstrap.value.displayName, userid: bootstrap.value.id, access: 'admin' }
+      : undefined,
   };
 }
 
@@ -772,12 +850,11 @@ export const layout: RunTimeLayoutConfig = ({
               shell={
                 <>
                   <IdeShellLayout
-                    shellOnly
                     sidebars={{
                       explorer: <ExplorerTree />,
                       diagrams: <DiagramsTree />,
                       analysis: <AnalysisTree />,
-                      metamodel: <MetamodelTree />,
+                      metamodel: <MetamodelSidebar />,
                       settings: <SettingsPanel />,
                     }}
                   >

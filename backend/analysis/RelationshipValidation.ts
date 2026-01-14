@@ -65,8 +65,11 @@ export function validateRelationshipRepository(
 
   const findings: RelationshipValidationFinding[] = [];
 
+  const applicationDependencyRelationships = ([] as BaseArchitectureRelationship[])
+    .concat(relationships.getRelationshipsByType('INTEGRATES_WITH'));
+
   // 1) Application depends on itself => invalid (Error)
-  for (const rel of relationships.getRelationshipsByType('DEPENDS_ON')) {
+  for (const rel of applicationDependencyRelationships) {
     const sourceId = (rel.sourceElementId ?? '').trim();
     const targetId = (rel.targetElementId ?? '').trim();
     if (sourceId && targetId && sourceId === targetId) {
@@ -74,7 +77,7 @@ export function validateRelationshipRepository(
         id: makeFindingId('APPLICATION_DEPENDS_ON_SELF', rel.id),
         checkId: 'APPLICATION_DEPENDS_ON_SELF',
         severity: 'Error',
-        message: `Application dependency is invalid: an Application cannot DEPENDS_ON itself ("${sourceId}").`,
+        message: `Application dependency is invalid: an Application cannot ${String(rel.relationshipType)} itself ("${sourceId}").`,
         observedAt,
         subjectKind: 'Relationship',
         subjectId: rel.id,
@@ -121,7 +124,7 @@ export function validateRelationshipRepository(
   }
 
   // 3) Application dependency without dependencyStrength => warning
-  for (const rel of relationships.getRelationshipsByType('DEPENDS_ON')) {
+  for (const rel of applicationDependencyRelationships) {
     const dependencyStrength = (rel as unknown as { dependencyStrength?: unknown }).dependencyStrength;
     if (isBlank(dependencyStrength)) {
       findings.push({

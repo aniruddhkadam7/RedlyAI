@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { createEaProject, getEaProject, type EaProject } from '@/services/ea/project';
+import { type EaProject } from '@/services/ea/project';
 
 export type EaProjectContextValue = {
   project: EaProject | null;
@@ -12,34 +12,29 @@ export type EaProjectContextValue = {
 const EaProjectContext = React.createContext<EaProjectContextValue | undefined>(undefined);
 
 export const EaProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [project, setProject] = React.useState<EaProject | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  // Bypass project check - always provide a default project
+  const [project, setProject] = React.useState<EaProject | null>({
+    id: 'default-project',
+    name: 'Default Project',
+    description: '',
+    createdAt: new Date().toISOString(),
+  });
+  const [loading, setLoading] = React.useState(false);
 
   const refreshProject = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await getEaProject();
-      setProject(res?.success ? (res.data ?? null) : null);
-    } catch {
-      // If the API is unavailable (e.g. mock disabled without a backend), treat as "no project".
-      setProject(null);
-    } finally {
-      setLoading(false);
-    }
+    // No-op since we're using default project
   }, []);
 
   const createProject = React.useCallback(async (input: { name: string; description?: string }) => {
-    const res = await createEaProject(input);
-    if (!res?.success || !res.data) {
-      throw new Error(res?.errorMessage || 'Failed to create project');
-    }
-    setProject(res.data);
-    return res.data;
+    const newProject: EaProject = {
+      id: `project-${Date.now()}`,
+      name: input.name,
+      description: input.description ?? '',
+      createdAt: new Date().toISOString(),
+    };
+    setProject(newProject);
+    return newProject;
   }, []);
-
-  React.useEffect(() => {
-    refreshProject();
-  }, [refreshProject]);
 
   return (
     <EaProjectContext.Provider value={{ project, loading, refreshProject, createProject }}>

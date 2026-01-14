@@ -33,6 +33,8 @@ type DependencyEdge = {
   dependencyType?: string;
 };
 
+const isApplicationDependencyRelationship = (type: unknown): type is 'INTEGRATES_WITH' => type === 'INTEGRATES_WITH';
+
 const DependencyView: React.FC = () => {
   const location = useLocation();
 
@@ -67,7 +69,7 @@ const DependencyView: React.FC = () => {
     return 'application-dependency-impact';
   }, [location.pathname]);
 
-  const { eaRepository, metadata, setEaRepository } = useEaRepository();
+  const { eaRepository, metadata, setEaRepository, trySetEaRepository } = useEaRepository();
   if (!eaRepository) return null;
 
   const timeHorizon = metadata?.timeHorizon;
@@ -86,7 +88,7 @@ const DependencyView: React.FC = () => {
 
     const edges: DependencyEdge[] = [];
     for (const rel of eaRepository.relationships) {
-      if (rel.type !== 'DEPENDS_ON') continue;
+      if (!isApplicationDependencyRelationship(rel.type)) continue;
       edges.push({
         from: rel.fromId,
         to: rel.toId,
@@ -144,7 +146,7 @@ const DependencyView: React.FC = () => {
   const [datasetInfo, setDatasetInfo] = useState<DatasetInfo>(() => ({
     source: 'Repository',
     applicationCount: Array.from(eaRepository.objects.values()).filter((o) => o.type === 'Application').length,
-    dependencyCount: eaRepository.relationships.filter((r) => r.type === 'DEPENDS_ON').length,
+    dependencyCount: eaRepository.relationships.filter((r) => isApplicationDependencyRelationship(r.type)).length,
     loadedAt: Date.now(),
   }));
 
@@ -270,7 +272,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Capabilities CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess('Import Capabilities CSV', `imported ${objects.length} objects`);
     } catch (err) {
       setEaImportFailure('Import Capabilities CSV', [
@@ -320,9 +326,13 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(draft);
+      const applied = trySetEaRepository(draft);
+      if (!applied.ok) {
+        setEaImportFailure('Import Applications CSV', [applied.error]);
+        return;
+      }
       setGraphViewMode('landscape');
-      const dependencyCount = draft.relationships.filter((r) => r.type === 'DEPENDS_ON').length;
+      const dependencyCount = draft.relationships.filter((r) => isApplicationDependencyRelationship(r.type)).length;
       setDatasetInfo({
         source: 'CSV',
         applicationCount: nextApplicationIdSet.size,
@@ -366,7 +376,7 @@ const DependencyView: React.FC = () => {
       const relationships = result.dependencies.map((d) => ({
         fromId: d.from,
         toId: d.to,
-        type: 'DEPENDS_ON' as const,
+        type: 'INTEGRATES_WITH' as const,
         attributes: { dependencyStrength: d.dependencyStrength, dependencyType: d.dependencyType },
       }));
 
@@ -376,13 +386,17 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Application Dependencies CSV', [applied.error]);
+        return;
+      }
 
       setGraphViewMode('landscape');
       setDatasetInfo({
         source: 'CSV',
         applicationCount: Array.from(applyResult.nextRepository.objects.values()).filter((o) => o.type === 'Application').length,
-        dependencyCount: applyResult.nextRepository.relationships.filter((r) => r.type === 'DEPENDS_ON').length,
+        dependencyCount: applyResult.nextRepository.relationships.filter((r) => isApplicationDependencyRelationship(r.type)).length,
         loadedAt: Date.now(),
       });
 
@@ -422,7 +436,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Technology CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess('Import Technology CSV', `imported ${objects.length} objects`);
     } catch (err) {
       setEaImportFailure('Import Technology CSV', [
@@ -457,7 +475,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Application–Technology CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess('Import Application–Technology CSV', `imported ${relationships.length} relationships`);
     } catch (err) {
       setEaImportFailure('Import Application–Technology CSV', [
@@ -551,7 +573,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Application Structure CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess(
         'Import Application Structure CSV',
         `imported ${objects.length} objects, ${relationships.length} relationships`,
@@ -588,7 +614,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Programmes CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess('Import Programmes CSV', `imported ${objects.length} objects`);
     } catch (err) {
       setEaImportFailure('Import Programmes CSV', [
@@ -651,7 +681,11 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(applyResult.nextRepository);
+      const applied = trySetEaRepository(applyResult.nextRepository);
+      if (!applied.ok) {
+        setEaImportFailure('Import Programme Mappings CSV', [applied.error]);
+        return;
+      }
       setEaImportSuccess('Import Programme Mappings CSV', `imported ${relationships.length} relationships`);
     } catch (err) {
       setEaImportFailure('Import Programme Mappings CSV', [
@@ -701,9 +735,13 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(draft);
+      const applied = trySetEaRepository(draft);
+      if (!applied.ok) {
+        setApplicationsCsvErrors([applied.error]);
+        return;
+      }
       setGraphViewMode('landscape');
-      const dependencyCount = draft.relationships.filter((r) => r.type === 'DEPENDS_ON').length;
+      const dependencyCount = draft.relationships.filter((r) => isApplicationDependencyRelationship(r.type)).length;
       setDatasetInfo({
         source: 'CSV',
         applicationCount: nextApplicationIdSet.size,
@@ -738,14 +776,14 @@ const DependencyView: React.FC = () => {
       }
 
       const draft = eaRepository.clone();
-      // Replace DEPENDS_ON relationships with the new set.
-      draft.relationships = draft.relationships.filter((r) => r.type !== 'DEPENDS_ON');
+      // Replace application dependency relationships with the new set.
+      draft.relationships = draft.relationships.filter((r) => !isApplicationDependencyRelationship(r.type));
       const errors: string[] = [];
       for (const d of result.dependencies) {
         const res = draft.addRelationship({
           fromId: d.from,
           toId: d.to,
-          type: 'DEPENDS_ON',
+          type: 'INTEGRATES_WITH',
           attributes: { dependencyStrength: d.dependencyStrength, dependencyType: d.dependencyType },
         });
         if (!res.ok) errors.push(res.error);
@@ -756,12 +794,16 @@ const DependencyView: React.FC = () => {
         return;
       }
 
-      setEaRepository(draft);
+      const applied = trySetEaRepository(draft);
+      if (!applied.ok) {
+        setDependenciesCsvErrors([applied.error]);
+        return;
+      }
       setGraphViewMode('landscape');
       setDatasetInfo({
         source: 'CSV',
         applicationCount: applications.length,
-        dependencyCount: draft.relationships.filter((r) => r.type === 'DEPENDS_ON').length,
+        dependencyCount: draft.relationships.filter((r) => isApplicationDependencyRelationship(r.type)).length,
         loadedAt: Date.now(),
       });
       setDependenciesCsvErrors([]);

@@ -1,4 +1,5 @@
 import { projectStore } from '../project/ProjectStore';
+import type { Project } from '../project/project';
 import { ViewRepository } from './ViewRepository';
 import type { ViewDefinition } from './ViewDefinition';
 
@@ -30,11 +31,43 @@ const notifyViewsChanged = () => {
  * - No persistence.
  */
 export function getViewRepository(): ViewRepository {
-  const project = projectStore.getProject();
-  const projectId = project?.id ?? '';
+  let project = projectStore.getProject();
+  let projectId = project?.id ?? '';
 
+  // Auto-provision an in-memory project when absent to avoid blocking UX in demo/dev modes.
   if (!projectId) {
-    throw new Error('No active project. Create/select a project before creating views.');
+    const now = new Date().toISOString();
+    const fallbackProject: Project = {
+      id: 'default-project',
+      name: 'Default Project',
+      shortCode: 'EA',
+      description: 'Auto-created in-memory project for view operations.',
+      organizationName: 'Default Org',
+      businessUnitsInScope: [],
+      geographyInScope: 'Global',
+      architectureLayersInScope: { business: true, application: true, technology: true },
+      config: { governanceEnforcementMode: 'Advisory' },
+      baselineType: 'Current State',
+      baselineStartDate: now,
+      baselineEndDate: undefined,
+      chiefArchitect: 'Auto',
+      owningDepartment: 'EA',
+      contactEmail: 'ea@example.com',
+      createdAt: now,
+      createdBy: 'system',
+      status: 'Active',
+    };
+
+    try {
+      project = projectStore.createProject(fallbackProject);
+      projectId = project.id;
+    } catch (err) {
+      // If creation failed because one already exists, re-read it; otherwise rethrow.
+      projectId = projectStore.getProject()?.id ?? '';
+      if (!projectId) {
+        throw err;
+      }
+    }
   }
 
   if (!viewRepository || viewRepository.projectId !== projectId) {
@@ -53,6 +86,12 @@ export function createView(view: ViewDefinition) {
 
 export function deleteView(viewId: string) {
   const result = getViewRepository().deleteViewById(viewId);
+  if (result.ok) notifyViewsChanged();
+  return result;
+}
+
+export function updateViewRoot(args: { viewId: string; rootElementId: string; rootElementType: string; lastModifiedAt?: string }) {
+  const result = getViewRepository().updateViewRoot(args);
   if (result.ok) notifyViewsChanged();
   return result;
 }

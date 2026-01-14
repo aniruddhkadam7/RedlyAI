@@ -273,4 +273,25 @@ export default {
       res.status(mapped.status).send(mapped.body);
     }
   },
+
+  'POST /api/impact/tree': async (req: Request, res: Response) => {
+    try {
+      const { rootElementId, direction, maxDepth } = (req.body ?? {}) as {
+        rootElementId?: string;
+        direction?: ImpactAnalysisDirection;
+        maxDepth?: number;
+      };
+
+      const tree = await impactAnalysisEngine.buildLayeredImpactTree({
+        rootElementId: normalizeId(rootElementId ?? ''),
+        direction: direction === 'Upstream' ? 'Upstream' : direction === 'Bidirectional' ? 'Bidirectional' : 'Downstream',
+        maxDepth: typeof maxDepth === 'number' && maxDepth > 0 ? Math.trunc(maxDepth) : 6,
+      });
+
+      res.send({ success: true, data: tree });
+    } catch (err) {
+      const mapped = mapErrorToApiResponse(err, { operation: 'impact.tree' });
+      res.status(mapped.status).send(mapped.body);
+    }
+  },
 };

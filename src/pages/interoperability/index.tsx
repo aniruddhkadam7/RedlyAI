@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { useSearchParams } from '@umijs/max';
+
 import { ProCard } from '@ant-design/pro-components';
 import {
   Alert,
@@ -21,6 +23,9 @@ import {
   message,
 } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
+import * as XLSX from 'xlsx';
+
+import { CSV_IMPORT_SPECS, type CsvSchemaSpec } from '../../../backend/interoperability/csv/CsvImportSpecification';
 
 import ProjectGate from '@/ea/ProjectGate';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
@@ -51,7 +56,7 @@ const CSV_ENTITIES: { value: CsvImportSourceEntity; label: string }[] = [
 ];
 
 const ELEMENT_TYPES = ['Capability', 'BusinessProcess', 'Application', 'Technology', 'Programme'] as const;
-const RELATIONSHIP_TYPES = ['DECOMPOSES_TO', 'REALIZED_BY', 'DEPENDS_ON', 'HOSTED_ON', 'IMPACTS'] as const;
+const RELATIONSHIP_TYPES = ['DECOMPOSES_TO', 'COMPOSED_OF', 'REALIZED_BY', 'INTEGRATES_WITH', 'CONSUMES', 'HOSTED_ON', 'IMPACTS'] as const;
 
 const downloadTextFile = (fileName: string, text: string) => {
   const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
@@ -85,6 +90,7 @@ const CsvRowErrorsTable: React.FC<{ errors: CsvRowError[] }> = ({ errors }) => {
 };
 
 const ImportWizard: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [step, setStep] = React.useState(0);
 
   const [sourceType, setSourceType] = React.useState<SourceType>('CSV');
@@ -92,6 +98,10 @@ const ImportWizard: React.FC = () => {
 
   const [fileList, setFileList] = React.useState<UploadFile[]>([]);
   const [fileText, setFileText] = React.useState<string>('');
+  const [rowsForImport, setRowsForImport] = React.useState<Array<Record<string, unknown>>>([]);
+  const [detectedHeaders, setDetectedHeaders] = React.useState<string[]>([]);
+  const [previewRows, setPreviewRows] = React.useState<Array<Record<string, unknown>>>([]);
+  const [columnMapping, setColumnMapping] = React.useState<Record<string, string | null>>({});
 
   const [validationErrors, setValidationErrors] = React.useState<CsvRowError[] | null>(null);
   const [validationOkSummary, setValidationOkSummary] = React.useState<
@@ -106,6 +116,27 @@ const ImportWizard: React.FC = () => {
   const [importing, setImporting] = React.useState(false);
   const [acknowledged, setAcknowledged] = React.useState(false);
 
+  const schema: CsvSchemaSpec | null = React.useMemo(() => {
+    if (!csvEntity) return null;
+    return CSV_IMPORT_SPECS[csvEntity];
+  }, [csvEntity]);
+
+  React.useEffect(() => {
+    const requested = (searchParams.get('csvEntity') ?? searchParams.get('import') ?? '').trim();
+    if (!requested) return;
+
+    const match = CSV_ENTITIES.find((e) => e.value.toLowerCase() === requested.toLowerCase());
+    if (!match) return;
+
+    setSourceType('CSV');
+    setCsvEntity((prev) => (prev === match.value ? prev : match.value));
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    // Reset mapping when entity changes.
+    setColumnMapping({});
+  }, [csvEntity]);
+
   const reset = React.useCallback(() => {
     setStep(0);
     setSourceType('CSV');
@@ -118,15 +149,44 @@ const ImportWizard: React.FC = () => {
   }, []);
 
   const canProceedUpload = sourceType === 'CSV' && Boolean(csvEntity) && fileText.trim().length > 0;
+  const missingRequiredMappings = React.useMemo(() => {
+    const required = schema?.requiredHeaders ?? [];
+    return required.filter((col) => !columnMapping[col]);
+  }, [columnMapping, schema]);
 
   const runValidation = React.useCallback(async () => {
     if (sourceType !== 'CSV' || !csvEntity) return;
 
+    const spec = schema;
+    const required = spec?.requiredHeaders ?? [];
+    const missingMappings = required.filter((col) => !columnMapping[col]);
+    if (missingMappings.length > 0) {
+      message.error(`Map required columns first: ${missingMappings.join(', ')}`);
+      return;
+    }
+
+    const buildMappedCsv = () => {
+      if (!spec) return fileText;
+      const headers = spec.columns.map((c) => c.name);
+      const rows = rowsForImport.length > 0 ? rowsForImport : previewRows;
+      const normalized = rows.map((row) => {
+        const out: Record<string, unknown> = {};
+        for (const h of headers) {
+          const sourceCol = columnMapping[h];
+          out[h] = sourceCol ? (row as any)[sourceCol] ?? '' : '';
+        }
+        return out;
+      });
+      const sheet = XLSX.utils.json_to_sheet(normalized, { header: headers });
+      return XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+    };
+
     try {
       setValidating(true);
+      const csvToValidate = buildMappedCsv();
       const resp = await validateCsvImport({
         entity: csvEntity,
-        csvText: fileText,
+        csvText: csvToValidate,
         sourceDescription: fileList[0]?.name,
       });
 
@@ -147,16 +207,41 @@ const ImportWizard: React.FC = () => {
     } finally {
       setValidating(false);
     }
-  }, [csvEntity, fileList, fileText, sourceType]);
+  }, [columnMapping, csvEntity, fileList, fileText, previewRows, rowsForImport, schema, sourceType]);
 
   const confirmImport = React.useCallback(async () => {
     if (sourceType !== 'CSV' || !csvEntity) return;
 
+    const spec = schema;
+    const required = spec?.requiredHeaders ?? [];
+    const missingMappings = required.filter((col) => !columnMapping[col]);
+    if (missingMappings.length > 0) {
+      message.error(`Map required columns first: ${missingMappings.join(', ')}`);
+      return;
+    }
+
+    const buildMappedCsv = () => {
+      if (!spec) return fileText;
+      const headers = spec.columns.map((c) => c.name);
+      const rows = rowsForImport.length > 0 ? rowsForImport : previewRows;
+      const normalized = rows.map((row) => {
+        const out: Record<string, unknown> = {};
+        for (const h of headers) {
+          const sourceCol = columnMapping[h];
+          out[h] = sourceCol ? (row as any)[sourceCol] ?? '' : '';
+        }
+        return out;
+      });
+      const sheet = XLSX.utils.json_to_sheet(normalized, { header: headers });
+      return XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+    };
+
     try {
       setImporting(true);
+      const csvToImport = buildMappedCsv();
       const resp = await executeCsvImport({
         entity: csvEntity,
-        csvText: fileText,
+        csvText: csvToImport,
         sourceDescription: fileList[0]?.name,
       });
 
@@ -184,7 +269,7 @@ const ImportWizard: React.FC = () => {
     } finally {
       setImporting(false);
     }
-  }, [csvEntity, fileList, fileText, reset, sourceType]);
+  }, [columnMapping, csvEntity, fileList, fileText, previewRows, reset, rowsForImport, schema, sourceType]);
 
   const steps = [
     {
@@ -246,7 +331,7 @@ const ImportWizard: React.FC = () => {
 
           <Upload.Dragger
             multiple={false}
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
             fileList={fileList}
             beforeUpload={() => false}
             onChange={async (info) => {
@@ -259,8 +344,74 @@ const ImportWizard: React.FC = () => {
                 return;
               }
 
-              const text = await f.text();
-              setFileText(text);
+              const lower = (f.name || '').toLowerCase();
+              const isExcel = lower.endsWith('.xlsx') || lower.endsWith('.xls');
+
+              const textPromise = isExcel
+                ? (() => {
+                    const reader = new FileReader();
+                    return new Promise<string>((resolve, reject) => {
+                      reader.onerror = (err) => reject(err);
+                      reader.onload = () => {
+                        try {
+                          const data = reader.result as ArrayBuffer;
+                          const workbook = XLSX.read(data, { type: 'array' });
+                          const sheetName = workbook.SheetNames[0];
+                          if (!sheetName) {
+                            reject(new Error('Excel file has no sheets.'));
+                            return;
+                          }
+                          const sheet = workbook.Sheets[sheetName];
+                          resolve(XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' }));
+                        } catch (e) {
+                          reject(e instanceof Error ? e : new Error('Failed to parse Excel file.'));
+                        }
+                      };
+                      reader.readAsArrayBuffer(f as File);
+                    });
+                  })()
+                : f.text();
+
+              try {
+                const csvText = await textPromise;
+                setFileText(csvText);
+
+                // Build preview + headers for mapping.
+                const workbook = XLSX.read(csvText, { type: 'string' });
+                const sheetName = workbook.SheetNames[0];
+                if (!sheetName) throw new Error('Parsed file has no sheets.');
+                const sheet = workbook.Sheets[sheetName];
+
+                const matrix = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, defval: '' });
+                const headerRow = (matrix[0] ?? []).map((v) => String(v).trim());
+                const rows = (matrix.slice(1) ?? []).map((r) => {
+                  const obj: Record<string, unknown> = {};
+                  headerRow.forEach((h, idx) => {
+                    obj[h] = r[idx];
+                  });
+                  return obj;
+                });
+
+                setDetectedHeaders(headerRow);
+                setRowsForImport(rows);
+                setPreviewRows(rows.slice(0, 20));
+
+                if (schema) {
+                  const autoMap: Record<string, string | null> = {};
+                  for (const col of schema.columns.map((c) => c.name)) {
+                    const hit = headerRow.find((h) => h.toLowerCase() === col.toLowerCase());
+                    autoMap[col] = hit ?? null;
+                  }
+                  setColumnMapping((prev) => ({ ...autoMap, ...prev }));
+                }
+              } catch (err) {
+                message.error(err instanceof Error ? err.message : 'Failed to read file.');
+                setFileText('');
+                setDetectedHeaders([]);
+                setRowsForImport([]);
+                setPreviewRows([]);
+                return;
+              }
 
               // Reset any previous validation.
               setValidationErrors(null);
@@ -268,22 +419,62 @@ const ImportWizard: React.FC = () => {
               setAcknowledged(false);
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600 }}>Drop CSV here, or click to select</p>
-            <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)' }}>
-              Strict headers. Explicit IDs. No auto-fix.
-            </p>
+            <p style={{ margin: 0, fontWeight: 600 }}>Drop CSV/XLSX here, or click to select</p>
+            <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)' }}>Strict headers. Explicit IDs. No auto-fix.</p>
           </Upload.Dragger>
 
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
             <Typography.Text strong>Preview</Typography.Text>
-            <Input.TextArea
-              value={fileText ? fileText.slice(0, 2000) : ''}
-              placeholder="File preview will appear here"
-              autoSize={{ minRows: 4, maxRows: 10 }}
-              readOnly
-            />
-            <Typography.Text type="secondary">Preview is truncated to 2000 characters.</Typography.Text>
+            {previewRows.length > 0 ? (
+              <Table
+                size="small"
+                pagination={{ pageSize: 5 }}
+                scroll={{ x: true }}
+                dataSource={previewRows.map((r, idx) => ({ key: idx, ...r }))}
+                columns={detectedHeaders.map((h) => ({ title: h || '(blank)', dataIndex: h || `col${h}`, key: h || `col${h}` }))}
+              />
+            ) : (
+              <Input.TextArea
+                value={fileText ? fileText.slice(0, 2000) : ''}
+                placeholder="File preview will appear here"
+                autoSize={{ minRows: 4, maxRows: 10 }}
+                readOnly
+              />
+            )}
+            <Typography.Text type="secondary">
+              {previewRows.length > 0 ? 'Showing first 20 rows.' : 'Preview is truncated to 2000 characters.'}
+            </Typography.Text>
           </Space>
+
+          {schema ? (
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              <Typography.Text strong>Map columns → attributes</Typography.Text>
+              <Table
+                size="small"
+                pagination={false}
+                dataSource={schema.columns.map((c) => ({ ...c, key: c.name }))}
+                columns={[
+                  { title: 'Attribute', dataIndex: 'name', key: 'name' },
+                  { title: 'Required', dataIndex: 'requiredHeader', key: 'required', render: (v) => (v ? 'Yes' : 'No') },
+                  {
+                    title: 'Source column',
+                    key: 'source',
+                    render: (_: any, record: { name: string; requiredHeader: boolean }) => (
+                      <Select
+                        showSearch
+                        allowClear
+                        placeholder="Select column"
+                        value={columnMapping[record.name] ?? undefined}
+                        options={detectedHeaders.map((h) => ({ value: h, label: h || '(blank)' }))}
+                        onChange={(v) => setColumnMapping((prev) => ({ ...prev, [record.name]: v ?? null }))}
+                        style={{ minWidth: 220 }}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </Space>
+          ) : null}
         </Space>
       ),
     },
@@ -313,6 +504,24 @@ const ImportWizard: React.FC = () => {
                 message={`Validation failed (${validationErrors.length} errors)`}
                 description="Nothing has been imported. Correct the CSV and validate again."
               />
+              <Button
+                size="small"
+                onClick={() => {
+                  if (!validationErrors || validationErrors.length === 0) return;
+                  const rows = validationErrors.map((e) => ({
+                    line: e.line,
+                    code: e.code,
+                    column: e.column ?? '',
+                    message: e.message,
+                    value: e.value ?? '',
+                  }));
+                  const sheet = XLSX.utils.json_to_sheet(rows, { header: ['line', 'code', 'column', 'message', 'value'] });
+                  const csv = XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+                  downloadTextFile('import-errors.csv', csv);
+                }}
+              >
+                Download error report (CSV)
+              </Button>
               <CsvRowErrorsTable errors={validationErrors} />
             </>
           ) : (
@@ -411,7 +620,11 @@ const ImportWizard: React.FC = () => {
           ) : null}
 
           {step === 1 ? (
-            <Button type="primary" onClick={() => setStep(2)} disabled={!canProceedUpload}>
+            <Button
+              type="primary"
+              onClick={() => setStep(2)}
+              disabled={!canProceedUpload || (schema ? missingRequiredMappings.length > 0 : false)}
+            >
               Next
             </Button>
           ) : null}

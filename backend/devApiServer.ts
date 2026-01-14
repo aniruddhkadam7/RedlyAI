@@ -1,6 +1,9 @@
+import 'dotenv/config';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { initNeo4jGraphFromEnv } from './graph/Neo4jBootstrap';
 
 type Handler = (req: Request, res: Response, next?: NextFunction) => unknown;
 
@@ -65,26 +68,36 @@ const mockFiles = fs
   .filter((name) => (name.endsWith('.ts') || name.endsWith('.js')) && !name.endsWith('.d.ts'))
   .map((name) => path.join(mocksDir, name));
 
-for (const file of mockFiles) {
-  loadMockFile(file);
-}
+const bootstrap = async () => {
+  await initNeo4jGraphFromEnv();
 
-// Fallback 404 for any unhandled /api route.
-app.use('/api', (_req, res) => {
-  res.status(404).json({ success: false, errorMessage: 'Not Found' });
-});
+  for (const file of mockFiles) {
+    loadMockFile(file);
+  }
 
-// Basic error handler.
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  // Avoid noisy logs in normal dev flow.
-  // eslint-disable-next-line no-console
-  console.error('[api] error', err);
-  res.status(500).json({ success: false, errorMessage: 'Internal Server Error' });
-});
+  // Fallback 404 for any unhandled /api route.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, errorMessage: 'Not Found' });
+  });
 
-app.listen(PORT, () => {
+  // Basic error handler.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    // Avoid noisy logs in normal dev flow.
+    // eslint-disable-next-line no-console
+    console.error('[api] error', err);
+    res.status(500).json({ success: false, errorMessage: 'Internal Server Error' });
+  });
+
+  app.listen(PORT, () => {
+    // eslint-disable-next-line no-console
+    console.log(`[api] listening on http://localhost:${PORT}`);
+    // eslint-disable-next-line no-console
+    console.log(`[api] loaded ${registered.size} routes from /mock`);
+  });
+};
+
+bootstrap().catch((err) => {
   // eslint-disable-next-line no-console
-  console.log(`[api] listening on http://localhost:${PORT}`);
-  // eslint-disable-next-line no-console
-  console.log(`[api] loaded ${registered.size} routes from /mock`);
+  console.error('[api] failed to start', err);
+  process.exitCode = 1;
 });

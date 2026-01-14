@@ -1,5 +1,7 @@
 import React from 'react';
+import { useModel } from '@umijs/max';
 import { Button, Input, List, Menu, Modal, Select, Typography, message, notification } from 'antd';
+import * as XLSX from 'xlsx';
 
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
@@ -17,6 +19,7 @@ import { getReadOnlyReason, isAnyObjectTypeWritableForScope } from '@/repository
 import { buildGovernanceDebt } from '@/ea/governanceValidation';
 import { appendGovernanceLog } from '@/ea/governanceLog';
 import { defaultLifecycleStateForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
+import { useSeedSampleData } from '@/ea/useSeedSampleData';
 
 import styles from './style.module.less';
 
@@ -64,10 +67,12 @@ const DEFAULT_NEW_REPO: NewRepoDraft = {
 };
 
 const IdeMenuBar: React.FC = () => {
+  const { initialState } = useModel('@@initialState');
   const {
     eaRepository,
     metadata,
     setEaRepository,
+    trySetEaRepository,
     createNewRepository,
     loadRepositoryFromJsonText,
     clearRepository,
@@ -78,6 +83,7 @@ const IdeMenuBar: React.FC = () => {
   } = useEaRepository();
 
   const { selection, setSelection } = useIdeSelection();
+  const { openSeedSampleDataModal } = useSeedSampleData();
 
   const hasRepo = Boolean(eaRepository && metadata);
   const selectedEntityId = hasRepo ? parseSelectedEntityId(selection.keys?.[0]) : null;
@@ -216,12 +222,30 @@ const IdeMenuBar: React.FC = () => {
     async (args: {
       label: string;
       file: File;
-      parse: (csvText: string) => { ok: true; apply: () => void; summary: string } | { ok: false; errors: string[] };
+      parse: (
+        csvText: string,
+      ) =>
+        | { ok: true; apply: () => { ok: true } | { ok: false; error: string }; summary: string }
+        | { ok: false; errors: string[] };
     }) => {
       console.log('[IDE] Import', args.label, { name: args.file.name, size: args.file.size });
 
+      const fileToCsv = async (file: File) => {
+        const lower = file.name.toLowerCase();
+        const isExcel = lower.endsWith('.xlsx') || lower.endsWith('.xls');
+        if (!isExcel) return file.text();
+
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) throw new Error('Excel file has no sheets.');
+        const sheet = workbook.Sheets[sheetName];
+        // Use explicit newline to avoid unterminated string issues in bundler parsing.
+        return XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: "\n" });
+      };
+
       try {
-        const csvText = await args.file.text();
+        const csvText = await fileToCsv(args.file);
         const res = args.parse(csvText);
         if (!res.ok) {
           Modal.error({
@@ -238,7 +262,8 @@ const IdeMenuBar: React.FC = () => {
           return;
         }
 
-        res.apply();
+        const applied = res.apply();
+        if (!applied.ok) return;
         message.success(res.summary);
       } catch (err) {
         Modal.error({
@@ -563,11 +588,12 @@ const IdeMenuBar: React.FC = () => {
     obj.attributes = { ...(obj.attributes ?? {}), name: nextName };
     draft.objects.set(selectedEntityId, obj);
 
-    setEaRepository(draft);
+    const applied = trySetEaRepository(draft);
+    if (!applied.ok) return;
 
     setRenameOpen(false);
     message.success('Element renamed.');
-  }, [eaRepository, metadata?.architectureScope, renameValue, selectedEntityId, setEaRepository]);
+  }, [eaRepository, metadata?.architectureScope, renameValue, selectedEntityId, trySetEaRepository]);
 
   const handleDeleteSelectedElement = React.useCallback(() => {
     console.log('[IDE] Edit > Delete Selected Element');
@@ -604,12 +630,14 @@ const IdeMenuBar: React.FC = () => {
 
         console.log('[IDE] Deleted element', { id: selectedEntityId, removedRelationships: rels.length });
 
-        setEaRepository(draft);
+        const applied = trySetEaRepository(draft);
+        if (!applied.ok) return;
+
         setSelection({ kind: 'none', keys: [] });
         message.success('Element deleted.');
       },
     });
-  }, [eaRepository, metadata?.architectureScope, selectedEntityId, setEaRepository, setSelection]);
+  }, [eaRepository, metadata?.architectureScope, selectedEntityId, setSelection, trySetEaRepository]);
 
   const handleFindElement = React.useCallback(() => {
     console.log('[IDE] Edit > Find Element');
@@ -661,69 +689,6 @@ const IdeMenuBar: React.FC = () => {
     dispatchIdeCommand({ type: 'view.fullscreen.toggle' });
   }, []);
 
-  const handleRunImpactAnalysis = React.useCallback(() => {
-    console.log('[IDE] Analysis > Run Impact Analysis');
-    dispatchIdeCommand({ type: 'navigation.openWorkspace', args: { type: 'analysis', kind: 'impact' } });
-    message.info('Configure the run and click “Run analysis”.');
-  }, []);
-
-  const handleDependencyAnalysis = React.useCallback(() => {
-    console.log('[IDE] Analysis > Dependency Analysis');
-    dispatchIdeCommand({ type: 'navigation.openWorkspace', args: { type: 'analysis', kind: 'dependency' } });
-  }, []);
-
-  const handleCriticalityHeatmap = React.useCallback(() => {
-    console.log('[IDE] Analysis > Criticality Heatmap');
-    notification.info({
-      message: 'Criticality Heatmap (planned)',
-      description: 'Heatmap visualization is not implemented yet. This action is tracked and intentionally stubbed.',
-      placement: 'bottomRight',
-    });
-  }, []);
-
-  const handlePathEnumeration = React.useCallback(() => {
-    console.log('[IDE] Analysis > Path Enumeration');
-    notification.info({
-      message: 'Path Enumeration (planned)',
-      description: 'Path enumeration tooling is not wired into the UI yet.',
-      placement: 'bottomRight',
-    });
-  }, []);
-
-  const handleSaveAnalysisResult = React.useCallback(() => {
-    console.log('[IDE] Analysis > Save Analysis Result');
-
-    const docKey = selection.activeDocument?.key ?? '';
-    if (!docKey.startsWith('analysisResult:')) {
-      message.info('Open an analysis result tab to save.');
-      return;
-    }
-
-    const id = docKey.slice('analysisResult:'.length);
-    const rec = getAnalysisResult<any>(id);
-    if (!rec) {
-      message.error('The active analysis result is no longer available.');
-      return;
-    }
-
-    const payload = {
-      version: 1 as const,
-      exportedAt: new Date().toISOString(),
-      result: rec,
-    };
-
-    downloadTextFile(`analysis-result-${safeSlug(rec.title)}.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
-    message.success('Analysis result saved.');
-  }, [selection.activeDocument?.key]);
-
-  const handleClearAnalysisContext = React.useCallback(() => {
-    console.log('[IDE] Analysis > Clear Analysis Context');
-    clearAnalysisResults();
-    dispatchIdeCommand({ type: 'workspace.closeMatchingTabs', prefix: 'analysisResult:' });
-    dispatchIdeCommand({ type: 'workspace.closeMatchingTabs', prefix: 'analysis:' });
-    message.success('Analysis context cleared.');
-  }, []);
-
   const handleGovernanceDashboard = React.useCallback(() => {
     console.log('[IDE] Governance > Dashboard');
     dispatchIdeCommand({ type: 'navigation.openRoute', path: '/governance' });
@@ -773,6 +738,12 @@ const IdeMenuBar: React.FC = () => {
   const handleToolsMetamodelViewer = React.useCallback(() => {
     console.log('[IDE] Tools > Schema / Metamodel Viewer');
     dispatchIdeCommand({ type: 'view.showActivity', activity: 'metamodel' });
+  }, []);
+
+  const handleToolsImportWizard = React.useCallback(() => {
+    console.log('[IDE] Tools > Import / Export');
+    dispatchIdeCommand({ type: 'navigation.openRoute', path: '/interoperability' });
+    message.info('Opening Import / Export wizard…');
   }, []);
 
   const handleToolsCacheReset = React.useCallback(() => {
@@ -913,7 +884,7 @@ const IdeMenuBar: React.FC = () => {
 
             return {
               ok: true as const,
-              apply: () => setEaRepository(applyResult.nextRepository),
+              apply: () => trySetEaRepository(applyResult.nextRepository),
               summary: `Import Capabilities CSV: imported ${objects.length} objects`,
             };
           },
@@ -954,7 +925,7 @@ const IdeMenuBar: React.FC = () => {
 
             return {
               ok: true as const,
-              apply: () => setEaRepository(draft),
+              apply: () => trySetEaRepository(draft),
               summary: `Import Applications CSV: imported ${result.applications.length} applications`,
             };
           },
@@ -984,7 +955,7 @@ const IdeMenuBar: React.FC = () => {
             const relationships = (result.dependencies as any[]).map((d: any) => ({
               fromId: d.from,
               toId: d.to,
-              type: 'DEPENDS_ON' as const,
+              type: 'INTEGRATES_WITH' as const,
               attributes: { dependencyStrength: d.dependencyStrength, dependencyType: d.dependencyType },
             }));
 
@@ -993,7 +964,7 @@ const IdeMenuBar: React.FC = () => {
 
             return {
               ok: true as const,
-              apply: () => setEaRepository(applyResult.nextRepository),
+              apply: () => trySetEaRepository(applyResult.nextRepository),
               summary: `Import Dependencies CSV: imported ${relationships.length} relationships`,
             };
           },
@@ -1024,7 +995,7 @@ const IdeMenuBar: React.FC = () => {
 
             return {
               ok: true as const,
-              apply: () => setEaRepository(applyResult.nextRepository),
+              apply: () => trySetEaRepository(applyResult.nextRepository),
               summary: `Import Technology CSV: imported ${objects.length} objects`,
             };
           },
@@ -1055,18 +1026,17 @@ const IdeMenuBar: React.FC = () => {
 
             return {
               ok: true as const,
-              apply: () => setEaRepository(applyResult.nextRepository),
+              apply: () => trySetEaRepository(applyResult.nextRepository),
               summary: `Import Programmes CSV: imported ${objects.length} objects`,
             };
           },
         });
       },
     };
-  }, [eaRepository, importCsv, metadata?.lifecycleCoverage, setEaRepository]);
+  }, [eaRepository, importCsv, metadata?.lifecycleCoverage, trySetEaRepository]);
 
   const fileMenuDisabled = false;
   const editMenuDisabled = !hasRepo;
-  const analysisMenuDisabled = !hasRepo;
   const governanceMenuDisabled = !hasRepo;
 
   const items = React.useMemo(
@@ -1165,20 +1135,6 @@ const IdeMenuBar: React.FC = () => {
         ],
       },
       {
-        key: 'analysis',
-        label: 'Analysis',
-        disabled: analysisMenuDisabled,
-        children: [
-          { key: 'analysis.runImpact', label: 'Run Impact Analysis', onClick: handleRunImpactAnalysis },
-          { key: 'analysis.dep', label: 'Dependency Analysis', onClick: handleDependencyAnalysis },
-          { key: 'analysis.heat', label: 'Criticality Heatmap', onClick: handleCriticalityHeatmap },
-          { key: 'analysis.paths', label: 'Path Enumeration', onClick: handlePathEnumeration },
-          { type: 'divider' as const },
-          { key: 'analysis.save', label: 'Save Analysis Result', onClick: handleSaveAnalysisResult },
-          { key: 'analysis.clear', label: 'Clear Analysis Context', onClick: handleClearAnalysisContext },
-        ],
-      },
-      {
         key: 'governance',
         label: 'Governance',
         disabled: governanceMenuDisabled,
@@ -1196,6 +1152,7 @@ const IdeMenuBar: React.FC = () => {
         key: 'tools',
         label: 'Tools',
         children: [
+          { key: 'tools.import', label: 'Import / Export (CSV / Excel)', onClick: handleToolsImportWizard },
           {
             key: 'tools.csv',
             label: 'CSV Validator',
@@ -1208,6 +1165,7 @@ const IdeMenuBar: React.FC = () => {
               });
             },
           },
+          { key: 'tools.seed', label: 'Seed Sample Architecture', onClick: openSeedSampleDataModal },
           { key: 'tools.stats', label: 'Repository Statistics', onClick: handleToolsRepositoryStats, disabled: !hasRepo },
           { key: 'tools.meta', label: 'Schema / Metamodel Viewer', onClick: handleToolsMetamodelViewer },
           { key: 'tools.reset', label: 'Cache / State Reset', onClick: handleToolsCacheReset },
@@ -1233,15 +1191,12 @@ const IdeMenuBar: React.FC = () => {
       },
     ],
     [
-      analysisMenuDisabled,
       canRedo,
       canUndo,
       editMenuDisabled,
       governanceMenuDisabled,
-      handleClearAnalysisContext,
       handleCloseRepository,
       handleDeleteSelectedElement,
-      handleDependencyAnalysis,
       handleExit,
       handleExportImpactAnalysisCsv,
       handleExportRepositorySnapshot,
@@ -1261,20 +1216,19 @@ const IdeMenuBar: React.FC = () => {
       handleImportTechnologyCsv,
       handleNewRepo,
       handleOpenRepo,
-      handlePathEnumeration,
       handlePreferences,
       handleRedo,
       handleRenameSelectedElement,
       handleResetLayout,
-      handleRunImpactAnalysis,
-      handleSaveAnalysisResult,
       handleToggleAnalysis,
       handleToggleBottomPanel,
       handleToggleDiagrams,
       handleToggleExplorer,
       handleToggleGovernance,
+      handleToolsImportWizard,
       handleUndo,
       hasRepo,
+      openSeedSampleDataModal,
       selectedEntityId,
     ],
   );
@@ -1329,11 +1283,11 @@ const IdeMenuBar: React.FC = () => {
         onChange={handleOpenRepoFileSelected}
       />
 
-      <input ref={importCapabilitiesInputRef} type="file" accept="text/csv,.csv" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.capabilities)} />
-      <input ref={importApplicationsInputRef} type="file" accept="text/csv,.csv" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.applications)} />
-      <input ref={importDependenciesInputRef} type="file" accept="text/csv,.csv" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.dependencies)} />
-      <input ref={importTechnologyInputRef} type="file" accept="text/csv,.csv" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.technology)} />
-      <input ref={importProgrammesInputRef} type="file" accept="text/csv,.csv" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.programmes)} />
+      <input ref={importCapabilitiesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.capabilities)} />
+      <input ref={importApplicationsInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.applications)} />
+      <input ref={importDependenciesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.dependencies)} />
+      <input ref={importTechnologyInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.technology)} />
+      <input ref={importProgrammesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.programmes)} />
 
       {/* New repo modal */}
       <Modal

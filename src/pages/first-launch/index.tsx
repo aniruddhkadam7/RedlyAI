@@ -1,5 +1,5 @@
 import React from 'react';
-import { history } from '@umijs/max';
+import { history, useModel } from '@umijs/max';
 import { PageContainer } from '@ant-design/pro-components';
 import { Button, Card, Form, Input, Radio, Select, Space, Typography, message } from 'antd';
 
@@ -22,6 +22,7 @@ import { seedDefaultViewsForDomainScope } from '@/repository/domainScopeInit';
 import { seedDefaultViewsForProgrammeScope } from '@/repository/programmeScopeInit';
 
 const FirstLaunch: React.FC = () => {
+  const { initialState } = useModel('@@initialState');
   const { createNewRepository, loadRepositoryFromJsonText } = useEaRepository();
   const { createProject, refreshProject } = useEaProject();
 
@@ -183,8 +184,8 @@ const FirstLaunch: React.FC = () => {
                           // If the project already exists or API is unavailable, continue.
                         }
 
-                        // Reference-framework behavior: ArchiMate repositories start empty (no preloaded diagrams/views).
-                        if (values.referenceFramework !== 'ArchiMate') {
+                        // Reference-framework behavior: ArchiMate and TOGAF repositories start empty (no preloaded diagrams/views).
+                        if (values.referenceFramework !== 'ArchiMate' && values.referenceFramework !== 'TOGAF') {
                           if (values.architectureScope === 'Enterprise') {
                             try {
                               seedDefaultViewsForEnterpriseScope();

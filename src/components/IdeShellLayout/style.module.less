@@ -10,6 +10,52 @@
   min-height: 0;
 }
 
+.topHeader {
+  background: #1b2a55 !important;
+  color: #f3f6ff;
+}
+
+.activitySider {
+  background: #1b2a55 !important;
+  color: #f3f6ff;
+}
+
+.activitySider :global(.ant-layout-sider-children) {
+  background: #1b2a55;
+}
+
+.activitySider :global(.ant-btn),
+.activitySider :global(.ant-btn .anticon),
+.activitySider :global(.ant-typography),
+.activitySider :global(.ant-typography span) {
+  color: #f3f6ff !important;
+}
+
+.topHeader :global(.ant-typography),
+.topHeader :global(.ant-typography span),
+.topHeader :global(.ant-btn),
+.topHeader :global(.ant-btn .anticon) {
+  color: #f3f6ff !important;
+}
+
+.topHeader :global(.ant-menu),
+.topHeader :global(.ant-menu-item),
+.topHeader :global(.ant-menu-submenu-title),
+.topHeader :global(.ant-menu-submenu-arrow),
+.topHeader :global(.ant-menu-overflow-item) {
+  color: #f3f6ff !important;
+}
+
+.topHeader :global(.ant-menu-item-selected),
+.topHeader :global(.ant-menu-submenu-selected) {
+  color: #ffffff !important;
+}
+
+.topHeader :global(.ant-menu-item:hover),
+.topHeader :global(.ant-menu-submenu-title:hover) {
+  color: #ffffff !important;
+}
+
 .topBar {
   min-height: 30px;
   height: auto;
@@ -42,13 +88,24 @@
   font-size: 12px;
 }
 
+.headerSearch :global(.ant-input),
+.headerSearch :global(.ant-input-affix-wrapper),
+.headerSearch :global(.ant-input-search-button),
+.headerSearch :global(.ant-btn) {
+  border-radius: 999px !important;
+}
+
+.headerSearch :global(.ant-input-affix-wrapper) {
+  padding-inline: 12px;
+}
+
 .mainRow {
   flex: 1 1 auto;
   min-height: 0;
 }
 
 .activityBar {
-  width: 72px;
+  width: 50px;
 }
 
 .leftDock {
@@ -64,8 +121,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 10px;
+  gap: 6px;
+  padding: 7px 7px;
   border-right: 1px solid var(--ide-border);
   background: var(--ide-rail-bg);
 }
@@ -73,20 +130,20 @@
 .iconRailTop {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .iconRailBottom {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   padding-top: 10px;
 }
 
 .railAvatar {
-  width: 52px;
-  height: 52px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
 }
@@ -106,6 +163,7 @@
 .leftDockResizer {
   width: 6px;
   flex: 0 0 auto;
+  cursor: col-resize;
 }
 
 .leftDockResizer:hover {
@@ -140,11 +198,11 @@
 }
 
 .activityButton {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
 }
@@ -218,6 +276,7 @@
   overflow: auto;
 }
 
+
 /*
  * Ant Design wraps Sider children in .ant-layout-sider-children.
  * If that wrapper isn't height-constrained + flex, nested overflow containers won't scroll.
@@ -260,6 +319,164 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+}
+
+.studioShell {
+  height: 100%;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff7e6 0%, #ffffff 40%);
+}
+
+.studioHeader {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid;
+}
+
+.studioColumns {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  gap: 12px;
+  padding: 12px;
+}
+
+.studioLeft {
+  min-height: 0;
+  overflow: auto;
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.studioCenter {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.studioCanvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px dashed var(--ide-border);
+  border-radius: 10px;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.studioCanvasSurface {
+  position: absolute;
+  inset: 0;
+}
+
+.studioCanvasHint {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ide-border);
+}
+
+.studioCanvasOverlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.studioValidationList {
+  display: grid;
+  gap: 8px;
+}
+
+.studioRight {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.studioRightSection {
+  flex: 1 1 0;
+  min-height: 0;
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studioRightBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.studioPaletteList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.studioPaletteSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studioPaletteItems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studioPaletteItem {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ide-border);
+  background: #fff;
+}
+
+.studioPaletteItemButton {
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ide-border);
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studioPaletteItemButton:hover {
+  background: var(--ide-control-hover);
+}
+
+.studioRelationshipPreview {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
 }
 
 .rightResizer {
@@ -436,13 +653,13 @@
 }
 
 .explorerTree {
-  padding: 8px;
-  font-size: 13.5px;
+  padding: 4px 6px 6px;
+  font-size: 12.5px;
 }
 
 /* Clear hierarchy: 16–20px indentation per level. */
 .explorerTree :global(.ant-tree-indent-unit) {
-  width: 18px;
+  width: 16px;
 }
 
 /* Dotted hierarchy guide lines (VS Code / EA tools style). */
@@ -452,43 +669,45 @@
   height: 100%;
 }
 
-.explorerTree :global(.ant-tree-indent-unit)::before {
+/* Remove dotted hierarchy guides for a cleaner VS Code-like tree. */
+
+/* Solid tree lines when showLine is enabled. */
+.explorerTree :global(.ant-tree-show-line .ant-tree-indent-unit::before) {
   content: '';
   position: absolute;
   left: 50%;
   top: -10px;
   bottom: -10px;
-  border-left: 1px dotted var(--ide-tree-line);
-  opacity: 0.9;
+  border-left: 1px solid var(--ide-tree-line);
+  opacity: 0.6;
 }
 
-/* Horizontal connector into the current node (subtle). */
-.explorerTree :global(.ant-tree-switcher) {
+.explorerTree :global(.ant-tree-show-line .ant-tree-switcher) {
   position: relative;
 }
 
-.explorerTree :global(.ant-tree-switcher)::before {
+.explorerTree :global(.ant-tree-show-line .ant-tree-switcher::before) {
   content: '';
   position: absolute;
   left: -10px;
   top: 50%;
   width: 10px;
-  border-top: 1px dotted var(--ide-tree-line);
+  border-top: 1px solid var(--ide-tree-line);
   transform: translateY(-50%);
-  opacity: 0.9;
+  opacity: 0.6;
 }
 
 .explorerTree :global(.ant-tree-treenode) {
-  padding-block: 2px;
+  padding-block: 1px;
   position: relative;
 }
 
 .explorerTree :global(.ant-tree-node-content-wrapper) {
-  min-height: 34px;
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
   width: 100%;
-  padding-inline: 8px;
+  padding-inline: 6px;
 }
 
 /* Explorer affordances: neutral selection (no blue, no pills). */
@@ -521,11 +740,29 @@
   background: var(--ide-tree-selected-bg);
 }
 
+.pathActive {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  background: var(--ide-tree-hover-bg);
+  box-shadow: inset 2px 0 0 var(--ide-tree-accent);
+}
+
 /* Icon + caret alignment (16px icons, same color as text). */
 .explorerTree :global(.ant-tree-iconEle) {
-  font-size: 16px;
-  line-height: 16px;
-  color: inherit;
+  display: none;
+}
+
+.explorerTree :global(.ant-tree-switcher) {
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+}
+
+.explorerTree :global(.ant-tree-switcher-noop) {
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
 }
 
 .explorerTree :global(.ant-tree-switcher) {

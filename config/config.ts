@@ -8,6 +8,10 @@ import proxy from './proxy';
 import routes from './routes';
 
 const { UMI_ENV = 'dev' } = process.env;
+const isJest =
+  process.env.UMI_SKIP_OPENAPI === '1' ||
+  process.env.NODE_ENV === 'test' ||
+  process.env.JEST_WORKER_ID !== undefined;
 
 /**
  * @name 使用公共路径
@@ -151,21 +155,25 @@ export default defineConfig({
    * @description 基于 openapi 的规范生成serve 和mock，能减少很多样板代码
    * @doc https://pro.ant.design/zh-cn/docs/openapi/
    */
-  openAPI: [
-    {
-      requestLibPath: "import { request } from '@umijs/max'",
-      // 或者使用在线的版本
-      // schemaPath: "https://gw.alipayobjects.com/os/antfincdn/M%24jrzTTYJN/oneapi.json"
-      schemaPath: join(__dirname, 'oneapi.json'),
-      mock: false,
-    },
-    {
-      requestLibPath: "import { request } from '@umijs/max'",
-      schemaPath:
-        'https://gw.alipayobjects.com/os/antfincdn/CA1dOm%2631B/openapi.json',
-      projectName: 'swagger',
-    },
-  ],
+  ...(isJest
+    ? {}
+    : {
+        openAPI: [
+          {
+            requestLibPath: "import { request } from '@umijs/max'",
+            // 或者使用在线的版本
+            // schemaPath: "https://gw.alipayobjects.com/os/antfincdn/M%24jrzTTYJN/oneapi.json"
+            schemaPath: join(__dirname, 'oneapi.json'),
+            mock: false,
+          },
+          {
+            requestLibPath: "import { request } from '@umijs/max'",
+            schemaPath:
+              'https://gw.alipayobjects.com/os/antfincdn/CA1dOm%2631B/openapi.json',
+            projectName: 'swagger',
+          },
+        ],
+      }),
   mock: {
     include: ['mock/**/*', 'src/pages/**/_mock.ts'],
   },

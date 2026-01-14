@@ -22,6 +22,7 @@ import {
   getRelationshipRepository,
   setRelationshipRepository,
 } from '../../repository/RelationshipRepositoryStore';
+import { getGovernanceEnforcementMode } from '../../governance/GovernanceEnforcementConfig';
 
 import type {
   CanonicalExchangeModel,
@@ -432,8 +433,11 @@ const requiredRelationshipFieldsByType: Record<
   readonly CsvColumnName[]
 > = {
   DECOMPOSES_TO: [],
+  COMPOSED_OF: [],
   REALIZED_BY: ['automationLevel'],
+  INTEGRATES_WITH: ['dependencyType', 'dependencyStrength', 'runtimeCritical'],
   DEPENDS_ON: ['dependencyType', 'dependencyStrength', 'runtimeCritical'],
+  CONSUMES: ['dependencyType', 'dependencyStrength', 'runtimeCritical'],
   HOSTED_ON: ['hostingRole', 'environment', 'resilienceLevel'],
   IMPACTS: ['impactType', 'expectedChangeMagnitude'],
 };
@@ -844,7 +848,29 @@ export function importCsvTransactional(
 
   if (applyToRepository) {
     // Transactional swap: staged contains current+imported.
-    setRepository(staged.repo);
+    const governanceMode = getGovernanceEnforcementMode();
+    const mode = governanceMode === 'Advisory' ? 'Advisory' : 'Strict';
+
+    const validation = setRepository(staged.repo, { relationships: staged.relRepo, mode });
+    if (!validation.ok) {
+      return {
+        ok: false,
+        errors: [
+          {
+            line: 1,
+            code: 'VALIDATION_FAILED',
+            message: validation.message,
+          },
+        ],
+      };
+    }
+
+    // In advisory mode we still surface warnings to the caller.
+    if (validation.warnings?.length) {
+      // eslint-disable-next-line no-console
+      console.warn('[governance] advisory repository warnings:', validation.warnings);
+    }
+
     setRelationshipRepository(staged.relRepo);
   }
 

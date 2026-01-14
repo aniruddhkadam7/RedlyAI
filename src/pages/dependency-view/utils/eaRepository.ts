@@ -13,11 +13,26 @@ export type EaObject = {
 };
 
 export type EaRelationship = {
+  /** Immutable relationship identity (UUID-ish). Optional for imports; assigned on insert. */
+  id?: string;
   fromId: string;
   toId: string;
   type: RelationshipType;
   attributes: Record<string, unknown>;
 };
+
+export type EaPersistedRelationship = Omit<EaRelationship, 'id'> & { id: string };
+
+const makeRelationshipId = (): string => {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch {
+    // ignore
+  }
+  return `rel-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const nowIso = () => new Date().toISOString();
 
 export type EaRepositoryAddSuccess = { ok: true };
 export type EaRepositoryAddFailure = { ok: false; error: string };
@@ -30,7 +45,7 @@ export type EaRepositoryValidateResult = EaRepositoryValidateSuccess | EaReposit
 export class EaRepository {
   objects: Map<string, EaObject>;
 
-  relationships: EaRelationship[];
+  relationships: EaPersistedRelationship[];
 
   constructor(opts?: { objects?: Iterable<EaObject>; relationships?: Iterable<EaRelationship> }) {
     this.objects = new Map();
@@ -83,6 +98,7 @@ export class EaRepository {
   }
 
   addRelationship(rel: {
+    id?: string;
     fromId: string;
     toId: string;
     type: unknown;
@@ -120,18 +136,95 @@ export class EaRepository {
     const fromType: ObjectType = fromObj.type;
     const toType: ObjectType = toObj.type;
 
-    if (!relationshipTypeDef.fromTypes.includes(fromType) || !relationshipTypeDef.toTypes.includes(toType)) {
+    const pairs = (relationshipTypeDef as any)?.allowedEndpointPairs as
+      | ReadonlyArray<{ from: ObjectType; to: ObjectType }>
+      | undefined;
+
+    if (Array.isArray(pairs) && pairs.length > 0) {
+      const ok = pairs.some((p) => p.from === fromType && p.to === toType);
+      if (!ok) {
+        return {
+          ok: false,
+          error: `Invalid endpoints for relationship type "${rel.type}" ("${fromType}" -> "${toType}").`,
+        };
+      }
+    } else if (!relationshipTypeDef.fromTypes.includes(fromType) || !relationshipTypeDef.toTypes.includes(toType)) {
       return {
         ok: false,
         error: `Invalid endpoints for relationship type "${rel.type}" ("${fromType}" -> "${toType}").`,
       };
     }
 
+    const relationshipId = (rel.id ?? '').trim() || makeRelationshipId();
+    const attrs = { ...(rel.attributes ?? {}) };
+    const createdAt = typeof (attrs as any)?.createdAt === 'string' && String((attrs as any).createdAt).trim()
+      ? String((attrs as any).createdAt)
+      : nowIso();
+    const lastModifiedAt = typeof (attrs as any)?.lastModifiedAt === 'string' && String((attrs as any).lastModifiedAt).trim()
+      ? String((attrs as any).lastModifiedAt)
+      : createdAt;
+    (attrs as any).createdAt = createdAt;
+    (attrs as any).lastModifiedAt = lastModifiedAt;
+
     this.relationships.push({
+      id: relationshipId,
       fromId,
       toId,
       type: rel.type,
-      attributes: rel.attributes ?? {},
+      attributes: attrs,
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Advisory-mode helper: inserts a relationship without enforcing endpoint type rules.
+   *
+   * Still enforces:
+   * - non-empty fromId/toId
+   * - known relationship type
+   * - non-dangling references
+   */
+  addRelationshipUnchecked(rel: {
+    id?: string;
+    fromId: string;
+    toId: string;
+    type: unknown;
+    attributes?: Record<string, unknown>;
+  }): EaRepositoryAddResult {
+    const fromId = (rel.fromId ?? '').trim();
+    const toId = (rel.toId ?? '').trim();
+
+    if (!fromId) return { ok: false, error: 'Relationship fromId is required.' };
+    if (!toId) return { ok: false, error: 'Relationship toId is required.' };
+
+    if (!isValidRelationshipType(rel.type)) {
+      return { ok: false, error: `Invalid relationship type "${String(rel.type)}".` };
+    }
+
+    const fromRef = this.validateReference(fromId);
+    if (!fromRef.ok) return { ok: false, error: fromRef.error };
+
+    const toRef = this.validateReference(toId);
+    if (!toRef.ok) return { ok: false, error: toRef.error };
+
+    const relationshipId = (rel.id ?? '').trim() || makeRelationshipId();
+    const attrs = { ...(rel.attributes ?? {}) };
+    const createdAt = typeof (attrs as any)?.createdAt === 'string' && String((attrs as any).createdAt).trim()
+      ? String((attrs as any).createdAt)
+      : nowIso();
+    const lastModifiedAt = typeof (attrs as any)?.lastModifiedAt === 'string' && String((attrs as any).lastModifiedAt).trim()
+      ? String((attrs as any).lastModifiedAt)
+      : createdAt;
+    (attrs as any).createdAt = createdAt;
+    (attrs as any).lastModifiedAt = lastModifiedAt;
+
+    this.relationships.push({
+      id: relationshipId,
+      fromId,
+      toId,
+      type: rel.type,
+      attributes: attrs,
     });
 
     return { ok: true };

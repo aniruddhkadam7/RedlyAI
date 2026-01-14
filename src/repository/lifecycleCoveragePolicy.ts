@@ -35,6 +35,10 @@ export const getLifecycleStateFromAttributes = (
 ): LifecycleState | null => {
   const raw = attributes?.lifecycleState;
   if (raw === 'As-Is' || raw === 'To-Be') return raw;
+
+  // TOGAF compatibility: treat Baseline/Target as As-Is/To-Be for lifecycle coverage filtering/governance.
+  if (raw === 'Baseline') return 'As-Is';
+  if (raw === 'Target') return 'To-Be';
   return null;
 };
 

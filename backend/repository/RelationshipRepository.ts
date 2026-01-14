@@ -16,6 +16,11 @@ const normalizeType = (value: string) => (value ?? '').trim();
 const isAllowedEndpoint = (relationshipType: string, fromType: string, toType: string): boolean => {
   const rule = getRelationshipEndpointRule(relationshipType);
   if (!rule) return false;
+
+  if (Array.isArray((rule as any).pairs) && (rule as any).pairs.length > 0) {
+    return (rule as any).pairs.some((p: any) => p?.from === fromType && p?.to === toType);
+  }
+
   return rule.from.includes(fromType) && rule.to.includes(toType);
 };
 

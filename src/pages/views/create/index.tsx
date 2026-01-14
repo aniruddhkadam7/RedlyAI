@@ -1,46 +1,11 @@
-import {
-  PageContainer,
-  ProFormDigit,
-  ProFormSelect,
-  ProFormText,
-  ProFormTextArea,
-  StepsForm,
-} from '@ant-design/pro-components';
-import { useModel, request } from '@umijs/max';
-import { Card, Divider, Form, Typography, message } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
+import { PageContainer, ProFormSelect, ProFormText, ProFormTextArea, StepsForm } from '@ant-design/pro-components';
+import { history, useModel } from '@umijs/max';
+import { Card, Divider, Typography, message } from 'antd';
+import React, { useMemo, useState } from 'react';
 
-import type { BaseArchitectureElement } from '../../../../backend/repository/BaseArchitectureElement';
-import type { ViewDefinition } from '../../../../backend/views/ViewDefinition';
-import {
-  STANDARD_VIEW_TEMPLATES,
-  type ViewTemplateId,
-  instantiateViewFromTemplate,
-} from '../../../../backend/views/ViewTemplates';
-import { getRelationshipEndpointRule } from '../../../../backend/relationships/RelationshipSemantics';
-import { useEaRepository } from '@/ea/EaRepositoryContext';
-
-type RepositoryElementsByType = {
-  Application: BaseArchitectureElement[];
-  Capability: BaseArchitectureElement[];
-  BusinessProcess: BaseArchitectureElement[];
-  Technology: BaseArchitectureElement[];
-  Programme: BaseArchitectureElement[];
-};
-
-const emptyElements: RepositoryElementsByType = {
-  Application: [],
-  Capability: [],
-  BusinessProcess: [],
-  Technology: [],
-  Programme: [],
-};
-
-const toSelectOptions = (elements: BaseArchitectureElement[]) =>
-  (elements ?? []).map((e) => ({
-    value: e.id,
-    label: `${e.name} (${e.id})`,
-  }));
+import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
+import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
+import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 
 const createViewId = (): string => {
   // Browser-safe unique-enough id for UI-only creation (no persistence).
@@ -53,183 +18,91 @@ const nowIso = () => new Date().toISOString();
 const CreateViewWizardPage: React.FC = () => {
   const { initialState } = useModel('@@initialState');
   const createdBy = initialState?.currentUser?.name || initialState?.currentUser?.userid || 'ui';
-  const { metadata } = useEaRepository();
+  const [createdView, setCreatedView] = useState<ViewInstance | null>(null);
 
-  const templateOptions = useMemo(() => {
-    const templates =
-      metadata?.architectureScope === 'Programme'
-        ? STANDARD_VIEW_TEMPLATES.filter((t) => t.viewType === 'ImpactView')
-        : STANDARD_VIEW_TEMPLATES;
+  const layoutOptions = [
+    { label: 'Hierarchical', value: 'hierarchical' },
+    { label: 'Radial', value: 'radial' },
+    { label: 'Grid', value: 'grid' },
+  ];
 
-    return templates.map((t) => ({
-      value: t.id,
-      label: `${t.name} (${t.viewType})`,
+  const defaultLayoutForViewpoint = (viewpointId: string | undefined): 'hierarchical' | 'radial' | 'grid' => {
+    const vp = viewpointId ? ViewpointRegistry.get(viewpointId) : null;
+    if (!vp) return 'grid';
+    if (vp.defaultLayout === 'dagre') return 'hierarchical';
+    if (vp.defaultLayout === 'grid') return 'grid';
+    return 'grid';
+  };
+
+  const viewpointOptions = useMemo(() => {
+    return ViewpointRegistry.list().map((vp) => ({
+      value: vp.id,
+      label: `${vp.name} (${vp.id})`,
     }));
-  }, [metadata?.architectureScope]);
-
-  const [elements, setElements] = useState<RepositoryElementsByType>(emptyElements);
-  const [loadingElements, setLoadingElements] = useState(false);
-  const [createdView, setCreatedView] = useState<ViewDefinition | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<ViewTemplateId | undefined>(
-    STANDARD_VIEW_TEMPLATES[0]?.id,
-  );
-
-  useEffect(() => {
-    const load = async () => {
-      setLoadingElements(true);
-      try {
-        const [apps, caps, procs, techs, progs] = await Promise.all([
-          request<{ success: boolean; data: BaseArchitectureElement[] }>('/api/repository/applications'),
-          request<{ success: boolean; data: BaseArchitectureElement[] }>('/api/repository/capabilities'),
-          request<{ success: boolean; data: BaseArchitectureElement[] }>('/api/repository/processes'),
-          request<{ success: boolean; data: BaseArchitectureElement[] }>('/api/repository/technologies'),
-          request<{ success: boolean; data: BaseArchitectureElement[] }>('/api/repository/programmes'),
-        ]);
-
-        setElements({
-          Application: apps?.data ?? [],
-          Capability: caps?.data ?? [],
-          BusinessProcess: procs?.data ?? [],
-          Technology: techs?.data ?? [],
-          Programme: progs?.data ?? [],
-        });
-      } catch (e) {
-        message.error('Failed to load repository elements');
-        setElements(emptyElements);
-      } finally {
-        setLoadingElements(false);
-      }
-    };
-
-    load();
   }, []);
-
-  const selectedTemplate = useMemo(
-    () => STANDARD_VIEW_TEMPLATES.find((t) => t.id === selectedTemplateId) ?? null,
-    [selectedTemplateId],
-  );
-
-  const rootTypeOptions = useMemo(() => {
-    if (!selectedTemplate) return [];
-
-    const supportedRootTypes: ReadonlySet<string> = new Set([
-      'Application',
-      'Capability',
-      'BusinessProcess',
-      'Technology',
-      'Programme',
-    ]);
-
-    // Start with the template defaults.
-    const allowed = new Set<string>(selectedTemplate.allowedElementTypes);
-    // Ensure relationship endpoint types are eligible as roots as well.
-    for (const relType of selectedTemplate.allowedRelationshipTypes) {
-      const rule = getRelationshipEndpointRule(relType);
-      if (!rule) continue;
-      for (const from of rule.from) allowed.add(from);
-      for (const to of rule.to) allowed.add(to);
-    }
-
-    const sorted = Array.from(allowed)
-      .filter((t) => supportedRootTypes.has(t))
-      .sort((a, b) => a.localeCompare(b));
-    return sorted.map((t) => ({ value: t, label: t }));
-  }, [selectedTemplate]);
-
-  const elementOptionsByType = useMemo(() => {
-    return {
-      Application: toSelectOptions(elements.Application),
-      Capability: toSelectOptions(elements.Capability),
-      BusinessProcess: toSelectOptions(elements.BusinessProcess),
-      Technology: toSelectOptions(elements.Technology),
-      Programme: toSelectOptions(elements.Programme),
-    } as const;
-  }, [elements]);
 
   return (
     <PageContainer>
       <Card>
-        <Typography.Title level={4}>Create View Wizard</Typography.Title>
+        <Typography.Title level={4}>Create View (Viewpoint-first)</Typography.Title>
         <Typography.Paragraph type="secondary">
-          Creates a <Typography.Text code>ViewDefinition</Typography.Text> only. No repository writes, no
-          diagram rendering.
+          Select a viewpoint; the view is a projection contract only. No repository writes, no inference, no layout
+          persistence.
         </Typography.Paragraph>
 
         <StepsForm
           onFinish={async (values: Record<string, unknown>) => {
-            const templateId = values?.templateId as ViewTemplateId | undefined;
-            if (!templateId) {
-              message.error('Please select a template');
+            const viewpointId = values?.viewpointId as string | undefined;
+            if (!viewpointId) {
+              message.error('Please select a viewpoint');
               return false;
             }
-
-            const template = STANDARD_VIEW_TEMPLATES.find((t) => t.id === templateId) ?? null;
-            const maxDepth =
-              template?.maxDepthConfig?.configurable && typeof values?.maxDepth === 'number'
-                ? values.maxDepth
-                : undefined;
 
             const viewId = createViewId();
             const timestamp = nowIso();
 
-            const view = instantiateViewFromTemplate(templateId, {
+            const layout = (values?.layout as string | undefined) ?? defaultLayoutForViewpoint(viewpointId);
+
+            const view: ViewInstance = {
               id: viewId,
-              createdBy,
+              name: typeof values?.name === 'string' ? values.name : viewpointId,
+              description:
+                typeof values?.description === 'string'
+                  ? values.description
+                  : 'View scoped by viewpoint (entire repository).',
+              viewpointId,
+              scope: { kind: 'EntireRepository' },
+              layoutMetadata: { layout },
               createdAt: timestamp,
-              lastModifiedAt: timestamp,
-              approvalStatus: 'Draft',
+              createdBy,
+              status: 'DRAFT',
+            };
 
-              name: typeof values?.name === 'string' ? values.name : undefined,
-              description: typeof values?.description === 'string' ? values.description : undefined,
-              rootElementType:
-                typeof values?.rootElementType === 'string' ? values.rootElementType : undefined,
-              rootElementId: typeof values?.rootElementId === 'string' ? values.rootElementId : undefined,
-              maxDepth,
-            });
-
-            setCreatedView(view);
-            message.success('ViewDefinition created (not saved)');
+            const saved = ViewStore.save(view);
+            setCreatedView(saved);
+            message.success('View saved');
+            history.replace(`/views/${saved.id}`);
             return true;
           }}
           submitter={{
             searchConfig: {
-              submitText: 'Create ViewDefinition',
+              submitText: 'Create View',
             },
           }}
         >
-          <StepsForm.StepForm
-            name="template"
-            title="Template"
-            initialValues={{ templateId: STANDARD_VIEW_TEMPLATES[0]?.id }}
-            onValuesChange={(changed: Record<string, unknown>) => {
-              const next = changed?.templateId as ViewTemplateId | undefined;
-              if (next) setSelectedTemplateId(next);
-            }}
-          >
+          <StepsForm.StepForm name="viewpoint" title="Viewpoint" initialValues={{ viewpointId: viewpointOptions[0]?.value }}>
             <ProFormSelect
-              name="templateId"
-              label="Template"
-              options={templateOptions}
+              name="viewpointId"
+              label="Viewpoint"
+              options={viewpointOptions}
               rules={[{ required: true }]}
             />
 
-            <Form.Item shouldUpdate>
-              {() =>
-                selectedTemplate ? (
-                  <Card>
-                    <Typography.Paragraph>{selectedTemplate.description}</Typography.Paragraph>
-                    <Typography.Paragraph type="secondary">
-                      Allowed elements: {selectedTemplate.allowedElementTypes.join(', ') || '(none)'}
-                      <br />
-                      Allowed relationships:{' '}
-                      {selectedTemplate.allowedRelationshipTypes.join(', ') || '(none)'}
-                      <br />
-                      Layout: {selectedTemplate.layoutType} / {selectedTemplate.orientation}
-                    </Typography.Paragraph>
-                  </Card>
-                ) : null
-              }
-            </Form.Item>
+            <Card>
+              <Typography.Paragraph type="secondary">
+                Viewpoints are strict contracts: only allowed elements/relationships are projected; scope defaults to entire repository; layout metadata starts empty.
+              </Typography.Paragraph>
+            </Card>
           </StepsForm.StepForm>
 
           <StepsForm.StepForm name="metadata" title="Name & Description">
@@ -240,52 +113,23 @@ const CreateViewWizardPage: React.FC = () => {
               rules={[{ required: true }]}
               fieldProps={{ autoSize: { minRows: 3, maxRows: 6 } }}
             />
-          </StepsForm.StepForm>
-
-          <StepsForm.StepForm name="scope" title="Scope (Optional)">
             <ProFormSelect
-              name="rootElementType"
-              label="Root element type"
-              options={rootTypeOptions}
-              placeholder="(optional)"
-            />
-            <ProFormSelect
-              name="rootElementId"
-              label="Root element"
-              dependencies={['rootElementType']}
-              request={async (params: Record<string, unknown>) => {
-                const rootType = params?.rootElementType as keyof RepositoryElementsByType | undefined;
-                if (!rootType) return [];
-                return elementOptionsByType[rootType] ?? [];
+              name="layout"
+              label="Layout"
+              options={layoutOptions}
+              fieldProps={{
+                placeholder: 'Choose default layout for this view',
               }}
-              placeholder={loadingElements ? 'Loading elements…' : '(optional)'}
-              disabled={loadingElements}
-              showSearch
+              extra="Stored with the view; runtime uses this to render diagrams."
             />
           </StepsForm.StepForm>
 
-          {selectedTemplate?.maxDepthConfig?.configurable ? (
-            <StepsForm.StepForm
-              name="depth"
-              title="Depth (Optional)"
-              initialValues={{ maxDepth: selectedTemplate.maxDepthConfig.defaultValue }}
-            >
-              <ProFormDigit
-                name="maxDepth"
-                label="Max depth"
-                min={1}
-                max={25}
-                fieldProps={{ precision: 0 }}
-                placeholder="(optional)"
-              />
-            </StepsForm.StepForm>
-          ) : null}
         </StepsForm>
 
         {createdView ? (
           <>
             <Divider />
-            <Typography.Title level={5}>Created ViewDefinition (not saved)</Typography.Title>
+            <Typography.Title level={5}>Created View (not saved)</Typography.Title>
             <pre>{JSON.stringify(createdView, null, 2)}</pre>
           </>
         ) : null}

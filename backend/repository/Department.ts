@@ -8,4 +8,5 @@ import type { BaseArchitectureElement } from './BaseArchitectureElement';
  */
 export type Department = BaseArchitectureElement & {
   elementType: 'Department';
+  enterpriseId: string | null;
 };

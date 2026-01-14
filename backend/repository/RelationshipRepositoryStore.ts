@@ -1,6 +1,8 @@
 import { getRepository } from './RepositoryStore';
 import { createRelationshipRepository, type RelationshipRepository } from './RelationshipRepository';
 import type { BaseArchitectureRelationship } from './BaseArchitectureRelationship';
+import { strictValidationEngine } from '../validation/StrictValidationEngine';
+import { getGovernanceEnforcementMode } from '../governance/GovernanceEnforcementConfig';
 
 let relationshipRepository: RelationshipRepository | null = null;
 let relationshipsRevision = 0;
@@ -45,7 +47,30 @@ export function setRelationshipRepository(next: RelationshipRepository) {
 }
 
 export function addRelationship(relationship: BaseArchitectureRelationship) {
-  const result = getRelationshipRepository().addRelationship(relationship);
+  const elements = getRepository();
+  const relationships = getRelationshipRepository();
+
+  const governanceMode = getGovernanceEnforcementMode();
+  const mode = governanceMode === 'Advisory' ? 'Advisory' : 'Strict';
+
+  const validation = strictValidationEngine.validateRelationshipCreation({
+    elements,
+    relationships,
+    candidate: relationship,
+    mode,
+  });
+
+  if (!validation.ok) {
+    return { ok: false, error: validation.message };
+  }
+
+  if (validation.warnings?.length) {
+    // Surface advisory warnings; console to avoid UI coupling here.
+    // eslint-disable-next-line no-console
+    console.warn('[governance] advisory relationship warnings:', validation.warnings);
+  }
+
+  const result = relationships.addRelationship(relationship);
   if (result.ok) notifyRelationshipsChanged();
   return result;
 }

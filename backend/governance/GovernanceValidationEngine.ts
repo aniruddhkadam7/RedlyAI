@@ -169,7 +169,7 @@ export class GovernanceValidationEngine {
         // Retired elements must not have active dependencies
         case '1d5a1b77-46e1-4f8a-bb2d-3cc4e7dce03b': {
           for (const rel of relationships) {
-            if (rel.relationshipType !== 'DEPENDS_ON') continue;
+            if (rel.relationshipType !== 'INTEGRATES_WITH') continue;
             if ((rel.status ?? '').trim() !== 'Approved') continue;
 
             const source = byId.get(normalizeId(rel.sourceElementId)) ?? null;
@@ -263,7 +263,7 @@ export class GovernanceValidationEngine {
 
         // Mission-critical applications with only soft dependencies must be flagged
         case 'df2c3a6c-0b18-4d6b-9e5c-6a2d7c2a0f3e': {
-          const outgoingDependsOn = relationships.filter((r) => r.relationshipType === 'DEPENDS_ON');
+          const outgoingDependsOn = relationships.filter((r) => r.relationshipType === 'INTEGRATES_WITH');
 
           const outgoingByAppId = new Map<string, BaseArchitectureRelationship[]>();
           for (const r of outgoingDependsOn) {

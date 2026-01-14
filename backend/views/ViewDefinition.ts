@@ -11,6 +11,12 @@ export type LayoutType = 'Force' | 'Layered' | 'Hierarchical' | 'Grid';
 
 export type Orientation = 'LeftToRight' | 'TopDown';
 
+export type ViewScopeType =
+  | 'ENTIRE_REPOSITORY'
+  | 'SELECTED_ENTERPRISES'
+  | 'SELECTED_CAPABILITIES'
+  | 'SELECTED_APPLICATIONS';
+
 export type ViewApprovalStatus = 'Draft' | 'Approved';
 
 /**
@@ -40,6 +46,10 @@ export type ViewDefinition = {
   rootElementType?: string;
   /** Maximum relationship hops from the root (when a root is defined) */
   maxDepth?: number;
+  /** Diagram scope model for filtering projected content */
+  scopeType: ViewScopeType;
+  /** Relevant when scopeType is a SELECTED_* variant */
+  scopeIds: readonly string[];
 
   // Content rules
   allowedElementTypes: readonly string[];

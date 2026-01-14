@@ -18,7 +18,7 @@ Dataset:
 - `--businessProcesses 600`
 - `--applications 800`
 - `--technologies 80`
-- `--dependencyFanout 8` (DEPENDS_ON fanout per application)
+- `--dependencyFanout 8` (INTEGRATES_WITH fanout per application)
 - `--appChainDepth 50` (forces a deep chain)
 - `--programmeImpactsPerProgramme 60`
 

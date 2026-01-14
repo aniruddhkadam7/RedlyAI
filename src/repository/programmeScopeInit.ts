@@ -46,6 +46,8 @@ export function seedDefaultViewsForProgrammeScope(): void {
     allowedRelationshipTypes: ['DELIVERS', 'IMPACTS', 'IMPLEMENTS'],
     layoutType: 'Layered',
     orientation: 'LeftToRight',
+    scopeType: 'ENTIRE_REPOSITORY',
+    scopeIds: [],
     createdBy: 'system',
     createdAt,
     lastModifiedAt: createdAt,

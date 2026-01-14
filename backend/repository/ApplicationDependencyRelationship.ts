@@ -14,7 +14,7 @@ export type ApplicationDependencyStrength = 'Hard' | 'Soft';
  * - No transitive dependencies are inferred.
  */
 export type ApplicationDependencyRelationship = BaseArchitectureRelationship & {
-  relationshipType: 'DEPENDS_ON';
+  relationshipType: 'INTEGRATES_WITH';
 
   sourceElementType: 'Application';
   targetElementType: 'Application';

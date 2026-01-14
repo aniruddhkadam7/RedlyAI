@@ -1,6 +1,8 @@
 export type RelationshipEndpointRule = {
   from: readonly string[];
   to: readonly string[];
+  /** Optional strict endpoint rules (pair-specific). When present, endpoints must match one of these pairs. */
+  pairs?: readonly { from: string; to: string }[];
 };
 
 /**
@@ -14,6 +16,15 @@ export type RelationshipEndpointRule = {
 export const RELATIONSHIP_ENDPOINT_RULES: Readonly<Record<string, RelationshipEndpointRule>> = {
   // Capability decomposition (business structure)
   DECOMPOSES_TO: { from: ['Capability'], to: ['Capability'] },
+  COMPOSED_OF: {
+    from: ['CapabilityCategory', 'Capability', 'SubCapability'],
+    to: ['CapabilityCategory', 'Capability', 'SubCapability'],
+    pairs: [
+      { from: 'CapabilityCategory', to: 'Capability' },
+      { from: 'Capability', to: 'SubCapability' },
+      { from: 'Capability', to: 'Capability' },
+    ],
+  },
 
   // Business-process execution (legacy support)
   REALIZES: { from: ['BusinessProcess'], to: ['Application'] },
@@ -29,11 +40,23 @@ export const RELATIONSHIP_ENDPOINT_RULES: Readonly<Record<string, RelationshipEn
   PROVIDES: { from: ['Application'], to: ['ApplicationService'] },
   SUPPORTS: { from: ['ApplicationService'], to: ['BusinessService'] },
 
+  // Application service dependencies
+  CONSUMES: { from: ['ApplicationService'], to: ['ApplicationService'] },
+
   // Cross-layer
-  SUPPORTED_BY: { from: ['Capability'], to: ['Application'] },
+  SUPPORTED_BY: {
+    from: ['Capability', 'SubCapability', 'BusinessService'],
+    to: ['Application', 'ApplicationService'],
+    pairs: [
+      { from: 'Capability', to: 'Application' },
+      { from: 'SubCapability', to: 'Application' },
+      { from: 'BusinessService', to: 'ApplicationService' },
+    ],
+  },
 
   // Application dependency / impact analysis
-  DEPENDS_ON: { from: ['Application'], to: ['Application'] },
+  INTEGRATES_WITH: { from: ['Application'], to: ['Application'] },
+  DEPENDS_ON: { from: ['ApplicationService'], to: ['ApplicationService'] },
 
   // Application-to-infrastructure traceability
   HOSTED_ON: { from: ['Application'], to: ['Technology'] },

@@ -79,9 +79,9 @@ export const STANDARD_GOVERNANCE_RULE_SET = Object.freeze([
     ruleName: 'Retired elements must not have active dependencies',
     ruleCategory: 'Consistency',
     applicableElementTypes: ['Application'],
-    applicableRelationshipTypes: ['DEPENDS_ON'],
+    applicableRelationshipTypes: ['INTEGRATES_WITH'],
     ruleExpression:
-      "FOR Relationship WHERE relationshipType='DEPENDS_ON' AND status='Approved' REQUIRE source.lifecycleStatus != 'Retired' AND target.lifecycleStatus != 'Retired'",
+      "FOR Relationship WHERE relationshipType IN {'INTEGRATES_WITH'} AND status='Approved' REQUIRE source.lifecycleStatus != 'Retired' AND target.lifecycleStatus != 'Retired'",
     severity: 'Error',
     rationale: 'Active dependencies on retired items break trust in dependency graphs and invalidate impact conclusions.',
     ownerRole: 'EA Governance Board',
@@ -143,9 +143,9 @@ export const STANDARD_GOVERNANCE_RULE_SET = Object.freeze([
     ruleName: 'Mission-critical applications with only soft dependencies must be flagged',
     ruleCategory: 'Risk',
     applicableElementTypes: ['Application'],
-    applicableRelationshipTypes: ['DEPENDS_ON'],
+    applicableRelationshipTypes: ['INTEGRATES_WITH'],
     ruleExpression:
-      "FOR Element WHERE elementType='Application' AND businessCriticality='Mission-Critical' REQUIRE EXISTS outgoing relationshipType='DEPENDS_ON' WITH dependencyStrength='Hard'",
+      "FOR Element WHERE elementType='Application' AND businessCriticality='Mission-Critical' REQUIRE EXISTS outgoing relationshipType IN {'INTEGRATES_WITH'} WITH dependencyStrength='Hard'",
     severity: 'Warning',
     rationale: 'Mission-critical systems typically require at least one hard dependency classification to reflect operational coupling and impact.',
     ownerRole: 'EA Governance Board',

@@ -3,6 +3,7 @@ export const OBJECT_TYPES = [
   'CapabilityCategory',
   'Capability',
   'SubCapability',
+  'ValueStream',
   'BusinessService',
   'BusinessProcess',
   'Department',
@@ -19,9 +20,12 @@ export type ObjectType = (typeof OBJECT_TYPES)[number];
 
 export const RELATIONSHIP_TYPES = [
   'DECOMPOSES_TO',
+  // Explicit capability composition (alias/companion to DECOMPOSES_TO)
+  'COMPOSED_OF',
   // Business-process execution (legacy)
   'REALIZES',
-  'DEPENDS_ON',
+  // Application ↔ Application technical dependencies (prefer INTEGRATES_WITH)
+  'INTEGRATES_WITH',
   'HOSTED_ON',
   // Enterprise / organization
   'OWNS',
@@ -33,6 +37,12 @@ export const RELATIONSHIP_TYPES = [
   // Application service traceability
   'PROVIDES',
   'SUPPORTS',
+
+  // Application-service-to-application-service dependencies
+  'CONSUMES',
+
+  // Legacy (hidden in UI): prefer CONSUMES for ApplicationService→ApplicationService
+  'DEPENDS_ON',
 
   // Cross-layer (core)
   'SUPPORTED_BY',
@@ -62,6 +72,8 @@ export type EaRelationshipTypeDefinition = {
   description: string;
   fromTypes: readonly ObjectType[];
   toTypes: readonly ObjectType[];
+  /** Optional strict endpoint rules (pair-specific). When present, endpoints must match one of these pairs. */
+  allowedEndpointPairs?: readonly { from: ObjectType; to: ObjectType }[];
   attributes: readonly string[];
 };
 
@@ -73,7 +85,7 @@ export const OBJECT_TYPE_DEFINITIONS: Record<ObjectType, EaObjectTypeDefinition>
     layer: 'Business',
     description:
       'A legal entity / enterprise / business unit. Supports hierarchical ownership (group → subsidiary → unit).',
-    attributes: ['name'],
+    attributes: ['name', 'description', 'parentEnterpriseId'],
     allowedOutgoingRelationships: ['OWNS', 'HAS'],
     allowedIncomingRelationships: ['OWNS'],
   },
@@ -114,16 +126,16 @@ export const OBJECT_TYPE_DEFINITIONS: Record<ObjectType, EaObjectTypeDefinition>
     layer: 'Business',
     description: 'A top-level grouping of business capabilities.',
     attributes: ['name', 'category'],
-    allowedOutgoingRelationships: ['DECOMPOSES_TO'],
-    allowedIncomingRelationships: ['DECOMPOSES_TO', 'DELIVERS'],
+    allowedOutgoingRelationships: ['DECOMPOSES_TO', 'COMPOSED_OF'],
+    allowedIncomingRelationships: ['DECOMPOSES_TO', 'COMPOSED_OF', 'DELIVERS'],
   },
   Capability: {
     type: 'Capability',
     layer: 'Business',
     description: 'A business capability (what the business does).',
     attributes: ['name', 'category'],
-    allowedOutgoingRelationships: ['DECOMPOSES_TO', 'REALIZED_BY', 'SUPPORTED_BY'],
-    allowedIncomingRelationships: ['DECOMPOSES_TO', 'DELIVERS', 'IMPACTS', 'OWNS'],
+    allowedOutgoingRelationships: ['DECOMPOSES_TO', 'COMPOSED_OF', 'REALIZED_BY', 'SUPPORTED_BY'],
+    allowedIncomingRelationships: ['DECOMPOSES_TO', 'COMPOSED_OF', 'DELIVERS', 'IMPACTS', 'OWNS'],
   },
   SubCapability: {
     type: 'SubCapability',
@@ -131,7 +143,15 @@ export const OBJECT_TYPE_DEFINITIONS: Record<ObjectType, EaObjectTypeDefinition>
     description: 'A decomposed business capability (more granular capability).',
     attributes: ['name', 'category'],
     allowedOutgoingRelationships: [],
-    allowedIncomingRelationships: ['DECOMPOSES_TO', 'DELIVERS'],
+    allowedIncomingRelationships: ['DECOMPOSES_TO', 'COMPOSED_OF', 'DELIVERS'],
+  },
+  ValueStream: {
+    type: 'ValueStream',
+    layer: 'Business',
+    description: 'A value stream (TOGAF-aligned): end-to-end value delivery stream across capabilities and stages.',
+    attributes: ['name'],
+    allowedOutgoingRelationships: [],
+    allowedIncomingRelationships: [],
   },
   BusinessProcess: {
     type: 'BusinessProcess',
@@ -146,7 +166,7 @@ export const OBJECT_TYPE_DEFINITIONS: Record<ObjectType, EaObjectTypeDefinition>
     layer: 'Business',
     description: 'A business service that exposes value delivery, realized by capabilities and supported by application services.',
     attributes: ['name'],
-    allowedOutgoingRelationships: [],
+    allowedOutgoingRelationships: ['SUPPORTED_BY'],
     allowedIncomingRelationships: ['REALIZED_BY', 'SUPPORTS'],
   },
   Department: {
@@ -162,16 +182,16 @@ export const OBJECT_TYPE_DEFINITIONS: Record<ObjectType, EaObjectTypeDefinition>
     layer: 'Application',
     description: 'A software application or service.',
     attributes: ['name', 'criticality', 'lifecycle'],
-    allowedOutgoingRelationships: ['DEPENDS_ON', 'HOSTED_ON', 'PROVIDES'],
-    allowedIncomingRelationships: ['DEPENDS_ON', 'REALIZES', 'DELIVERS', 'SUPPORTED_BY', 'OWNS', 'IMPLEMENTS'],
+    allowedOutgoingRelationships: ['INTEGRATES_WITH', 'HOSTED_ON', 'PROVIDES'],
+    allowedIncomingRelationships: ['INTEGRATES_WITH', 'REALIZES', 'DELIVERS', 'SUPPORTED_BY', 'OWNS', 'IMPLEMENTS'],
   },
   ApplicationService: {
     type: 'ApplicationService',
     layer: 'Application',
     description: 'An application-exposed service (fine-grained traceability layer). Belongs to exactly one Application.',
     attributes: ['name'],
-    allowedOutgoingRelationships: ['SUPPORTS'],
-    allowedIncomingRelationships: ['PROVIDES'],
+    allowedOutgoingRelationships: ['SUPPORTS', 'CONSUMES', 'DEPENDS_ON'],
+    allowedIncomingRelationships: ['PROVIDES', 'CONSUMES', 'DEPENDS_ON', 'SUPPORTED_BY'],
   },
   Technology: {
     type: 'Technology',
@@ -192,6 +212,20 @@ export const RELATIONSHIP_TYPE_DEFINITIONS: Record<RelationshipType, EaRelations
     toTypes: ['CapabilityCategory', 'Capability', 'SubCapability'],
     attributes: [],
   },
+  COMPOSED_OF: {
+    type: 'COMPOSED_OF',
+    layer: 'Business',
+    description: 'Capability is composed of a sub-capability (explicit hierarchy relationship).',
+    fromTypes: ['CapabilityCategory', 'Capability', 'SubCapability'],
+    toTypes: ['CapabilityCategory', 'Capability', 'SubCapability'],
+    // Keep this strict: only allow Capability hierarchy edges.
+    allowedEndpointPairs: [
+      { from: 'CapabilityCategory', to: 'Capability' },
+      { from: 'Capability', to: 'SubCapability' },
+      { from: 'Capability', to: 'Capability' },
+    ],
+    attributes: [],
+  },
   REALIZES: {
     type: 'REALIZES',
     layer: 'Business',
@@ -200,12 +234,21 @@ export const RELATIONSHIP_TYPE_DEFINITIONS: Record<RelationshipType, EaRelations
     toTypes: ['Application'],
     attributes: [],
   },
+  INTEGRATES_WITH: {
+    type: 'INTEGRATES_WITH',
+    layer: 'Application',
+    description: 'Application integrates with another Application (preferred over generic DEPENDS_ON).',
+    fromTypes: ['Application'],
+    toTypes: ['Application'],
+    attributes: ['dependencyStrength', 'dependencyType'],
+  },
   DEPENDS_ON: {
     type: 'DEPENDS_ON',
     layer: 'Application',
-    description: 'Dependency relationship between applications (service/application calling another).',
-    fromTypes: ['Application'],
-    toTypes: ['Application'],
+    description:
+      'Legacy dependency relationship (hidden). Prefer CONSUMES for ApplicationService → ApplicationService dependencies.',
+    fromTypes: ['ApplicationService'],
+    toTypes: ['ApplicationService'],
     attributes: ['dependencyStrength', 'dependencyType'],
   },
   HOSTED_ON: {
@@ -265,12 +308,26 @@ export const RELATIONSHIP_TYPE_DEFINITIONS: Record<RelationshipType, EaRelations
     toTypes: ['BusinessService'],
     attributes: [],
   },
+  CONSUMES: {
+    type: 'CONSUMES',
+    layer: 'Application',
+    description: 'Application Service consumes another Application Service (service-to-service dependency).',
+    fromTypes: ['ApplicationService'],
+    toTypes: ['ApplicationService'],
+    attributes: ['dependencyStrength', 'dependencyType'],
+  },
   SUPPORTED_BY: {
     type: 'SUPPORTED_BY',
     layer: 'Business',
-    description: 'Capability is supported by an Application (business → application alignment).',
-    fromTypes: ['Capability', 'SubCapability'],
-    toTypes: ['Application'],
+    description:
+      'Cross-layer support alignment (pair-specific): Capability/SubCapability → Application, and BusinessService → ApplicationService.',
+    fromTypes: ['Capability', 'SubCapability', 'BusinessService'],
+    toTypes: ['Application', 'ApplicationService'],
+    allowedEndpointPairs: [
+      { from: 'Capability', to: 'Application' },
+      { from: 'SubCapability', to: 'Application' },
+      { from: 'BusinessService', to: 'ApplicationService' },
+    ],
     attributes: [],
   },
   IMPACTS: {

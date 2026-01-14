@@ -100,7 +100,8 @@ export type CsvImportErrorCode =
   | 'ENDPOINT_TYPE_MISMATCH'
   | 'INVALID_RELATIONSHIP_ENDPOINTS'
   | 'UNSUPPORTED_RELATIONSHIP_TYPE'
-  | 'RELATIONSHIP_MISSING_TYPED_FIELDS';
+  | 'RELATIONSHIP_MISSING_TYPED_FIELDS'
+  | 'VALIDATION_FAILED';
 
 export type CsvRowError = {
   /** 1-based line number in the source file (including header line). */
@@ -141,7 +142,16 @@ const RELATIONSHIP_DIRECTION = ['OUTGOING'] as const;
 const RELATIONSHIP_STATUS = ['Draft', 'Approved', 'Deprecated'] as const;
 const CONFIDENCE_LEVEL = ['High', 'Medium', 'Low'] as const;
 
-const RELATIONSHIP_TYPE = ['DECOMPOSES_TO', 'REALIZED_BY', 'DEPENDS_ON', 'HOSTED_ON', 'IMPACTS'] as const;
+const RELATIONSHIP_TYPE = [
+  'DECOMPOSES_TO',
+  'COMPOSED_OF',
+  'REALIZED_BY',
+  'INTEGRATES_WITH',
+  'DEPENDS_ON',
+  'CONSUMES',
+  'HOSTED_ON',
+  'IMPACTS',
+] as const;
 
 const DEPENDENCY_TYPE = ['Data', 'API', 'Batch', 'Event'] as const;
 const DEPENDENCY_STRENGTH = ['Hard', 'Soft'] as const;

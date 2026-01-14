@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { ProCard } from '@ant-design/pro-components';
-import { Alert, Button, Divider, Empty, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Empty, Form, Input, Modal, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from 'antd';
 
 import type { AssuranceFinding, ArchitectureAssuranceReport } from '../../../backend/assurance/ArchitectureAssurance';
 import type { AssuranceSeverity } from '../../../backend/assurance/AssurancePolicy';
@@ -11,6 +11,9 @@ import { createRelationshipRepository } from '../../../backend/repository/Relati
 import type { BaseArchitectureElement } from '../../../backend/repository/BaseArchitectureElement';
 import type { BaseArchitectureRelationship } from '../../../backend/repository/BaseArchitectureRelationship';
 import type { ValidationFinding } from '../../../backend/validation/ValidationFinding';
+import { createBaseline, listBaselines } from '../../../backend/baselines/BaselineStore';
+import { createPlateau, listPlateaus } from '../../../backend/roadmap/PlateauStore';
+import { createRoadmap } from '../../../backend/roadmap/RoadmapStore';
 
 import { useIdeShell } from '@/components/IdeShellLayout';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
@@ -96,6 +99,15 @@ const GovernanceDashboardPage: React.FC = () => {
   const [assurance, setAssurance] = React.useState<ArchitectureAssuranceReport | null>(null);
   const [elements, setElements] = React.useState<BaseArchitectureElement[]>([]);
   const [relationships, setRelationships] = React.useState<BaseArchitectureRelationship[]>([]);
+  const [baselineModalOpen, setBaselineModalOpen] = React.useState(false);
+  const [baselineSubmitting, setBaselineSubmitting] = React.useState(false);
+  const [baselineForm] = Form.useForm<{ name: string; description?: string }>();
+  const [plateauModalOpen, setPlateauModalOpen] = React.useState(false);
+  const [plateauSubmitting, setPlateauSubmitting] = React.useState(false);
+  const [plateauForm] = Form.useForm<{ name: string; occursAt: string; baselineId?: string }>();
+  const [roadmapModalOpen, setRoadmapModalOpen] = React.useState(false);
+  const [roadmapSubmitting, setRoadmapSubmitting] = React.useState(false);
+  const [roadmapForm] = Form.useForm<{ name: string; plateauIds: string[] }>();
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -166,6 +178,86 @@ const GovernanceDashboardPage: React.FC = () => {
     return id ? `project:${id}` : 'project:unknown';
   }, [project?.id]);
 
+  const submitBaseline = React.useCallback(async () => {
+    try {
+      const values = await baselineForm.validateFields();
+      setBaselineSubmitting(true);
+      createBaseline({ name: values.name, description: values.description, createdBy: project?.chiefArchitect });
+      message.success('Baseline created. It is read-only and independent of diagrams.');
+      setBaselineModalOpen(false);
+      baselineForm.resetFields();
+    } catch (err) {
+      if ((err as any)?.errorFields) return; // validation errors
+      message.error('Unable to create baseline.');
+    } finally {
+      setBaselineSubmitting(false);
+    }
+  }, [baselineForm, project?.chiefArchitect]);
+
+  const submitPlateau = React.useCallback(async () => {
+    try {
+      const values = await plateauForm.validateFields();
+      setPlateauSubmitting(true);
+
+      const trimmedName = String(values.name || '').trim();
+      const trimmedOccursAt = String(values.occursAt || '').trim();
+      const trimmedBaselineId = typeof values.baselineId === 'string' ? values.baselineId.trim() : '';
+
+      const stateRef = trimmedBaselineId
+        ? { kind: 'baseline', baselineId: trimmedBaselineId }
+        : { kind: 'external', label: trimmedOccursAt || 'Planned state' };
+
+      createPlateau({
+        name: trimmedName,
+        occursAt: trimmedOccursAt,
+        stateRef,
+        createdBy: project?.chiefArchitect,
+      });
+
+      message.success('Plateau created. It references a frozen state; repository data is not copied.');
+      setPlateauModalOpen(false);
+      plateauForm.resetFields();
+    } catch (err) {
+      if ((err as any)?.errorFields) return;
+      message.error('Unable to create plateau.');
+    } finally {
+      setPlateauSubmitting(false);
+    }
+  }, [plateauForm, project?.chiefArchitect]);
+
+  const submitRoadmap = React.useCallback(async () => {
+    try {
+      const values = await roadmapForm.validateFields();
+      setRoadmapSubmitting(true);
+
+      const trimmedName = String(values.name || '').trim();
+      const plateauIds = Array.isArray(values.plateauIds)
+        ? values.plateauIds.map((p) => String(p || '').trim()).filter(Boolean)
+        : [];
+
+      if (plateauIds.length === 0) {
+        message.error('Select at least one plateau. Roadmaps cannot be empty.');
+        return;
+      }
+
+      createRoadmap({
+        name: trimmedName,
+        plateauIds,
+        createdBy: project?.chiefArchitect,
+      });
+
+      message.success('Roadmap created. It is a read-only projection over plateaus.');
+      setRoadmapModalOpen(false);
+      roadmapForm.resetFields();
+    } catch (err) {
+      if ((err as any)?.errorFields) return;
+      const msg = err instanceof Error ? err.message : 'Unable to create roadmap.';
+      message.error(msg);
+    } finally {
+      setRoadmapSubmitting(false);
+    }
+  }, [project?.chiefArchitect, roadmapForm]);
+
   const workspaceDebt = React.useMemo(() => {
     if (!eaRepository) return null;
     try {
@@ -174,6 +266,9 @@ const GovernanceDashboardPage: React.FC = () => {
       return null;
     }
   }, [eaRepository, metadata?.lifecycleCoverage]);
+
+  const availableBaselines = React.useMemo(() => listBaselines(), [baselineModalOpen, plateauModalOpen]);
+  const availablePlateaus = React.useMemo(() => listPlateaus(), [plateauModalOpen, roadmapModalOpen]);
 
   const workspaceDebtRows = React.useMemo(() => {
     if (!workspaceDebt) return [] as Array<{ key: string; severity: string; source: string; message: string; subject: string }>;
@@ -526,9 +621,14 @@ const GovernanceDashboardPage: React.FC = () => {
             </Typography.Title>
             <Typography.Text type="secondary">Observed: {observedAt}</Typography.Text>
           </Space>
-          <Button onClick={refresh} disabled={loading}>
-            Refresh
-          </Button>
+          <Space>
+            <Button onClick={() => setRoadmapModalOpen(true)}>Create Roadmap</Button>
+            <Button onClick={() => setPlateauModalOpen(true)}>Create Plateau</Button>
+            <Button onClick={() => setBaselineModalOpen(true)}>Create Baseline</Button>
+            <Button onClick={refresh} disabled={loading}>
+              Refresh
+            </Button>
+          </Space>
         </Space>
 
         <ProCard title="Workspace Governance Debt" headerBordered>
@@ -590,6 +690,123 @@ const GovernanceDashboardPage: React.FC = () => {
             </Space>
           )}
         </ProCard>
+
+        <Modal
+          title="Create Baseline"
+          open={baselineModalOpen}
+          onCancel={() => {
+            setBaselineModalOpen(false);
+            baselineForm.resetFields();
+          }}
+          onOk={submitBaseline}
+          okText="Create"
+          confirmLoading={baselineSubmitting}
+          destroyOnClose
+        >
+          <Typography.Paragraph type="secondary">
+            Capture a point-in-time, read-only snapshot of the repository (elements, relationships, properties, lifecycle
+            states). Baselines do not affect diagrams and do not change repository data.
+          </Typography.Paragraph>
+          <Form layout="vertical" form={baselineForm} preserve={false}>
+            <Form.Item
+              label="Baseline Name"
+              name="name"
+              rules={[{ required: true, message: 'Name is required' }]}
+            >
+              <Input placeholder="e.g., Q1 2026 Current State" autoFocus allowClear />
+            </Form.Item>
+            <Form.Item label="Description" name="description">
+              <Input.TextArea placeholder="Optional description" rows={3} allowClear />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          title="Create Plateau"
+          open={plateauModalOpen}
+          onCancel={() => {
+            setPlateauModalOpen(false);
+            plateauForm.resetFields();
+          }}
+          onOk={submitPlateau}
+          okText="Create"
+          confirmLoading={plateauSubmitting}
+          destroyOnClose
+        >
+          <Typography.Paragraph type="secondary">
+            Define a planned architecture state at a point in time. Plateaus reference frozen snapshots (e.g., a Baseline)
+            and do not copy repository data.
+          </Typography.Paragraph>
+          <Form layout="vertical" form={plateauForm} preserve={false}>
+            <Form.Item label="Plateau Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
+              <Input placeholder="e.g., FY25 Target Plateau" autoFocus allowClear />
+            </Form.Item>
+            <Form.Item
+              label="Timeframe"
+              name="occursAt"
+              rules={[{ required: true, message: 'Timeframe is required' }]}
+            >
+              <Input placeholder="e.g., Q1 2025" allowClear />
+            </Form.Item>
+            <Form.Item label="Reference Baseline (optional)" name="baselineId">
+              <Input.Group compact>
+                <select
+                  style={{ width: '100%', minHeight: 32 }}
+                  value={plateauForm.getFieldValue('baselineId') ?? ''}
+                  onChange={(e) => plateauForm.setFieldsValue({ baselineId: e.target.value })}
+                >
+                  <option value="">No baseline selected</option>
+                  {availableBaselines.map((b) => (
+                    <option key={b.id} value={b.id}>{`${b.name || b.id} (${b.id})`}</option>
+                  ))}
+                </select>
+              </Input.Group>
+              <Typography.Text type="secondary">Baseline reference is recommended to anchor the plateau.</Typography.Text>
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          title="Create Roadmap"
+          open={roadmapModalOpen}
+          onCancel={() => {
+            setRoadmapModalOpen(false);
+            roadmapForm.resetFields();
+          }}
+          onOk={submitRoadmap}
+          okText="Create"
+          confirmLoading={roadmapSubmitting}
+          destroyOnClose
+        >
+          <Typography.Paragraph type="secondary">
+            Build an ordered sequence of plateaus to visualize architectural evolution. Roadmaps are read-only projections
+            and cannot be empty.
+          </Typography.Paragraph>
+          <Form layout="vertical" form={roadmapForm} preserve={false}>
+            <Form.Item label="Roadmap Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
+              <Input placeholder="e.g., 2026-2028 Transformation Roadmap" autoFocus allowClear />
+            </Form.Item>
+            <Form.Item
+              label="Plateaus (ordered)"
+              name="plateauIds"
+              rules={[{ required: true, message: 'Select at least one plateau' }]}
+            >
+              <Select
+                mode="multiple"
+                placeholder="Select plateaus in desired order"
+                optionFilterProp="label"
+                allowClear
+                options={availablePlateaus.map((p) => ({
+                  label: `${p.name} — ${p.occursAt}`,
+                  value: p.id,
+                }))}
+              />
+            </Form.Item>
+            <Typography.Text type="secondary">
+              Selection order defines the roadmap sequence. Roadmaps are read-only and do not own architecture elements.
+            </Typography.Text>
+          </Form>
+        </Modal>
 
         <ProCard
           title="Governance Violations Log"

@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { useEaProject } from '@/ea/EaProjectContext';
-
 export type ProjectGateProps = {
   /** Rendered when there is no project yet. */
   children?: React.ReactNode;
@@ -13,15 +11,9 @@ export type ProjectGateProps = {
 /**
  * Structural gate for controlling access to repository-enabled UI.
  *
- * - loading: renders nothing
- * - no project: renders children (placeholder slot)
- * - project exists: renders shell
+ * - Always renders shell (project gate bypassed)
  */
-const ProjectGate: React.FC<ProjectGateProps> = ({ children, shell }) => {
-  const { project, loading } = useEaProject();
-
-  if (loading) return null;
-  if (!project) return <>{children ?? null}</>;
+const ProjectGate: React.FC<ProjectGateProps> = ({ shell }) => {
   return <>{shell}</>;
 };
 

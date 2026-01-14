@@ -145,7 +145,11 @@ export function auditRepositoryIntegrity(
   // 3) Application dependencies with conflicting strength
   const strengthsByPair = new Map<string, Set<string>>();
 
-  for (const rel of relationships.getRelationshipsByType('DEPENDS_ON')) {
+  const appDeps = ([] as any[])
+    .concat(relationships.getRelationshipsByType('INTEGRATES_WITH'))
+    ;
+
+  for (const rel of appDeps) {
     const from = normalizeId(rel.sourceElementId);
     const to = normalizeId(rel.targetElementId);
     if (!from || !to) continue;
@@ -175,7 +179,7 @@ export function auditRepositoryIntegrity(
       subjectKind: 'Element',
       subjectId: pair,
       subjectType: 'ApplicationDependency',
-      relationshipType: 'DEPENDS_ON',
+      relationshipType: 'INTEGRATES_WITH',
     });
   }
 

@@ -4,6 +4,19 @@ export type GovernanceMode = 'Strict' | 'Advisory';
 export type LifecycleCoverage = 'As-Is' | 'To-Be' | 'Both';
 export type TimeHorizon = 'Current' | '1–3 years' | 'Strategic';
 
+export type RepositoryOwner = {
+  /** Stable user identity (prefer user ID over display name). */
+  userId: string;
+  /** Optional friendly name for display purposes. */
+  displayName?: string;
+};
+
+export type FrameworkConfig = {
+  custom?: {
+    enabledObjectTypes?: unknown;
+  };
+};
+
 export type EaRepositoryMetadata = {
   /** Immutable repository identifier (EA workspace identity). */
   repositoryName: string;
@@ -14,6 +27,12 @@ export type EaRepositoryMetadata = {
   governanceMode: GovernanceMode;
   lifecycleCoverage: LifecycleCoverage;
   timeHorizon: TimeHorizon;
+
+  /** Repository-scoped access control: the user who owns this repository. */
+  owner: RepositoryOwner;
+
+  /** Framework-specific configuration (e.g. Custom meta-model enablement). */
+  frameworkConfig?: FrameworkConfig;
 
   createdAt: string;
 };
@@ -71,7 +90,15 @@ export const validateRepositoryMetadata = (
     return { ok: false, error: 'Time Horizon is required.' };
   }
 
+  const ownerUserId = typeof v?.owner?.userId === 'string' ? v.owner.userId.trim() : '';
+  const ownerDisplayName = typeof v?.owner?.displayName === 'string' ? v.owner.displayName.trim() : '';
+  if (!ownerUserId) {
+    return { ok: false, error: 'Owner assignment is required.' };
+  }
+
   const createdAt = typeof v?.createdAt === 'string' && v.createdAt.trim() ? v.createdAt : new Date().toISOString();
+
+  const frameworkConfig = (v?.frameworkConfig && typeof v.frameworkConfig === 'object') ? (v.frameworkConfig as FrameworkConfig) : undefined;
 
   return {
     ok: true,
@@ -84,6 +111,8 @@ export const validateRepositoryMetadata = (
       governanceMode,
       lifecycleCoverage,
       timeHorizon,
+      owner: { userId: ownerUserId, displayName: ownerDisplayName || undefined },
+      frameworkConfig,
       createdAt,
     },
   };

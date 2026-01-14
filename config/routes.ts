@@ -58,6 +58,11 @@
     component: './views/create',
   },
   {
+    name: 'view-runtime',
+    path: '/views/:viewId',
+    component: './views/view',
+  },
+  {
     path: '/',
     redirect: '/workspace',
   },

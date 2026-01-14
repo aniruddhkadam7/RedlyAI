@@ -44,7 +44,7 @@ export const ASSURANCE_CHECK_CATALOG: Readonly<Record<string, AssuranceCheckMeta
   APPLICATION_DEPENDENCY_MISSING_STRENGTH: {
     title: 'Application dependency missing strength',
     whyItMatters: 'Dependency strength improves impact analysis fidelity and helps prioritize mitigations.',
-    howToFix: 'Set dependencyStrength (e.g., Hard | Soft) on DEPENDS_ON relationships.',
+    howToFix: 'Set dependencyStrength (e.g., Hard | Soft) on application dependency relationships (e.g., INTEGRATES_WITH).',
   },
   PROGRAMME_IMPACTS_RETIRED_ELEMENT: {
     title: 'Programme impacts retired element',

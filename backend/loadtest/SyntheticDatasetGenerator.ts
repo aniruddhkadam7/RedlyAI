@@ -359,7 +359,7 @@ export const generateSyntheticDataset = (overrides?: Partial<GeneratorOptions>):
     }
   }
 
-  // DEPENDS_ON: Application -> Application
+  // INTEGRATES_WITH: Application -> Application
   // 1) Deep chain
   const chainDepth = Math.min(appIds.length - 1, Math.max(0, Math.trunc(opts.appChainDepth)));
   for (let i = 0; i < chainDepth; i += 1) {
@@ -368,7 +368,7 @@ export const generateSyntheticDataset = (overrides?: Partial<GeneratorOptions>):
     addRel(
       relationshipBase({
         id: `rel-dep-chain-${i}-${uuid()}`,
-        relationshipType: 'DEPENDS_ON',
+        relationshipType: 'INTEGRATES_WITH',
         sourceElementId: from,
         sourceElementType: 'Application',
         targetElementId: to,
@@ -393,7 +393,7 @@ export const generateSyntheticDataset = (overrides?: Partial<GeneratorOptions>):
       addRel(
         relationshipBase({
           id: `rel-dep-${i}-${k}-${uuid()}`,
-          relationshipType: 'DEPENDS_ON',
+          relationshipType: 'INTEGRATES_WITH',
           sourceElementId: from,
           sourceElementType: 'Application',
           targetElementId: to,

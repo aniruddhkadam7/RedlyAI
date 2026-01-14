@@ -1,5 +1,35 @@
 ﻿import { defaultConfig } from 'antd/lib/theme/internal';
 
+// In tests, disable rc-motion animations (used by antd notifications).
+// This avoids async animation callbacks that can trigger act() warnings and keep Jest alive.
+jest.mock('@rc-component/motion', () => {
+  const React = require('react');
+
+  const CSSMotion = (props) => {
+    const child = props?.children;
+    if (typeof child === 'function') {
+      return child({ className: '', style: {}, ref: () => {} });
+    }
+    return child ?? null;
+  };
+
+  const CSSMotionList = (props) => {
+    const child = props?.children;
+    if (typeof child === 'function') {
+      // Provide minimal shape expected by callers; intentionally do NOT invoke onAllRemoved.
+      return React.createElement(React.Fragment, null, child({}));
+    }
+    return React.createElement(React.Fragment, null, child ?? null);
+  };
+
+  return {
+    __esModule: true,
+    default: CSSMotion,
+    CSSMotion,
+    CSSMotionList,
+  };
+});
+
 defaultConfig.hashed = false;
 
 const localStorageMock = {
@@ -81,6 +111,9 @@ Object.defineProperty(global.window.console, 'error', {
         'Warning: An update to %s inside a test was not wrapped in act(...)',
       )
     ) {
+      return;
+    }
+    if (logStr.includes('An update to') && logStr.includes('inside a test was not wrapped in act(...)')) {
       return;
     }
     errorLog(...rest);

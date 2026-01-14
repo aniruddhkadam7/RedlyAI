@@ -33,8 +33,10 @@ const relationshipTypeNodesForLayer = (layer: EaLayer): DataNode[] => {
   const items = (Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]).filter(
     (t) => RELATIONSHIP_TYPE_DEFINITIONS[t].layer === layer,
   );
-  items.sort((a, b) => a.localeCompare(b));
-  return items.map((type) => ({
+  // Hide legacy/generic relationship types from the metamodel UI.
+  const visible = items.filter((t) => t !== 'DEPENDS_ON');
+  visible.sort((a, b) => a.localeCompare(b));
+  return visible.map((type) => ({
     key: `metamodel:relationshipType:${type}`,
     title: type,
     isLeaf: true,
@@ -88,7 +90,12 @@ const MetamodelTree: React.FC = () => {
         expandAction={false}
         showLine={{ showLeafIcon: false }}
         treeData={treeData}
-        defaultExpandedKeys={['metamodel']}
+        defaultExpandedKeys={[
+          'metamodel',
+          'metamodel:layer:Business',
+          'metamodel:layer:Business:elementTypes',
+          'metamodel:layer:Business:relationshipTypes',
+        ]}
         /* Intentionally keep visual selection empty (no blue highlight). */
         selectedKeys={[]}
         switcherIcon={({ expanded }) => (expanded ? <CaretDownOutlined /> : <CaretRightOutlined />)}

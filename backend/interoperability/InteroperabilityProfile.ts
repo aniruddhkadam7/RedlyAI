@@ -82,8 +82,10 @@ export const INTEROPERABILITY_PROFILES: readonly InteroperabilityProfile[] = [
 
     supportedRelationshipTypes: normalizeList([
       'DECOMPOSES_TO',
+      'COMPOSED_OF',
       'REALIZED_BY',
-      'DEPENDS_ON',
+      'INTEGRATES_WITH',
+      'CONSUMES',
       'HOSTED_ON',
       'IMPACTS',
     ]),
@@ -124,8 +126,10 @@ export const INTEROPERABILITY_PROFILES: readonly InteroperabilityProfile[] = [
 
     supportedRelationshipTypes: normalizeList([
       'DECOMPOSES_TO',
+      'COMPOSED_OF',
       'REALIZED_BY',
-      'DEPENDS_ON',
+      'INTEGRATES_WITH',
+      'CONSUMES',
       'HOSTED_ON',
       'IMPACTS',
     ]),
@@ -141,7 +145,7 @@ export const INTEROPERABILITY_PROFILES: readonly InteroperabilityProfile[] = [
         id: 'generic-dependency-limited',
         severity: 'Warning',
         description:
-          'Generic DEPENDS_ON may need to be exported as a broad ArchiMate Association (loss of specificity).',
+          'Generic dependency/integration (INTEGRATES_WITH / CONSUMES) may need to be exported as a broad ArchiMate Association (loss of specificity).',
       },
     ]),
 
@@ -167,8 +171,10 @@ export const INTEROPERABILITY_PROFILES: readonly InteroperabilityProfile[] = [
 
     supportedRelationshipTypes: normalizeList([
       'DECOMPOSES_TO',
+      'COMPOSED_OF',
       'REALIZED_BY',
-      'DEPENDS_ON',
+      'INTEGRATES_WITH',
+      'CONSUMES',
       'HOSTED_ON',
       'IMPACTS',
     ]),

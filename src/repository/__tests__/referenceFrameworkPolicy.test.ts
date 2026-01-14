@@ -1,12 +1,21 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { isRelationshipTypeAllowedForReferenceFramework } from '../referenceFrameworkPolicy';
+import {
+  getFrameworkLifecyclePolicy,
+  getFrameworkObjectPolicy,
+  getFrameworkPhasePolicy,
+  isObjectTypeAllowedForReferenceFramework,
+  isRelationshipTypeAllowedForReferenceFramework,
+} from '../referenceFrameworkPolicy';
 
 describe('referenceFrameworkPolicy', () => {
   test('ArchiMate allows only the standard internal ArchiMate-aligned relationship set', () => {
     expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'DECOMPOSES_TO')).toBe(true);
+    expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'COMPOSED_OF')).toBe(true);
     expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'REALIZES')).toBe(true);
-    expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'DEPENDS_ON')).toBe(true);
+    expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'INTEGRATES_WITH')).toBe(true);
+    expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'DEPENDS_ON')).toBe(false);
+    expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'CONSUMES')).toBe(true);
     expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'HOSTED_ON')).toBe(true);
     expect(isRelationshipTypeAllowedForReferenceFramework('ArchiMate', 'IMPACTS')).toBe(true);
 
@@ -20,5 +29,23 @@ describe('referenceFrameworkPolicy', () => {
   test('Non-ArchiMate frameworks do not add additional relationship restrictions', () => {
     expect(isRelationshipTypeAllowedForReferenceFramework('TOGAF', 'OWNS')).toBe(true);
     expect(isRelationshipTypeAllowedForReferenceFramework('Custom', 'DELIVERS')).toBe(true);
+  });
+
+  test('TOGAF enables Capabilities, Value Streams, Applications, Technologies', () => {
+    const policy = getFrameworkObjectPolicy('TOGAF');
+    expect(policy.allowedObjectTypes.length).toBeGreaterThan(0);
+    expect(isObjectTypeAllowedForReferenceFramework('TOGAF', 'Capability')).toBe(true);
+    expect(isObjectTypeAllowedForReferenceFramework('TOGAF', 'ValueStream' as any)).toBe(true);
+    expect(isObjectTypeAllowedForReferenceFramework('TOGAF', 'Application')).toBe(true);
+    expect(isObjectTypeAllowedForReferenceFramework('TOGAF', 'Technology')).toBe(true);
+  });
+
+  test('TOGAF lifecycle and ADM phase policies are defined', () => {
+    const lifecycle = getFrameworkLifecyclePolicy('TOGAF');
+    expect(lifecycle.allowedLifecycleStates).toEqual(['Baseline', 'Target']);
+
+    const phases = getFrameworkPhasePolicy('TOGAF');
+    expect(phases.allowedAdmPhases.length).toBeGreaterThan(0);
+    expect(phases.allowedAdmPhases).toContain('A');
   });
 });

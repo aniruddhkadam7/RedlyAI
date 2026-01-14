@@ -1,4 +1,4 @@
-import type { ViewDefinition, ViewType } from './ViewDefinition';
+import type { ViewDefinition, ViewScopeType, ViewType } from './ViewDefinition';
 import { getRelationshipEndpointRule } from '../relationships/RelationshipSemantics';
 
 export type ViewRepositoryCreateSuccess = { ok: true; view: ViewDefinition };
@@ -8,6 +8,10 @@ export type ViewRepositoryCreateResult = ViewRepositoryCreateSuccess | ViewRepos
 export type ViewRepositoryDeleteSuccess = { ok: true; deleted: ViewDefinition };
 export type ViewRepositoryDeleteFailure = { ok: false; error: string };
 export type ViewRepositoryDeleteResult = ViewRepositoryDeleteSuccess | ViewRepositoryDeleteFailure;
+
+export type ViewRepositoryUpdateSuccess = { ok: true; view: ViewDefinition };
+export type ViewRepositoryUpdateFailure = { ok: false; error: string };
+export type ViewRepositoryUpdateResult = ViewRepositoryUpdateSuccess | ViewRepositoryUpdateFailure;
 
 const VIEW_TYPES: readonly ViewType[] = [
   'ApplicationDependency',
@@ -20,6 +24,13 @@ const VIEW_TYPES: readonly ViewType[] = [
 const isValidViewType = (value: unknown): value is ViewType =>
   typeof value === 'string' && (VIEW_TYPES as readonly string[]).includes(value);
 
+const VIEW_SCOPE_TYPES: readonly ViewScopeType[] = [
+  'ENTIRE_REPOSITORY',
+  'SELECTED_ENTERPRISES',
+  'SELECTED_CAPABILITIES',
+  'SELECTED_APPLICATIONS',
+] as const;
+
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
 const normalizeList = (values: readonly string[]) =>
@@ -30,6 +41,13 @@ const normalizeList = (values: readonly string[]) =>
         .filter((v) => v.length > 0),
     ),
   );
+
+const normalizeScopeType = (value: unknown): ViewScopeType => {
+  if (typeof value !== 'string') return 'ENTIRE_REPOSITORY';
+  const upper = value.trim().toUpperCase();
+  if ((VIEW_SCOPE_TYPES as readonly string[]).includes(upper)) return upper as ViewScopeType;
+  return 'ENTIRE_REPOSITORY';
+};
 
 const hasAny = (set: ReadonlySet<string>, candidates: readonly string[]): boolean => {
   for (const c of candidates) if (set.has(c)) return true;
@@ -74,11 +92,11 @@ const viewTypeRules: Record<
   CapabilityMap: {
     // Enterprise-grade business traceability: Capability → BusinessService → ApplicationService → Application.
     allowedElementTypes: ['Capability', 'BusinessService', 'ApplicationService', 'Application'],
-    allowedRelationshipTypes: ['DECOMPOSES_TO', 'REALIZED_BY', 'SUPPORTS', 'SUPPORTED_BY'],
+    allowedRelationshipTypes: ['DECOMPOSES_TO', 'COMPOSED_OF', 'REALIZED_BY', 'SUPPORTS', 'SUPPORTED_BY'],
   },
   ApplicationDependency: {
     allowedElementTypes: ['Application'],
-    allowedRelationshipTypes: ['DEPENDS_ON'],
+    allowedRelationshipTypes: ['INTEGRATES_WITH'],
   },
   ApplicationLandscape: {
     allowedElementTypes: ['Application'],
@@ -143,9 +161,21 @@ export class ViewRepository {
 
     const normalizedElementTypes = normalizeList(view.allowedElementTypes);
     const normalizedRelationshipTypes = normalizeList(view.allowedRelationshipTypes);
+    const normalizedScopeType = normalizeScopeType(view.scopeType);
+    const normalizedScopeIds =
+      normalizedScopeType === 'ENTIRE_REPOSITORY'
+        ? []
+        : normalizeList(Array.isArray(view.scopeIds) ? (view.scopeIds as readonly string[]) : []);
 
     if (normalizedElementTypes.length === 0) {
       return { ok: false, error: 'Rejected createView: allowedElementTypes must be non-empty.' };
+    }
+
+    if (normalizedScopeType !== 'ENTIRE_REPOSITORY' && normalizedScopeIds.length === 0) {
+      return {
+        ok: false,
+        error: `Rejected createView: scopeIds must be provided for scopeType "${normalizedScopeType}".`,
+      };
     }
 
     // Ensure view definition content is compatible with the declared viewType.
@@ -196,6 +226,8 @@ export class ViewRepository {
     const stored: ViewDefinition = {
       ...view,
       name,
+      scopeType: normalizedScopeType,
+      scopeIds: normalizedScopeIds,
       allowedElementTypes: normalizedElementTypes,
       allowedRelationshipTypes: normalizedRelationshipTypes,
     };
@@ -217,6 +249,43 @@ export class ViewRepository {
     this.idByNormalizedName.delete(normalizeName(existing.name));
 
     return { ok: true, deleted: existing };
+  }
+
+  updateViewRoot(args: {
+    viewId: string;
+    rootElementId: string;
+    rootElementType: string;
+    lastModifiedAt?: string;
+  }): ViewRepositoryUpdateResult {
+    const viewId = (args.viewId ?? '').trim();
+    const rootElementId = (args.rootElementId ?? '').trim();
+    const rootElementType = (args.rootElementType ?? '').trim();
+
+    if (!viewId) return { ok: false, error: 'Rejected updateViewRoot: viewId is required.' };
+    if (!rootElementId) return { ok: false, error: 'Rejected updateViewRoot: rootElementId is required.' };
+    if (!rootElementType) return { ok: false, error: 'Rejected updateViewRoot: rootElementType is required.' };
+
+    const existing = this.byId.get(viewId);
+    if (!existing) return { ok: false, error: `Rejected updateViewRoot: no such view "${viewId}".` };
+
+    const allowedTypes = new Set(existing.allowedElementTypes ?? []);
+    if (!allowedTypes.has(rootElementType)) {
+      return {
+        ok: false,
+        error: `Rejected updateViewRoot: type "${rootElementType}" is not allowed for view "${existing.name}".` ,
+      };
+    }
+
+    const updated: ViewDefinition = {
+      ...existing,
+      rootElementId,
+      rootElementType,
+      lastModifiedAt: args.lastModifiedAt?.trim() || new Date().toISOString(),
+    };
+
+    this.byId.set(viewId, updated);
+
+    return { ok: true, view: updated };
   }
 
   getViewById(id: string): ViewDefinition | null {
