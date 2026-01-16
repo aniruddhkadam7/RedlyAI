@@ -9,7 +9,7 @@ import { ProDescriptions, SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { Link, useLocation } from '@umijs/max';
 import React from 'react';
-import { Collapse, Descriptions, Drawer, Dropdown, Tree, Typography, message } from 'antd';
+import { Collapse, Descriptions, Drawer, Dropdown, Tree, Typography, message, theme as antdTheme } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { AvatarDropdown, AvatarName } from '@/components';
 import IdeShellLayout from '@/components/IdeShellLayout';
@@ -18,7 +18,6 @@ import DiagramsTree from '@/components/IdeShellLayout/DiagramsTree';
 import AnalysisTree from '@/components/IdeShellLayout/AnalysisTree';
 import MetamodelSidebar from '@/components/IdeShellLayout/MetamodelSidebar';
 import SettingsPanel from '@/components/IdeShellLayout/SettingsPanel';
-import CreateEaProjectPage from '@/pages/project/create';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 import {
@@ -44,6 +43,7 @@ import {
   isObjectTypeAllowedForReferenceFramework,
 } from '@/repository/referenceFrameworkPolicy';
 import { isCustomFrameworkModelingEnabled, isObjectTypeEnabledForFramework } from '@/repository/customFrameworkConfig';
+import { runtimeEnv } from '@/runtime/runtimeEnv';
 
 const isDev = process.env.NODE_ENV === 'development';
 const isDevOrTest = isDev || process.env.CI;
@@ -668,19 +668,25 @@ const EaExplorerSiderContent: React.FC<{
 
     if (selection.kind === 'objectType') {
       const def = OBJECT_TYPE_DEFINITIONS[selection.type];
+      if (!def) {
+        return <Typography.Text type="secondary">Unknown object type.</Typography.Text>;
+      }
+      const attributes = def.attributes ?? [];
+      const outgoing = def.allowedOutgoingRelationships ?? [];
+      const incoming = def.allowedIncomingRelationships ?? [];
       return (
         <>
           <Typography.Paragraph style={{ marginBottom: 12 }}>{def.description}</Typography.Paragraph>
           <Descriptions size="small" column={1} bordered>
             <Descriptions.Item label="Layer">{def.layer}</Descriptions.Item>
             <Descriptions.Item label="Attributes">
-              {def.attributes.length ? def.attributes.join(', ') : '—'}
+              {attributes.length ? attributes.join(', ') : '—'}
             </Descriptions.Item>
             <Descriptions.Item label="Allowed Outgoing Relationships">
-              {def.allowedOutgoingRelationships.length ? def.allowedOutgoingRelationships.join(', ') : '—'}
+              {outgoing.length ? outgoing.join(', ') : '—'}
             </Descriptions.Item>
             <Descriptions.Item label="Allowed Incoming Relationships">
-              {def.allowedIncomingRelationships.length ? def.allowedIncomingRelationships.join(', ') : '—'}
+              {incoming.length ? incoming.join(', ') : '—'}
             </Descriptions.Item>
           </Descriptions>
         </>
@@ -688,6 +694,10 @@ const EaExplorerSiderContent: React.FC<{
     }
 
     const def = RELATIONSHIP_TYPE_DEFINITIONS[selection.type];
+    if (!def) {
+      return <Typography.Text type="secondary">Unknown relationship type.</Typography.Text>;
+    }
+    const relAttributes = def.attributes ?? [];
     return (
       <>
         <Typography.Paragraph style={{ marginBottom: 12 }}>{def.description}</Typography.Paragraph>
@@ -695,7 +705,7 @@ const EaExplorerSiderContent: React.FC<{
           <Descriptions.Item label="Layer">{def.layer}</Descriptions.Item>
           <Descriptions.Item label="From Types">{def.fromTypes.join(', ')}</Descriptions.Item>
           <Descriptions.Item label="To Types">{def.toTypes.join(', ')}</Descriptions.Item>
-          <Descriptions.Item label="Attributes">{def.attributes.length ? def.attributes.join(', ') : '—'}</Descriptions.Item>
+          <Descriptions.Item label="Attributes">{relAttributes.length ? relAttributes.join(', ') : '—'}</Descriptions.Item>
         </Descriptions>
       </>
     );
@@ -809,6 +819,11 @@ export async function getInitialState(): Promise<{
   currentUser?: API.CurrentUser;
   loading?: boolean;
   fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
+  runtimeEnv: {
+    isDesktop: boolean;
+    isWeb: boolean;
+    density: 'compact' | 'normal';
+  };
 }> {
   const { ensureLocalUser } = await import('@/repository/localUserBootstrap');
   const bootstrap = ensureLocalUser();
@@ -818,8 +833,33 @@ export async function getInitialState(): Promise<{
     currentUser: bootstrap.ok
       ? { name: bootstrap.value.displayName, userid: bootstrap.value.id, access: 'admin' }
       : undefined,
+    runtimeEnv,
   };
 }
+
+export const antd = (memo: Record<string, any>) => {
+  const existingTheme = memo?.theme ?? {};
+  const existingAlgorithm = existingTheme?.algorithm;
+  const normalizedAlgorithm =
+    existingAlgorithm == null
+      ? []
+      : Array.isArray(existingAlgorithm)
+        ? existingAlgorithm
+        : [existingAlgorithm];
+
+  const densityAlgorithm = runtimeEnv.isDesktop ? antdTheme.compactAlgorithm : undefined;
+  const nextAlgorithm = densityAlgorithm
+    ? [densityAlgorithm, ...normalizedAlgorithm]
+    : existingAlgorithm;
+
+  return {
+    ...memo,
+    theme: {
+      ...existingTheme,
+      algorithm: nextAlgorithm,
+    },
+  };
+};
 
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
 export const layout: RunTimeLayoutConfig = ({
@@ -879,7 +919,7 @@ export const layout: RunTimeLayoutConfig = ({
                 </>
               }
             >
-              <CreateEaProjectPage />
+              <FirstLaunch />
             </ProjectGate>
           }
         >

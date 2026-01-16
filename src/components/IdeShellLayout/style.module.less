@@ -3,6 +3,20 @@
   width: 100%;
 }
 
+.desktopRoot {
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.desktopRoot .layoutRoot,
+.desktopRoot .mainRow,
+.desktopRoot .editorColumn,
+.desktopRoot .editorRow,
+.desktopRoot .editorArea {
+  padding-top: 0;
+  margin-top: 0;
+}
+
 .layoutRoot {
   height: 100%;
   display: flex;
@@ -13,6 +27,43 @@
 .topHeader {
   background: #1b2a55 !important;
   color: #f3f6ff;
+}
+
+.titleBar {
+  -webkit-app-region: drag;
+  user-select: none;
+  padding-right: 140px;
+}
+
+.titleBar :global(a),
+.titleBar :global(button),
+.titleBar :global(input),
+.titleBar :global(textarea),
+.titleBar :global(select),
+.titleBar :global(.ant-btn),
+.titleBar :global(.ant-input),
+.titleBar :global(.ant-input-affix-wrapper),
+.titleBar :global(.ant-input-search),
+.titleBar :global(.ant-menu),
+.titleBar :global(.ant-menu-item),
+.titleBar :global(.ant-menu-submenu-title),
+.titleBar :global(.ant-dropdown) {
+  -webkit-app-region: no-drag;
+}
+
+.titleBarRepo {
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.desktopRoot .titleBarRepo {
+  font-size: 12px;
+}
+
+.desktopRoot .titleBarUser {
+  font-size: 12px;
 }
 
 .activitySider {
@@ -95,6 +146,18 @@
   border-radius: 999px !important;
 }
 
+.desktopRoot .headerSearch :global(.ant-input),
+.desktopRoot .headerSearch :global(.ant-input-affix-wrapper) {
+  height: 24px;
+  padding-block: 0;
+}
+
+.desktopRoot .headerSearch :global(.ant-input-search-button),
+.desktopRoot .headerSearch :global(.ant-btn) {
+  height: 24px;
+  padding-block: 0;
+}
+
 .headerSearch :global(.ant-input-affix-wrapper) {
   padding-inline: 12px;
 }
@@ -123,7 +186,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 7px 7px;
-  border-right: 1px solid var(--ide-border);
+  border-right: none;
   background: var(--ide-rail-bg);
 }
 
@@ -227,6 +290,47 @@
 
 .activityButtonActive :global(svg) {
   font-size: 34px;
+}
+
+.desktopRoot .iconRail {
+  gap: 4px;
+  padding: 4px 4px;
+}
+
+.desktopRoot .iconRailTop,
+.desktopRoot .iconRailBottom {
+  gap: 4px;
+}
+
+.desktopRoot .iconRailBottom {
+  padding-top: 6px;
+}
+
+.desktopRoot .activityButton,
+.desktopRoot .activityButtonActive {
+  border-radius: 6px;
+}
+
+.desktopRoot .activityButton :global(svg),
+.desktopRoot .activityButtonActive :global(svg) {
+  font-size: 22px;
+}
+
+.desktopRoot .titleBar :global(.anticon),
+.desktopRoot .titleBar :global(svg) {
+  font-size: 14px;
+}
+
+.desktopRoot .titleBar :global(.ant-btn) {
+  height: 24px;
+  min-height: 24px;
+  padding-inline: 6px;
+  padding-block: 0;
+}
+
+.desktopRoot .titleBar :global(.ant-btn.ant-btn-icon-only) {
+  width: 24px;
+  padding-inline: 0;
 }
 
 /* Header logo: force the underlying <img> to fill the square. */
@@ -340,6 +444,26 @@
   border-bottom: 1px solid;
 }
 
+.studioSubHeader {
+  height: 36px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ide-border);
+  background: var(--ide-bg-container);
+}
+
+.studioStatusBar {
+  height: 28px;
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .studioColumns {
   flex: 1 1 auto;
   min-height: 0;
@@ -358,6 +482,30 @@
   padding: 12px;
 }
 
+.studioWorkspaceCard {
+  border: 1px solid var(--ide-border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studioWorkspaceMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.studioWorkspaceInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .studioCenter {
   min-height: 0;
   display: flex;
@@ -371,7 +519,10 @@
   min-height: 0;
   border: 1px dashed var(--ide-border);
   border-radius: 10px;
-  background: #fafafa;
+  background: linear-gradient(0deg, transparent 95%, rgba(0, 0, 0, 0.03) 95%),
+    linear-gradient(90deg, transparent 95%, rgba(0, 0, 0, 0.03) 95%),
+    #fafafa;
+  background-size: 20px 20px;
   overflow: hidden;
 }
 
@@ -400,6 +551,35 @@
   pointer-events: none;
 }
 
+.studioAlignmentGuideVertical {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(82, 196, 26, 0.6);
+  pointer-events: none;
+}
+
+.studioAlignmentGuideHorizontal {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(82, 196, 26, 0.6);
+  pointer-events: none;
+}
+
+.studioPlacementGuide {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border: 2px dashed rgba(250, 140, 22, 0.9);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .studioValidationList {
   display: grid;
   gap: 8px;
@@ -422,6 +602,36 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.studioCompactProperties {
+  display: grid;
+  gap: 10px;
+}
+
+.studioCompactPropertiesRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studioCompactTypeIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.studioTypeIcon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #1f1f1f;
 }
 
 .studioRightBody {
@@ -458,18 +668,102 @@
 .studioPaletteItemButton {
   width: 100%;
   text-align: left;
-  padding: 8px;
+  padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid var(--ide-border);
   background: #fff;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
 
 .studioPaletteItemButton:hover {
   background: var(--ide-control-hover);
+}
+
+.studioPaletteItemButtonActive {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
+  background: #e6f4ff;
+}
+
+.studioToolHelper {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ide-border);
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 2;
+}
+
+.studioCreateHint {
+  position: absolute;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ide-border);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  color: #595959;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.studioPlacementGhost {
+  position: absolute;
+  border: 2px dashed #1677ff;
+  background: rgba(22, 119, 255, 0.08);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.studioLayerToggleGroup {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ide-border);
+  background: #fff;
+}
+
+.studioLayerToggleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.studioLegendList {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.studioLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ide-border);
+  background: #fff;
+}
+
+.studioLegendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--ide-border);
+  flex: 0 0 auto;
+}
+
+.studioLegendIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
 }
 
 .studioRelationshipPreview {

@@ -1,4 +1,4 @@
-import { isValidObjectType, type ObjectType } from '@/pages/dependency-view/utils/eaMetaModel';
+import { isValidObjectType, isValidRelationshipType, type ObjectType, type RelationshipType } from '@/pages/dependency-view/utils/eaMetaModel';
 import type { FrameworkConfig, ReferenceFramework } from './repositoryMetadata';
 
 export type CustomMetaModelConfig = {
@@ -7,15 +7,22 @@ export type CustomMetaModelConfig = {
    * Empty list means "modeling disabled".
    */
   enabledObjectTypes: readonly ObjectType[];
+  /**
+   * Enabled relationship types for the Custom framework metamodel.
+   * Empty list means "no relationship types enabled".
+   */
+  enabledRelationshipTypes: readonly RelationshipType[];
 };
 
-export const DEFAULT_CUSTOM_META_MODEL_CONFIG: CustomMetaModelConfig = {
-  enabledObjectTypes: [],
+export const CUSTOM_CORE_EA_SEED: CustomMetaModelConfig = {
+  enabledObjectTypes: ['Enterprise', 'Capability', 'Application', 'Technology', 'ValueStream'],
+  enabledRelationshipTypes: ['OWNS', 'SUPPORTS', 'DEPENDS_ON', 'REALIZES', 'HOSTED_ON', 'INTEGRATES_WITH'],
 };
 
 export const normalizeCustomMetaModelConfig = (value: unknown): CustomMetaModelConfig => {
   const v = value as any;
   const raw = Array.isArray(v?.enabledObjectTypes) ? (v.enabledObjectTypes as unknown[]) : [];
+  const rawRelationships = Array.isArray(v?.enabledRelationshipTypes) ? (v.enabledRelationshipTypes as unknown[]) : [];
 
   const out: ObjectType[] = [];
   for (const t of raw) {
@@ -24,11 +31,26 @@ export const normalizeCustomMetaModelConfig = (value: unknown): CustomMetaModelC
   }
   out.sort((a, b) => a.localeCompare(b));
 
-  return { enabledObjectTypes: out };
+  const rels: RelationshipType[] = [];
+  for (const t of rawRelationships) {
+    if (!isValidRelationshipType(t)) continue;
+    if (!rels.includes(t)) rels.push(t);
+  }
+  rels.sort((a, b) => a.localeCompare(b));
+
+  return { enabledObjectTypes: out, enabledRelationshipTypes: rels };
 };
+
+export const DEFAULT_CUSTOM_META_MODEL_CONFIG: CustomMetaModelConfig = normalizeCustomMetaModelConfig(CUSTOM_CORE_EA_SEED);
 
 export const getCustomMetaModelConfig = (frameworkConfig: FrameworkConfig | null | undefined): CustomMetaModelConfig => {
   if (!frameworkConfig?.custom) return DEFAULT_CUSTOM_META_MODEL_CONFIG;
+  const raw = frameworkConfig.custom as any;
+  const hasObjectTypes = Array.isArray(raw?.enabledObjectTypes);
+  const hasRelationshipTypes = Array.isArray(raw?.enabledRelationshipTypes);
+  if (!hasObjectTypes && !hasRelationshipTypes) {
+    return DEFAULT_CUSTOM_META_MODEL_CONFIG;
+  }
   return normalizeCustomMetaModelConfig(frameworkConfig.custom);
 };
 

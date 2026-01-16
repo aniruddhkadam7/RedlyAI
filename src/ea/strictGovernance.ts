@@ -20,11 +20,17 @@ export const validateStrictGovernance = (
     governanceMode: 'Strict',
   });
 
-  const mandatoryErrorCount = (debt.repoReport.summary as any)?.bySeverity?.Error ?? 0;
+  const mandatoryErrorCount =
+    ((debt.repoReport.summary as any)?.bySeverity?.ERROR ?? 0) + ((debt.repoReport.summary as any)?.bySeverity?.BLOCKER ?? 0);
   const mandatoryFindingCount = debt.repoReport.summary.total ?? 0;
-  const invalidRelationshipInsertCount = debt.invalidRelationshipInserts.length;
-  const relationshipErrorCount = debt.relationshipReport.summary.bySeverity.Error ?? 0;
-  const lifecycleTagMissingCount = debt.lifecycleTagMissingIds.length;
+  const invalidRelationshipInsertCount = debt.invalidRelationshipInserts.filter(
+    (issue) => issue.severity === 'ERROR' || issue.severity === 'BLOCKER',
+  ).length;
+  const relationshipErrorCount =
+    (debt.relationshipReport.summary.bySeverity.ERROR ?? 0) + (debt.relationshipReport.summary.bySeverity.BLOCKER ?? 0);
+  const lifecycleTagMissingCount = debt.lifecycleTagMissingIds.filter(
+    (issue) => issue.severity === 'ERROR' || issue.severity === 'BLOCKER',
+  ).length;
 
   const blocked =
     mandatoryErrorCount > 0 ||
@@ -37,8 +43,8 @@ export const validateStrictGovernance = (
   const highlights: string[] = [];
   for (const f of debt.repoReport.findings.slice(0, 5)) highlights.push(f.message);
   for (const f of debt.relationshipReport.findings.slice(0, 3)) highlights.push(f.message);
-  for (const s of debt.invalidRelationshipInserts.slice(0, 3)) highlights.push(`Relationship insert: ${s}`);
-  for (const id of debt.lifecycleTagMissingIds.slice(0, 3)) highlights.push(`Lifecycle tag missing: ${id}`);
+  for (const s of debt.invalidRelationshipInserts.slice(0, 3)) highlights.push(`Relationship insert: ${s.message}`);
+  for (const issue of debt.lifecycleTagMissingIds.slice(0, 3)) highlights.push(`Lifecycle tag missing: ${issue.message}`);
 
   const key = `${mandatoryErrorCount}|${mandatoryFindingCount}|${invalidRelationshipInsertCount}|${relationshipErrorCount}|${lifecycleTagMissingCount}`;
 

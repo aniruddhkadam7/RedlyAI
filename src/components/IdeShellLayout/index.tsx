@@ -45,6 +45,7 @@ import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { validateStrictGovernance } from '@/ea/strictGovernance';
 import { isGapAnalysisAllowedForLifecycleCoverage, isRoadmapAllowedForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
 import { ENABLE_RBAC, hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
+import { DesignWorkspaceStore, type DesignWorkspace } from '@/ea/DesignWorkspaceStore';
 
 type ActivityKey =
   | 'explorer'
@@ -64,24 +65,29 @@ type PanelDock = 'bottom' | 'right';
 
 // Increased for legibility (logo + menu) per user request.
 // NOTE: This intentionally exceeds VS Code's default header height.
-const TOP_MENU_BAR_HEIGHT = 44;
+const TOP_MENU_BAR_HEIGHT_WEB = 44;
+const TOP_MENU_BAR_HEIGHT_DESKTOP = 34;
 const STATUS_BAR_HEIGHT = 22;
 
 // VS Code-like defaults (not ultra-compact).
-const ACTIVITY_BAR_WIDTH = 68;
-const ACTIVITY_HIT_SIZE = 56;
-const ACTIVITY_ICON_SIZE = 40;
+const ACTIVITY_BAR_WIDTH_WEB = 68;
+const ACTIVITY_BAR_WIDTH_DESKTOP = 52;
+const ACTIVITY_HIT_SIZE_WEB = 56;
+const ACTIVITY_HIT_SIZE_DESKTOP = 36;
+const ACTIVITY_ICON_SIZE_WEB = 40;
+const ACTIVITY_ICON_SIZE_DESKTOP = 20;
 
 // AI button is intentionally larger than other activity buttons.
-const AI_HIT_SIZE = 62;
-const AI_ICON_SIZE = 46;
+const AI_HIT_SIZE_WEB = 62;
+const AI_HIT_SIZE_DESKTOP = 38;
+const AI_ICON_SIZE_WEB = 46;
+const AI_ICON_SIZE_DESKTOP = 24;
 
 const RIGHT_PANEL_MIN_WIDTH = 340;
 const RIGHT_PANEL_MAX_WIDTH = 520;
 const RIGHT_PANEL_DEFAULT_WIDTH = 420;
 
 const LOGO_INSET = 2;
-const LOGO_SIZE = TOP_MENU_BAR_HEIGHT - LOGO_INSET * 2;
 
 type OpenWorkspaceTabArgs =
   | {
@@ -211,6 +217,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
   const location = useLocation();
   const pathname = location.pathname || '/';
   const { initialState } = useModel('@@initialState');
+  const runtimeEnv = initialState?.runtimeEnv;
+  const isDesktop = runtimeEnv?.isDesktop ?? false;
+  const topMenuBarHeight = isDesktop ? TOP_MENU_BAR_HEIGHT_DESKTOP : TOP_MENU_BAR_HEIGHT_WEB;
+  const logoSize = topMenuBarHeight - LOGO_INSET * 2;
+  const activityBarWidth = isDesktop ? ACTIVITY_BAR_WIDTH_DESKTOP : ACTIVITY_BAR_WIDTH_WEB;
+  const activityHitSize = isDesktop ? ACTIVITY_HIT_SIZE_DESKTOP : ACTIVITY_HIT_SIZE_WEB;
+  const activityIconSize = isDesktop ? ACTIVITY_ICON_SIZE_DESKTOP : ACTIVITY_ICON_SIZE_WEB;
+  const aiHitSize = isDesktop ? AI_HIT_SIZE_DESKTOP : AI_HIT_SIZE_WEB;
+  const aiIconSize = isDesktop ? AI_ICON_SIZE_DESKTOP : AI_ICON_SIZE_WEB;
   const { selection, setActiveDocument, setSelectedElement, setActiveElement, setActiveImpactElement } = useIdeSelection();
   const { project } = useEaProject();
   const { eaRepository, metadata } = useEaRepository();
@@ -225,6 +240,33 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
     const name = initialState?.currentUser?.name || initialState?.currentUser?.userid;
     return name && name.trim() ? name.trim() : 'Unknown user';
   }, [initialState?.currentUser?.name, initialState?.currentUser?.userid]);
+  const repositoryName = metadata?.repositoryName || 'default';
+  const generateWorkspaceId = React.useCallback(() => {
+    try {
+      if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    } catch {
+      // fall through
+    }
+    return `ws-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }, []);
+  const createDefaultWorkspace = React.useCallback((): DesignWorkspace => {
+    const now = new Date().toISOString();
+    return {
+      id: generateWorkspaceId(),
+      repositoryName,
+      name: 'Untitled Workspace',
+      description: '',
+      status: 'DRAFT',
+      createdBy: currentUserLabel || 'unknown',
+      createdAt: now,
+      updatedAt: now,
+      repositoryUpdatedAt: metadata?.updatedAt,
+      mode: 'STANDARD',
+      stagedElements: [],
+      stagedRelationships: [],
+      layout: { nodes: [], edges: [] },
+    };
+  }, [currentUserLabel, generateWorkspaceId, metadata?.updatedAt, repositoryName]);
 
   const cssVars = React.useMemo<React.CSSProperties>(
     () => ({
@@ -242,10 +284,12 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
       ['--ide-tree-selected-bg' as any]: (token as any).colorBgTextActive ?? token.colorBgTextHover,
       ['--ide-tree-accent' as any]: token.colorBorderSecondary,
       ['--ide-tree-line' as any]: token.colorBorderSecondary,
-      ['--ide-topbar-height' as any]: `${TOP_MENU_BAR_HEIGHT}px`,
+      ['--ide-topbar-height' as any]: isDesktop
+        ? 'env(titlebar-area-height, 34px)'
+        : `${topMenuBarHeight}px`,
       ['--ide-statusbar-height' as any]: `${STATUS_BAR_HEIGHT}px`,
     }),
-    [token],
+    [isDesktop, token, topMenuBarHeight],
   );
 
   const [sidebarOpen, setSidebarOpen] = React.useState<boolean>(() => {
@@ -313,6 +357,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
   const [panelMode, setPanelMode] = React.useState<'properties' | 'agent'>('properties');
   const [studioMode, setStudioMode] = React.useState(false);
   const [studioEntryOpen, setStudioEntryOpen] = React.useState(false);
+  const [activeWorkspace, setActiveWorkspace] = React.useState<DesignWorkspace | null>(null);
   const hierarchyEditingEnabled = React.useMemo(() => {
     if (!activeKey) return true;
     if (activeKey.startsWith('baseline:')) return false;
@@ -428,6 +473,46 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
     if (!studioMode) return;
     if (panelMode !== 'properties') setPanelMode('properties');
   }, [panelMode, studioMode]);
+
+  React.useEffect(() => {
+    if (!studioMode) return;
+    const list = DesignWorkspaceStore.list(repositoryName);
+    if (list.length > 0) {
+      setActiveWorkspace(list[0]);
+      return;
+    }
+    const created = createDefaultWorkspace();
+    DesignWorkspaceStore.save(repositoryName, created);
+    setActiveWorkspace(created);
+  }, [createDefaultWorkspace, repositoryName, studioMode]);
+
+  const handleUpdateWorkspace = React.useCallback(
+    (next: DesignWorkspace) => {
+      const saved = DesignWorkspaceStore.save(repositoryName, next);
+      setActiveWorkspace(saved);
+      try {
+        window.dispatchEvent(new Event('ea:workspacesChanged'));
+      } catch {
+        // Best-effort only.
+      }
+    },
+    [repositoryName],
+  );
+
+  const handleDeleteWorkspace = React.useCallback(
+    (workspaceId: string) => {
+      DesignWorkspaceStore.remove(repositoryName, workspaceId);
+      const list = DesignWorkspaceStore.list(repositoryName);
+      if (list.length > 0) {
+        setActiveWorkspace(list[0]);
+        return;
+      }
+      const created = createDefaultWorkspace();
+      DesignWorkspaceStore.save(repositoryName, created);
+      setActiveWorkspace(created);
+    },
+    [createDefaultWorkspace, repositoryName],
+  );
 
   const openWorkspaceTab = React.useCallback((args: OpenWorkspaceTabArgs) => {
     if (args.type === 'catalog') {
@@ -854,6 +939,101 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
       ? `Repository: ${metadata.repositoryName}`
       : 'No project/repository loaded';
 
+  const shouldRenderDesktopHeader = isDesktop;
+  const shouldRenderWebHeader = !isDesktop;
+
+  React.useEffect(() => {
+    if (shouldRenderDesktopHeader && shouldRenderWebHeader) {
+      console.warn('[IDE] Header sanity check failed: both desktop and web headers are set to render.');
+    }
+    if (!isDesktop && !shouldRenderWebHeader) {
+      console.warn('[IDE] Header sanity check failed: web runtime has no custom header.');
+    }
+  }, [isDesktop, shouldRenderDesktopHeader, shouldRenderWebHeader]);
+
+  const headerContent = (
+    <div style={{ display: 'flex', alignItems: 'center', height: '100%', width: '100%', minWidth: 0 }}>
+      <div
+        style={{
+          width: activityBarWidth,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRight: 'none',
+        }}
+      >
+        <Tooltip title="Home" placement="bottom">
+          <Button
+            type="text"
+            className={styles.logoButton}
+            aria-label="Go to Home"
+            onClick={() => openRouteTab('/')}
+            style={{
+              width: logoSize,
+              height: logoSize,
+              padding: 0,
+              borderRadius: 8,
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            <Avatar
+              className={styles.headerLogo}
+              shape="square"
+              src={logoUrl}
+              alt="Logo"
+              size={logoSize}
+              style={{
+                background: 'transparent',
+                borderRadius: 6,
+              }}
+            />
+          </Button>
+        </Tooltip>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          width: '100%',
+        }}
+      >
+        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+          <IdeMenuBar />
+        </div>
+        <div style={{ paddingInline: 8, display: 'flex', justifyContent: 'center' }}>
+          <Input.Search
+            placeholder="Search"
+            allowClear
+            size={isDesktop ? 'small' : 'middle'}
+            className={styles.headerSearch}
+            style={{ width: 400 }}
+          />
+        </div>
+        <div style={{ paddingInline: 10, display: 'flex', justifyContent: 'flex-end', gap: 8, minWidth: 0 }}>
+          {isDesktop && (
+            <Typography.Text
+              type="secondary"
+              className={styles.titleBarRepo}
+              title={statusLeftText}
+            >
+              {statusLeftText}
+            </Typography.Text>
+          )}
+          <Typography.Text type="secondary" className={styles.titleBarUser} style={{ fontWeight: 500 }}>
+            User: {currentUserLabel}
+          </Typography.Text>
+        </div>
+      </div>
+    </div>
+  );
+
   const resetLayout = React.useCallback(() => {
     try {
       const keys = Object.keys(localStorage);
@@ -1097,108 +1277,59 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
     }
   }, []);
 
+  const rootClassName = isDesktop ? `${styles.root} ${styles.desktopRoot}` : styles.root;
+
   return (
-    <div className={styles.root} style={cssVars}>
+    <div className={rootClassName} style={cssVars}>
       <IdeShellContext.Provider value={ctxValue}>
         <Layout className={styles.layoutRoot} style={{ background: token.colorBgLayout }}>
-          <Layout.Header
-            className={styles.topHeader}
-            style={{
-              height: TOP_MENU_BAR_HEIGHT,
-              lineHeight: `${TOP_MENU_BAR_HEIGHT}px`,
-              paddingInline: 0,
-              paddingBlock: 0,
-              background: token.colorBgElevated,
-              borderBottom: `1px solid ${token.colorBorderSecondary}`,
-              display: 'flex',
-              alignItems: 'center',
-              minHeight: TOP_MENU_BAR_HEIGHT,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', height: '100%', width: '100%', minWidth: 0 }}>
-              <div
-                style={{
-                  width: ACTIVITY_BAR_WIDTH,
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRight: `1px solid ${token.colorBorderSecondary}`,
-                }}
-              >
-                <Tooltip title="Home" placement="bottom">
-                  <Button
-                    type="text"
-                    className={styles.logoButton}
-                    aria-label="Go to Home"
-                    onClick={() => openRouteTab('/')}
-                    style={{
-                      width: LOGO_SIZE,
-                      height: LOGO_SIZE,
-                      padding: 0,
-                      borderRadius: 8,
-                      display: 'grid',
-                      placeItems: 'center',
-                    }}
-                  >
-                    <Avatar
-                      className={styles.headerLogo}
-                      shape="square"
-                      src={logoUrl}
-                      alt="Logo"
-                      size={LOGO_SIZE}
-                      style={{
-                        background: 'transparent',
-                        borderRadius: 6,
-                      }}
-                    />
-                  </Button>
-                </Tooltip>
-              </div>
-
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: 'hidden',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr auto 1fr',
-                  alignItems: 'center',
-                  width: '100%',
-                }}
-              >
-                <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                  <IdeMenuBar />
-                </div>
-                <div style={{ paddingInline: 8, display: 'flex', justifyContent: 'center' }}>
-                  <Input.Search
-                    placeholder="Search"
-                    allowClear
-                    size="middle"
-                    className={styles.headerSearch}
-                    style={{ width: 400 }}
-                  />
-                </div>
-                <div style={{ paddingInline: 10, display: 'flex', justifyContent: 'flex-end', gap: 5 }}>
-                  <Typography.Text type="secondary" style={{ fontWeight: 500 }}>
-                    User: {currentUserLabel}
-                  </Typography.Text>
-                </div>
-              </div>
+          {shouldRenderDesktopHeader ? (
+            <div
+              className={`${styles.topHeader} ${styles.titleBar}`}
+              style={{
+                height: 'var(--ide-topbar-height)',
+                lineHeight: 'var(--ide-topbar-height)',
+                paddingInline: 0,
+                paddingBlock: 0,
+                background: token.colorBgElevated,
+                borderBottom: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                minHeight: 'var(--ide-topbar-height)',
+              }}
+            >
+              {headerContent}
             </div>
-          </Layout.Header>
+          ) : (
+            <Layout.Header
+              className={styles.topHeader}
+              style={{
+                height: 'var(--ide-topbar-height)',
+                lineHeight: 'var(--ide-topbar-height)',
+                paddingInline: 0,
+                paddingBlock: 0,
+                background: token.colorBgElevated,
+                borderBottom: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                minHeight: 'var(--ide-topbar-height)',
+              }}
+            >
+              {headerContent}
+            </Layout.Header>
+          )}
 
           <Layout className={styles.mainRow} style={{ background: token.colorBgLayout }}>
             <Layout.Sider
               className={styles.activitySider}
-              width={ACTIVITY_BAR_WIDTH}
-              collapsedWidth={ACTIVITY_BAR_WIDTH}
+              width={activityBarWidth}
+              collapsedWidth={activityBarWidth}
               theme="light"
               trigger={null}
               collapsible={false}
               style={{
                 background: token.colorBgElevated,
-                borderRight: `1px solid ${token.colorBorderSecondary}`,
+                borderRight: 'none',
               }}
             >
               <div
@@ -1208,11 +1339,11 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  paddingBlock: token.paddingXXS,
-                  gap: 9,
+                  paddingBlock: isDesktop ? 4 : token.paddingXXS,
+                  gap: isDesktop ? 6 : 9,
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isDesktop ? 6 : 9 }}>
                   <Tooltip
                     title={studioEntryDisabled ? 'Architecture Studio unavailable in Baseline / Roadmap / Plateau.' : 'Architecture Studio'}
                     placement="right"
@@ -1227,13 +1358,13 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                         setStudioEntryOpen(true);
                       }}
                       style={{
-                        width: ACTIVITY_HIT_SIZE,
-                        height: ACTIVITY_HIT_SIZE,
-                        minWidth: ACTIVITY_HIT_SIZE,
+                        width: activityHitSize,
+                        height: activityHitSize,
+                        minWidth: activityHitSize,
                         color: studioMode ? token.colorWarning : token.colorTextSecondary,
                         border: studioMode ? `1px solid ${token.colorWarning}` : '1px solid transparent',
                       }}
-                      icon={<BuildOutlined style={{ fontSize: ACTIVITY_ICON_SIZE }} />}
+                      icon={<BuildOutlined style={{ fontSize: activityIconSize }} />}
                     />
                   </Tooltip>
                   {ACTIVITY_ITEMS.filter((i) => i.key !== 'settings').map((item) => {
@@ -1255,29 +1386,29 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                           style={
                             selected
                               ? {
-                                  width: ACTIVITY_HIT_SIZE,
-                                  height: ACTIVITY_HIT_SIZE,
-                                  minWidth: ACTIVITY_HIT_SIZE,
+                                  width: activityHitSize,
+                                  height: activityHitSize,
+                                  minWidth: activityHitSize,
                                   background: token.colorBgTextHover,
                                   color: token.colorText,
                                   border: `1px solid ${token.colorBorderSecondary}`,
                                 }
                               : {
-                                  width: ACTIVITY_HIT_SIZE,
-                                  height: ACTIVITY_HIT_SIZE,
-                                  minWidth: ACTIVITY_HIT_SIZE,
+                                  width: activityHitSize,
+                                  height: activityHitSize,
+                                  minWidth: activityHitSize,
                                   color: token.colorTextSecondary,
                                   border: '1px solid transparent',
                                 }
                           }
-                          icon={React.cloneElement(item.icon as any, { style: { fontSize: ACTIVITY_ICON_SIZE } })}
+                          icon={React.cloneElement(item.icon as any, { style: { fontSize: activityIconSize } })}
                         />
                       </Tooltip>
                     );
                   })}
                 </div>
 
-                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9 }}>
+                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isDesktop ? 6 : 9 }}>
                   <Tooltip title="AI" placement="right">
                     <Button
                       type="text"
@@ -1289,9 +1420,9 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                         setPanelDock('right');
                       }}
                       style={{
-                        width: AI_HIT_SIZE,
-                        height: AI_HIT_SIZE,
-                        minWidth: AI_HIT_SIZE,
+                        width: aiHitSize,
+                        height: aiHitSize,
+                        minWidth: aiHitSize,
                         padding: 0,
                         border: `1px solid ${token.colorBorderSecondary}`,
                         background: token.colorBgTextHover,
@@ -1307,8 +1438,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                         playsInline
                         preload="auto"
                         style={{
-                          width: AI_ICON_SIZE,
-                          height: AI_ICON_SIZE,
+                          width: aiIconSize,
+                          height: aiIconSize,
                           objectFit: 'cover',
                           display: 'block',
                           pointerEvents: 'none',
@@ -1323,15 +1454,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                       type="text"
                       aria-label="Profile"
                       style={{
-                        width: ACTIVITY_HIT_SIZE,
-                        height: ACTIVITY_HIT_SIZE,
-                        minWidth: ACTIVITY_HIT_SIZE,
+                        width: activityHitSize,
+                        height: activityHitSize,
+                        minWidth: activityHitSize,
                         padding: 0,
                         display: 'grid',
                         placeItems: 'center',
                       }}
                     >
-                      <Avatar size={28} icon={<UserOutlined style={{ fontSize: 18 }} />} />
+                      <Avatar size={isDesktop ? 22 : 28} icon={<UserOutlined style={{ fontSize: isDesktop ? 14 : 18 }} />} />
                     </Button>
                   </Tooltip>
 
@@ -1354,22 +1485,22 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
                           style={
                             selected
                               ? {
-                                  width: ACTIVITY_HIT_SIZE,
-                                  height: ACTIVITY_HIT_SIZE,
-                                  minWidth: ACTIVITY_HIT_SIZE,
+                                  width: activityHitSize,
+                                  height: activityHitSize,
+                                  minWidth: activityHitSize,
                                   background: token.colorBgTextHover,
                                   color: token.colorText,
                                   border: `1px solid ${token.colorBorderSecondary}`,
                                 }
                               : {
-                                  width: ACTIVITY_HIT_SIZE,
-                                  height: ACTIVITY_HIT_SIZE,
-                                  minWidth: ACTIVITY_HIT_SIZE,
+                                  width: activityHitSize,
+                                  height: activityHitSize,
+                                  minWidth: activityHitSize,
                                   color: token.colorTextSecondary,
                                   border: '1px solid transparent',
                                 }
                           }
-                          icon={<SettingOutlined style={{ fontSize: ACTIVITY_ICON_SIZE }} />}
+                          icon={<SettingOutlined style={{ fontSize: activityIconSize }} />}
                         />
                       </Tooltip>
                     );
@@ -1436,7 +1567,17 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({ sidebars, children, she
               <div className={styles.editorRow} style={{ background: token.colorBgContainer }}>
                 <div className={styles.editorArea} style={{ background: token.colorBgContainer }}>
                   {studioMode ? (
-                    <StudioShell propertiesPanel={renderPanelBody()} onExit={exitStudioMode} />
+                    activeWorkspace ? (
+                      <StudioShell
+                        propertiesPanel={renderPanelBody()}
+                        designWorkspace={activeWorkspace}
+                        onUpdateWorkspace={handleUpdateWorkspace}
+                        onDeleteWorkspace={handleDeleteWorkspace}
+                        onExit={exitStudioMode}
+                      />
+                    ) : (
+                      <WorkspaceEmptyState title="Loading workspace" description="Preparing Architecture Studio..." />
+                    )
                   ) : (
                     <>
                       <Tabs

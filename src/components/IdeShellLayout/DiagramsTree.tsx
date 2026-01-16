@@ -6,7 +6,7 @@ import {
   FileAddOutlined,
   FileTextOutlined,
 } from '@ant-design/icons';
-import { Tree } from 'antd';
+import { Tree, message } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import React from 'react';
 import { useIdeShell } from './index';
@@ -41,7 +41,11 @@ const iconForViewType = (type: ViewType) => {
   }
 };
 
-const buildTree = (views: ViewDefinition[], architectureScope: string | null | undefined): DataNode[] => {
+const buildTree = (
+  views: ViewDefinition[],
+  architectureScope: string | null | undefined,
+  opts?: { showCreate?: boolean },
+): DataNode[] => {
   const filtered =
     architectureScope === 'Programme' ? views.filter((v) => v.viewType === 'ImpactView') : views;
 
@@ -72,12 +76,16 @@ const buildTree = (views: ViewDefinition[], architectureScope: string | null | u
     });
 
   const children: DataNode[] = [
-    {
-      key: '/views/create',
-      title: 'Create View…',
-      icon: <FileAddOutlined />,
-      isLeaf: true,
-    },
+    ...(opts?.showCreate === false
+      ? []
+      : [
+          {
+            key: '/views/create',
+            title: 'Create View…',
+            icon: <FileAddOutlined />,
+            isLeaf: true,
+          } satisfies DataNode,
+        ]),
     ...typeNodes,
   ];
 
@@ -103,32 +111,32 @@ const buildTree = (views: ViewDefinition[], architectureScope: string | null | u
 };
 
 const DiagramsTree: React.FC = () => {
-  const { openRouteTab, openWorkspaceTab } = useIdeShell();
+  const { openRouteTab, openWorkspaceTab, studioMode } = useIdeShell();
   const { setSelection } = useIdeSelection();
   const { metadata } = useEaRepository();
 
   const [treeData, setTreeData] = React.useState<DataNode[]>(() => {
     try {
       const views = getViewRepository().listAllViews();
-      return buildTree(views, metadata?.architectureScope ?? null);
+      return buildTree(views, metadata?.architectureScope ?? null, { showCreate: !studioMode });
     } catch {
-      return buildTree([], metadata?.architectureScope ?? null);
+      return buildTree([], metadata?.architectureScope ?? null, { showCreate: !studioMode });
     }
   });
 
   React.useEffect(() => {
     const refresh = () => {
       try {
-        setTreeData(buildTree(getViewRepository().listAllViews(), metadata?.architectureScope ?? null));
+        setTreeData(buildTree(getViewRepository().listAllViews(), metadata?.architectureScope ?? null, { showCreate: !studioMode }));
       } catch {
-        setTreeData(buildTree([], metadata?.architectureScope ?? null));
+        setTreeData(buildTree([], metadata?.architectureScope ?? null, { showCreate: !studioMode }));
       }
     };
 
     refresh();
     window.addEventListener('ea:viewsChanged', refresh);
     return () => window.removeEventListener('ea:viewsChanged', refresh);
-  }, [metadata?.architectureScope]);
+  }, [metadata?.architectureScope, studioMode]);
 
   return (
     <div className={styles.explorerTree}>
@@ -142,6 +150,10 @@ const DiagramsTree: React.FC = () => {
           if (typeof key !== 'string') return;
 
           if (key === '/views/create') {
+            if (studioMode) {
+              message.info('Create View is available in Studio via the + Add View button.');
+              return;
+            }
             setSelection({ kind: 'route', keys: [key] });
             openRouteTab(key);
             return;

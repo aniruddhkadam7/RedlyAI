@@ -4,6 +4,7 @@ export type IdeCommand =
   | { type: 'view.toggleBottomPanel' }
   | { type: 'view.resetLayout' }
   | { type: 'view.fullscreen.toggle' }
+  | { type: 'studio.exit' }
   | { type: 'navigation.openRoute'; path: string }
   | {
       type: 'navigation.openWorkspace';

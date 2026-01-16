@@ -14,6 +14,7 @@ export type RepositoryOwner = {
 export type FrameworkConfig = {
   custom?: {
     enabledObjectTypes?: unknown;
+    enabledRelationshipTypes?: unknown;
   };
 };
 

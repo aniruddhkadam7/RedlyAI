@@ -11,9 +11,39 @@ describe('Custom framework config', () => {
     expect(cfg.enabledObjectTypes).toEqual(['Application', 'Capability']);
   });
 
-  test('getCustomMetaModelConfig defaults to empty', () => {
-    expect(getCustomMetaModelConfig(undefined).enabledObjectTypes).toEqual([]);
-    expect(getCustomMetaModelConfig(null).enabledObjectTypes).toEqual([]);
+  test('normalizes enabledRelationshipTypes (dedupe + sort + filter invalid)', () => {
+    const cfg = normalizeCustomMetaModelConfig({ enabledRelationshipTypes: ['REALIZES', 'BadRel', 'OWNS', 'REALIZES'] });
+    expect(cfg.enabledRelationshipTypes).toEqual(['OWNS', 'REALIZES']);
+  });
+
+  test('getCustomMetaModelConfig defaults to Custom core seed', () => {
+    expect(getCustomMetaModelConfig(undefined).enabledObjectTypes).toEqual([
+      'Application',
+      'Capability',
+      'Enterprise',
+      'Technology',
+      'ValueStream',
+    ]);
+    expect(getCustomMetaModelConfig(undefined).enabledRelationshipTypes).toEqual([
+      'DEPENDS_ON',
+      'HOSTED_ON',
+      'INTEGRATES_WITH',
+      'OWNS',
+      'REALIZES',
+      'SUPPORTS',
+    ]);
+    expect(getCustomMetaModelConfig(null).enabledObjectTypes).toEqual([
+      'Application',
+      'Capability',
+      'Enterprise',
+      'Technology',
+      'ValueStream',
+    ]);
+  });
+
+  test('missing Custom config falls back to seed, explicit empty stays empty', () => {
+    expect(getCustomMetaModelConfig({ custom: {} as any }).enabledObjectTypes.length).toBeGreaterThan(0);
+    expect(getCustomMetaModelConfig({ custom: { enabledObjectTypes: [], enabledRelationshipTypes: [] } }).enabledObjectTypes).toEqual([]);
   });
 
   test('Custom modeling disabled until at least one type enabled', () => {

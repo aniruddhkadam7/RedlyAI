@@ -1,17 +1,20 @@
 import type { Request, Response } from 'express';
 
 import { getRelationshipRepository } from '../backend/repository/RelationshipRepositoryStore';
+import { paginate } from '../mock-helpers/paging';
 
 export default {
-  'GET /api/relationships': (_req: Request, res: Response) => {
+  'GET /api/relationships': (req: Request, res: Response) => {
     const repo = getRelationshipRepository();
-    res.send({ success: true, data: repo.getAllRelationships() });
+    const result = paginate(repo.getAllRelationships(), req);
+    res.send({ success: true, ...result });
   },
 
   'GET /api/relationships/by-element/:elementId': (req: Request, res: Response) => {
     const elementId = String((req.params as { elementId?: string } | undefined)?.elementId ?? '').trim();
     const repo = getRelationshipRepository();
-    res.send({ success: true, data: repo.getRelationshipsForElement(elementId) });
+    const result = paginate(repo.getRelationshipsForElement(elementId), req);
+    res.send({ success: true, ...result });
   },
 
   'GET /api/relationships/by-type/:relationshipType': (req: Request, res: Response) => {
@@ -19,6 +22,7 @@ export default {
       (req.params as { relationshipType?: string } | undefined)?.relationshipType ?? '',
     ).trim();
     const repo = getRelationshipRepository();
-    res.send({ success: true, data: repo.getRelationshipsByType(relationshipType) });
+    const result = paginate(repo.getRelationshipsByType(relationshipType), req);
+    res.send({ success: true, ...result });
   },
 };

@@ -267,6 +267,16 @@ const GovernanceDashboardPage: React.FC = () => {
     }
   }, [eaRepository, metadata?.lifecycleCoverage]);
 
+  const isDraftModeling = React.useMemo(() => {
+    if (!eaRepository) return false;
+    const elements = Array.from(eaRepository.objects.values());
+    const relationships = eaRepository.relationships;
+    if (elements.length === 0 && relationships.length === 0) return false;
+    const allDraftElements = elements.every((el) => (el.attributes as any)?.modelingState === 'DRAFT');
+    const allDraftRelationships = relationships.every((rel) => (rel.attributes as any)?.modelingState === 'DRAFT');
+    return allDraftElements && allDraftRelationships;
+  }, [eaRepository]);
+
   const availableBaselines = React.useMemo(() => listBaselines(), [baselineModalOpen, plateauModalOpen]);
   const availablePlateaus = React.useMemo(() => listPlateaus(), [plateauModalOpen, roadmapModalOpen]);
 
@@ -298,26 +308,37 @@ const GovernanceDashboardPage: React.FC = () => {
     for (const [i, s] of workspaceDebt.invalidRelationshipInserts.entries()) {
       rows.push({
         key: `insert:${i}`,
-        severity: 'Error',
+        severity: s.severity,
         source: 'Relationship (Insert)',
-        message: s,
+        message: s.message,
         subject: '-',
       });
     }
 
-    for (const id of workspaceDebt.lifecycleTagMissingIds) {
+    for (const issue of workspaceDebt.lifecycleTagMissingIds) {
       rows.push({
-        key: `lifecycle:${id}`,
-        severity: 'Error',
+        key: `lifecycle:${issue.subjectId ?? issue.scope ?? issue.message}`,
+        severity: issue.severity,
         source: 'Lifecycle (Tagging)',
-        message: "Missing required lifecycle tag: set attributes.lifecycleState to 'As-Is' or 'To-Be'.",
-        subject: id,
+        message: issue.message,
+        subject: issue.subjectId ?? issue.scope ?? '-',
       });
     }
 
-    const rank = (sev: string) => (sev === 'Error' ? 3 : sev === 'Warning' ? 2 : 1);
+    const rank = (sev: string) =>
+      sev === 'BLOCKER' ? 4 : sev === 'ERROR' ? 3 : sev === 'WARNING' ? 2 : 1;
     return rows.sort((a, b) => rank(b.severity) - rank(a.severity) || a.source.localeCompare(b.source));
   }, [workspaceDebt]);
+
+  const modelingGapRows = React.useMemo(
+    () => workspaceDebtRows.filter((r) => r.severity === 'INFO'),
+    [workspaceDebtRows],
+  );
+
+  const governanceRiskRows = React.useMemo(
+    () => workspaceDebtRows.filter((r) => r.severity !== 'INFO'),
+    [workspaceDebtRows],
+  );
 
   const [logVersion, setLogVersion] = React.useState(0);
   const governanceLog = React.useMemo(() => {
@@ -647,11 +668,17 @@ const GovernanceDashboardPage: React.FC = () => {
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <Space size={24} wrap>
                 <Statistic title="Mode" value={metadata?.governanceMode ?? '—'} />
-                <Statistic title="Mandatory" value={workspaceDebt.summary.mandatoryFindingCount} />
-                <Statistic title="Rel Errors" value={workspaceDebt.summary.relationshipErrorCount} />
-                <Statistic title="Rel Warnings" value={workspaceDebt.summary.relationshipWarningCount} />
-                <Statistic title="Invalid Inserts" value={workspaceDebt.summary.invalidRelationshipInsertCount} />
-                <Statistic title="Total" value={workspaceDebt.summary.total} />
+                {isDraftModeling ? (
+                  <Tag color="gold">Draft modeling: counts hidden</Tag>
+                ) : (
+                  <>
+                    <Statistic title="Mandatory" value={workspaceDebt.summary.mandatoryFindingCount} />
+                    <Statistic title="Rel Errors" value={workspaceDebt.summary.relationshipErrorCount} />
+                    <Statistic title="Rel Warnings" value={workspaceDebt.summary.relationshipWarningCount} />
+                    <Statistic title="Invalid Inserts" value={workspaceDebt.summary.invalidRelationshipInsertCount} />
+                    <Statistic title="Total" value={workspaceDebt.summary.total} />
+                  </>
+                )}
               </Space>
 
               <Divider style={{ margin: '8px 0' }} />
@@ -667,18 +694,40 @@ const GovernanceDashboardPage: React.FC = () => {
                 />
               )}
 
+              <Typography.Text strong>Modeling gaps</Typography.Text>
               <Table
                 size="small"
                 rowKey="key"
-                dataSource={workspaceDebtRows}
-                pagination={{ pageSize: 10 }}
+                dataSource={modelingGapRows}
+                pagination={{ pageSize: 6 }}
+                locale={{ emptyText: 'No modeling gaps detected.' }}
+                columns={[
+                  {
+                    title: 'Severity',
+                    dataIndex: 'severity',
+                    width: 110,
+                    render: (sev: string) => <Tag color="default">{sev}</Tag>,
+                  },
+                  { title: 'Source', dataIndex: 'source', width: 220 },
+                  { title: 'Message', dataIndex: 'message' },
+                  { title: 'Subject', dataIndex: 'subject', width: 200 },
+                ]}
+              />
+
+              <Typography.Text strong>Governance risks</Typography.Text>
+              <Table
+                size="small"
+                rowKey="key"
+                dataSource={governanceRiskRows}
+                pagination={{ pageSize: 6 }}
+                locale={{ emptyText: 'No governance risks detected.' }}
                 columns={[
                   {
                     title: 'Severity',
                     dataIndex: 'severity',
                     width: 110,
                     render: (sev: string) => {
-                      const color = sev === 'Error' ? 'red' : sev === 'Warning' ? 'orange' : 'default';
+                      const color = sev === 'BLOCKER' || sev === 'ERROR' ? 'red' : sev === 'WARNING' ? 'orange' : 'default';
                       return <Tag color={color}>{sev}</Tag>;
                     },
                   },

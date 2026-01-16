@@ -1,6 +1,6 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { Result } from 'antd';
-import { history, useParams } from '@umijs/max';
+import { history, useModel, useParams } from '@umijs/max';
 import { CompressOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Checkbox, Collapse, Descriptions, Empty, Input, List, Modal, Radio, Select, Space, Tag, Tree, Typography, message } from 'antd';
 import type { DataNode } from 'antd/es/tree';
@@ -14,6 +14,7 @@ import type { ViewInstance, ViewAnnotation } from '@/diagram-studio/viewpoints/V
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import { useIdeShell } from '@/components/IdeShellLayout';
+import { ENABLE_RBAC, hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
 
 const LEGEND_COLORS = ['#4b9bff', '#13c2c2', '#52c41a', '#faad14', '#eb2f96', '#722ed1', '#1890ff', '#fa541c', '#a0a0a0'];
 
@@ -27,6 +28,21 @@ const hashString = (value: string | null | undefined): number => {
 };
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+const viewLayoutStorageKey = (viewId: string) => `ea.view.layout.positions:${viewId}`;
+
+const loadViewLayoutPositions = (viewId: string): Record<string, { x: number; y: number }> => {
+  if (!viewId) return {};
+  try {
+    const raw = localStorage.getItem(viewLayoutStorageKey(viewId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, { x: number; y: number }>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+};
 
 const isSoftDeleted = (attributes: Record<string, unknown> | null | undefined) => Boolean((attributes as any)?._deleted === true);
 
@@ -76,10 +92,11 @@ const buildCapabilityTree = (args: {
 const ViewRuntimePage: React.FC = () => {
   const params = useParams<{ viewId?: string }>();
   const viewId = (params.viewId ?? '').trim();
+  const { initialState } = useModel('@@initialState');
   const { eaRepository, metadata } = useEaRepository();
   const [viewsVersion, setViewsVersion] = React.useState(0);
   const { selection, setSelection, setSelectedElement } = useIdeSelection();
-  const { openPropertiesPanel } = useIdeShell();
+  const { openPropertiesPanel, openStudioEntry } = useIdeShell();
   const [scopeMode, setScopeMode] = React.useState<'entire' | 'enterprises' | 'capabilities' | 'applications'>('entire');
   const [scopeIds, setScopeIds] = React.useState<string[]>([]);
   const [scopeModalOpen, setScopeModalOpen] = React.useState(false);
@@ -94,6 +111,20 @@ const ViewRuntimePage: React.FC = () => {
   const [annotationKind, setAnnotationKind] = React.useState<'note' | 'callout' | 'highlight'>('note');
   const [annotationText, setAnnotationText] = React.useState('');
   const [annotationTargetId, setAnnotationTargetId] = React.useState<string | undefined>(undefined);
+
+  const userRole: RepositoryRole = React.useMemo(() => {
+    if (!ENABLE_RBAC) return 'Owner';
+    const access = initialState?.currentUser?.access;
+    if (access === 'admin') return 'Owner';
+    if (access === 'architect' || access === 'user') return 'Architect';
+    return 'Viewer';
+  }, [initialState?.currentUser?.access]);
+
+  const canModel =
+    hasRepositoryPermission(userRole, 'createElement') ||
+    hasRepositoryPermission(userRole, 'editElement') ||
+    hasRepositoryPermission(userRole, 'createRelationship') ||
+    hasRepositoryPermission(userRole, 'editRelationship');
 
   const view: ViewInstance | undefined = React.useMemo(() => {
     if (!viewId) return undefined;
@@ -524,6 +555,38 @@ const ViewRuntimePage: React.FC = () => {
   const cyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const cyRef = React.useRef<Core | null>(null);
 
+  const buildSeedLayout = React.useCallback(() => {
+    const positions = loadViewLayoutPositions(viewId);
+    const nodes = filteredElements.map((el, index) => {
+      const saved = positions[el.id];
+      const fallbackX = 80 + (index % 4) * 180;
+      const fallbackY = 80 + Math.floor(index / 4) * 140;
+      return {
+        id: el.id,
+        label: ((el.attributes as any)?.name as string) || el.id,
+        elementType: el.type,
+        x: saved?.x ?? fallbackX,
+        y: saved?.y ?? fallbackY,
+      };
+    });
+    const edges = filteredRelationships.map((rel) => ({
+      id: rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
+      source: rel.fromId,
+      target: rel.toId,
+      relationshipType: rel.type,
+    }));
+    return { nodes, edges };
+  }, [filteredElements, filteredRelationships, viewId]);
+
+  const handleEditInStudio = React.useCallback(() => {
+    if (!view) return;
+    openStudioEntry({
+      name: `${view.name} – Draft`,
+      description: view.description?.trim() || '',
+      layout: buildSeedLayout(),
+    });
+  }, [buildSeedLayout, openStudioEntry, view]);
+
   const focusNodeById = React.useCallback(
     (nodeId: string, opts?: { openProperties?: boolean }) => {
       const cy = cyRef.current;
@@ -777,7 +840,16 @@ const ViewRuntimePage: React.FC = () => {
     <PageContainer
       title={view.name}
       subTitle={`Viewpoint: ${viewpoint.name ?? view.viewpointId}`}
-      extra={<Tag color="default">Read-only</Tag>}
+      extra={
+        <Space>
+          <Tag color="default">Read-only</Tag>
+          {canModel ? (
+            <Button type="primary" onClick={handleEditInStudio}>
+              Edit in Studio
+            </Button>
+          ) : null}
+        </Space>
+      }
       headerContent={
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
           <Alert type="info" showIcon message="VIEW RUNTIME ACTIVE" banner />

@@ -12,13 +12,7 @@ export type EaProjectContextValue = {
 const EaProjectContext = React.createContext<EaProjectContextValue | undefined>(undefined);
 
 export const EaProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Bypass project check - always provide a default project
-  const [project, setProject] = React.useState<EaProject | null>({
-    id: 'default-project',
-    name: 'Default Project',
-    description: '',
-    createdAt: new Date().toISOString(),
-  });
+  const [project, setProject] = React.useState<EaProject | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   const refreshProject = React.useCallback(async () => {

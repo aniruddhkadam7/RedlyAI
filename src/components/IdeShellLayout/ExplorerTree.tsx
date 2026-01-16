@@ -15,7 +15,7 @@ import {
   SafetyOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Descriptions, Dropdown, Input, Modal, Select, Space, Tree, Typography, message, notification } from 'antd';
+import { Alert, Button, Descriptions, Dropdown, Form, Input, Modal, Select, Space, Tree, Typography, message, notification } from 'antd';
 import type { MenuProps } from 'antd';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 import React from 'react';
@@ -31,6 +31,7 @@ import {
   isValidRelationshipType,
 } from '@/pages/dependency-view/utils/eaMetaModel';
 import { isCustomFrameworkModelingEnabled } from '@/repository/customFrameworkConfig';
+import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
 import { hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
 import { guardInitializationForModeling } from '@/repository/elementCreationPolicy';
 import { getViewRepository, deleteView as deleteViewById, updateViewRoot } from '../../../backend/views/ViewRepositoryStore';
@@ -634,6 +635,7 @@ const ExplorerTree: React.FC = () => {
   const [relationshipSource, setRelationshipSource] = React.useState<{ id: string; type: ObjectType; name: string } | null>(null);
   const [selectedRelationshipType, setSelectedRelationshipType] = React.useState<RelationshipType | ''>('');
   const [selectedTargetId, setSelectedTargetId] = React.useState<string>('');
+  const createModalOpenRef = React.useRef(false);
   const [baselinePreview, setBaselinePreview] = React.useState<Baseline | null>(null);
   const [baselinePreviewOpen, setBaselinePreviewOpen] = React.useState(false);
   const [addToViewModalOpen, setAddToViewModalOpen] = React.useState(false);
@@ -1004,6 +1006,14 @@ const ExplorerTree: React.FC = () => {
     const baselines = listBaselines();
     const plateaus = listPlateaus();
     const roadmaps = listRoadmaps();
+    const isObjectTypeVisible = (type: ObjectType): boolean => {
+      const framework = metadata?.referenceFramework ?? null;
+      if (!framework) return true;
+      if (framework === 'Custom') {
+        return isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, type);
+      }
+      return isObjectTypeAllowedForReferenceFramework(framework, type);
+    };
     const collectionNode = (args: {
       key: string;
       title: string;
@@ -1110,12 +1120,10 @@ const ExplorerTree: React.FC = () => {
               },
             ];
 
-    const businessRoot: DataNode = {
-      key: ROOT_KEYS.business,
-      title: 'Business',
-      icon: <DatabaseOutlined />,
-      children:
-          scope === 'Domain'
+    const businessChildren: DataNode[] = (() => {
+      if (scope === 'Domain') {
+        return [
+          ...(isObjectTypeVisible('Capability')
             ? [
                 collectionNode({
                   key: 'explorer:business:capabilities',
@@ -1123,6 +1131,10 @@ const ExplorerTree: React.FC = () => {
                   icon: <ApartmentOutlined />,
                   children: capabilityHierarchy({ objectsById, relationships, icon: <ApartmentOutlined /> }),
                 }),
+              ]
+            : []),
+          ...(isObjectTypeVisible('BusinessService')
+            ? [
                 collectionNode({
                   key: 'explorer:business:business-services',
                   title: 'Business Services',
@@ -1130,52 +1142,87 @@ const ExplorerTree: React.FC = () => {
                   children: objectLeaves({ objectsById, type: 'BusinessService', icon: <ForkOutlined /> }),
                 }),
               ]
-            : scope === 'Programme'
-              ? [
-                  collectionNode({
-                    key: 'explorer:business:capabilities',
-                    title: 'Capabilities',
-                    icon: <ApartmentOutlined />,
-                    children: capabilityHierarchy({ objectsById, relationships, icon: <ApartmentOutlined /> }),
-                  }),
-                ]
-              : [
-                  collectionNode({
-                    key: 'explorer:business:enterprises',
-                    title: 'Enterprises',
-                    icon: <ApartmentOutlined />,
-                    children: scope === 'Business Unit' ? businessUnitEnterpriseChildren : enterpriseChildren,
-                  }),
-                  collectionNode({
-                    key: 'explorer:business:capabilities',
-                    title: 'Capabilities',
-                    icon: <ApartmentOutlined />,
-                    children: capabilityHierarchy({ objectsById, relationships, icon: <ApartmentOutlined /> }),
-                  }),
-                  collectionNode({
-                    key: 'explorer:business:business-services',
-                    title: 'Business Services',
-                    icon: <ForkOutlined />,
-                    children: objectLeaves({ objectsById, type: 'BusinessService', icon: <ForkOutlined /> }),
-                  }),
-                  collectionNode({
-                    key: 'explorer:business:processes',
-                    title: 'Business Processes',
-                    icon: <ForkOutlined />,
-                    children: objectLeaves({ objectsById, type: 'BusinessProcess', icon: <ForkOutlined /> }),
-                  }),
-                  collectionNode({
-                    key: 'explorer:business:departments',
-                    title: 'Departments',
-                    icon: <TeamOutlined />,
-                    children: enterpriseHierarchy({
-                      objectsById,
-                      relationships,
-                      enterpriseIcon: <ApartmentOutlined />,
-                      departmentIcon: <TeamOutlined />,
-                    }),
-                  }),
-                ],
+            : []),
+        ];
+      }
+
+      if (scope === 'Programme') {
+        return isObjectTypeVisible('Capability')
+          ? [
+              collectionNode({
+                key: 'explorer:business:capabilities',
+                title: 'Capabilities',
+                icon: <ApartmentOutlined />,
+                children: capabilityHierarchy({ objectsById, relationships, icon: <ApartmentOutlined /> }),
+              }),
+            ]
+          : [];
+      }
+
+      return [
+        ...(isObjectTypeVisible('Enterprise')
+          ? [
+              collectionNode({
+                key: 'explorer:business:enterprises',
+                title: 'Enterprises',
+                icon: <ApartmentOutlined />,
+                children: scope === 'Business Unit' ? businessUnitEnterpriseChildren : enterpriseChildren,
+              }),
+            ]
+          : []),
+        ...(isObjectTypeVisible('Capability')
+          ? [
+              collectionNode({
+                key: 'explorer:business:capabilities',
+                title: 'Capabilities',
+                icon: <ApartmentOutlined />,
+                children: capabilityHierarchy({ objectsById, relationships, icon: <ApartmentOutlined /> }),
+              }),
+            ]
+          : []),
+        ...(isObjectTypeVisible('BusinessService')
+          ? [
+              collectionNode({
+                key: 'explorer:business:business-services',
+                title: 'Business Services',
+                icon: <ForkOutlined />,
+                children: objectLeaves({ objectsById, type: 'BusinessService', icon: <ForkOutlined /> }),
+              }),
+            ]
+          : []),
+        ...(isObjectTypeVisible('BusinessProcess')
+          ? [
+              collectionNode({
+                key: 'explorer:business:processes',
+                title: 'Business Processes',
+                icon: <ForkOutlined />,
+                children: objectLeaves({ objectsById, type: 'BusinessProcess', icon: <ForkOutlined /> }),
+              }),
+            ]
+          : []),
+        ...(isObjectTypeVisible('Department')
+          ? [
+              collectionNode({
+                key: 'explorer:business:departments',
+                title: 'Departments',
+                icon: <TeamOutlined />,
+                children: enterpriseHierarchy({
+                  objectsById,
+                  relationships,
+                  enterpriseIcon: <ApartmentOutlined />,
+                  departmentIcon: <TeamOutlined />,
+                }),
+              }),
+            ]
+          : []),
+      ];
+    })();
+
+    const businessRoot: DataNode = {
+      key: ROOT_KEYS.business,
+      title: 'Business',
+      icon: <DatabaseOutlined />,
+      children: businessChildren,
     };
 
     const applicationCollectionChildren =
@@ -1190,48 +1237,52 @@ const ExplorerTree: React.FC = () => {
           ? applicationsByLifecycleGrouping({ objectsById, applicationIcon: <AppstoreOutlined /> })
           : objectLeaves({ objectsById, type: 'Application', icon: <AppstoreOutlined /> });
 
+    const applicationChildren: DataNode[] = [
+      ...(isObjectTypeVisible('Application')
+        ? [
+            collectionNode({
+              key: 'explorer:application:applications',
+              title: 'Applications',
+              icon: <AppstoreOutlined />,
+              children: applicationCollectionChildren,
+            }),
+          ]
+        : []),
+      ...((scope === 'Programme') || !isObjectTypeVisible('ApplicationService')
+        ? []
+        : [
+            collectionNode({
+              key: 'explorer:application:application-services',
+              title: 'Application Services',
+              icon: <AppstoreOutlined />,
+              children: objectLeaves({ objectsById, type: 'ApplicationService', icon: <AppstoreOutlined /> }),
+            }),
+          ]),
+    ];
+
     const applicationRoot: DataNode = {
       key: ROOT_KEYS.application,
       title: 'Application',
       icon: <DatabaseOutlined />,
-      children:
-        scope === 'Programme'
-          ? [
-              collectionNode({
-                key: 'explorer:application:applications',
-                title: 'Applications',
-                icon: <AppstoreOutlined />,
-                children: applicationCollectionChildren,
-              }),
-            ]
-          : [
-              collectionNode({
-                key: 'explorer:application:applications',
-                title: 'Applications',
-                icon: <AppstoreOutlined />,
-                children: applicationCollectionChildren,
-              }),
-              collectionNode({
-                key: 'explorer:application:application-services',
-                title: 'Application Services',
-                icon: <AppstoreOutlined />,
-                children: objectLeaves({ objectsById, type: 'ApplicationService', icon: <AppstoreOutlined /> }),
-              }),
-            ],
+      children: applicationChildren,
     };
+
+    const technologyChildren: DataNode[] = isObjectTypeVisible('Technology')
+      ? [
+          collectionNode({
+            key: 'explorer:technology:technologies',
+            title: 'Technologies',
+            icon: <CloudOutlined />,
+            children: technologiesByLayerGrouping({ objectsById, technologyIcon: <CloudOutlined /> }),
+          }),
+        ]
+      : [];
 
     const technologyRoot: DataNode = {
       key: ROOT_KEYS.technology,
       title: 'Technology',
       icon: <DatabaseOutlined />,
-      children: [
-        collectionNode({
-          key: 'explorer:technology:technologies',
-          title: 'Technologies',
-          icon: <CloudOutlined />,
-          children: technologiesByLayerGrouping({ objectsById, technologyIcon: <CloudOutlined /> }),
-        }),
-      ],
+      children: technologyChildren,
     };
 
     const viewsRoot: DataNode = {
@@ -1320,9 +1371,13 @@ const ExplorerTree: React.FC = () => {
         ];
       }
 
-      if (scope === 'Business Unit') return [businessRoot, applicationRoot, technologyRoot];
+      if (scope === 'Business Unit') {
+        return [businessRoot, applicationRoot, technologyRoot].filter((n) => n.children.length > 0);
+      }
 
-      if (scope === 'Domain') return [businessRoot, applicationRoot];
+      if (scope === 'Domain') {
+        return [businessRoot, applicationRoot].filter((n) => n.children.length > 0);
+      }
 
       if (scope === 'Programme') {
         const implMigRoot: DataNode = {
@@ -1398,16 +1453,14 @@ const ExplorerTree: React.FC = () => {
         return [
           implMigRoot,
           programmeViewsRoot,
-          applicationRoot,
-          businessRoot,
-          ...(showTechnologyInProgrammeScope ? [technologyRoot] : []),
+          ...[applicationRoot, businessRoot, ...(showTechnologyInProgrammeScope ? [technologyRoot] : [])].filter(
+            (n) => n.children.length > 0,
+          ),
         ];
       }
 
       return [
-        businessRoot,
-        applicationRoot,
-        technologyRoot,
+        ...[businessRoot, applicationRoot, technologyRoot].filter((n) => n.children.length > 0),
         {
           key: ROOT_KEYS.implMig,
           title: 'Implementation & Migration',
@@ -1648,14 +1701,6 @@ const ExplorerTree: React.FC = () => {
         return;
       }
 
-      if (type === 'Enterprise') {
-        const liveEnterprises = countLiveObjectsByType(eaRepository.objects, 'Enterprise');
-        if (liveEnterprises >= 1) {
-          message.warning('Only one Enterprise root is allowed per repository.');
-          return;
-        }
-      }
-
       if (metadata?.referenceFramework === 'Custom') {
         if (!customModelingEnabled) {
           message.warning('Custom framework: define at least one element type in Metamodel to enable modeling.');
@@ -1745,41 +1790,40 @@ const ExplorerTree: React.FC = () => {
         },
       ].filter((g) => g.options.length > 0);
 
+      if (createModalOpenRef.current) return;
+      createModalOpenRef.current = true;
+
       Modal.confirm({
         title: `Create ${titleForObjectType(type)}`,
         okText: 'Create',
         cancelText: 'Cancel',
+        maskStyle: { backdropFilter: 'none', backgroundColor: 'rgba(0, 0, 0, 0.45)' },
+        afterClose: () => {
+          createModalOpenRef.current = false;
+        },
         content: (
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div>
-              <div style={{ marginBottom: 4, fontWeight: 500 }}>
-                Name <span style={{ color: '#ff4d4f' }}>*</span>
-              </div>
-              <input
+          <Form layout="vertical">
+            <Form.Item label="Name" required>
+              <Input
                 defaultValue={name}
                 placeholder="Enter name"
                 onChange={(e) => {
                   name = e.target.value;
                 }}
-                style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 6 }}
               />
-            </div>
-            <div>
-              <div style={{ marginBottom: 4, fontWeight: 500 }}>Description</div>
-              <textarea
+            </Form.Item>
+            <Form.Item label="Description">
+              <Input.TextArea
                 defaultValue={description}
                 placeholder="Enter description (optional)"
+                autoSize={{ minRows: 3, maxRows: 6 }}
                 onChange={(e) => {
                   description = e.target.value;
                 }}
-                style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 6, minHeight: 100, resize: 'vertical' }}
               />
-            </div>
+            </Form.Item>
             {isStrictGovernance ? (
-              <div>
-                <div style={{ marginBottom: 4, fontWeight: 500 }}>
-                  Owner <span style={{ color: '#ff4d4f' }}>*</span>
-                </div>
+              <Form.Item label="Owner" required>
                 <Select
                   placeholder="Select owner"
                   showSearch
@@ -1789,11 +1833,10 @@ const ExplorerTree: React.FC = () => {
                   onChange={(v) => {
                     ownerId = String(v);
                   }}
-                  style={{ width: '100%' }}
                 />
-              </div>
+              </Form.Item>
             ) : null}
-          </div>
+          </Form>
         ),
         onOk: () => {
           const finalName = (name ?? '').trim();
@@ -1869,7 +1912,11 @@ const ExplorerTree: React.FC = () => {
 
           message.success(`${titleForObjectType(type)} created.`);
           setRefreshToken((x) => x + 1);
+          createModalOpenRef.current = false;
           return undefined;
+        },
+        onCancel: () => {
+          createModalOpenRef.current = false;
         },
       });
     },
@@ -2274,10 +2321,6 @@ const ExplorerTree: React.FC = () => {
           createType !== 'Programme' &&
           countLiveObjectsByType(eaRepository?.objects ?? new Map<string, any>(), 'Programme') < 1;
 
-        const enterpriseCreateDisabled =
-          createType === 'Enterprise' &&
-          countLiveObjectsByType(eaRepository?.objects ?? new Map<string, any>(), 'Enterprise') >= 1;
-
         const initializationCreateDisabled = false;
 
         const createLabel = canCreateElement
@@ -2286,7 +2329,7 @@ const ExplorerTree: React.FC = () => {
         const importLabel = canImport ? 'Import (CSV / Excel)' : readOnlyLabel('Import (CSV / Excel)');
         const bulkLabel = canBulkEdit ? 'Bulk Edit' : readOnlyLabel('Bulk Edit');
 
-        const createDisabled = !canCreateElement || programmeCreateBlocked || enterpriseCreateDisabled;
+        const createDisabled = !canCreateElement || programmeCreateBlocked;
         const importDisabled = !canImport;
         const bulkDisabled = !canBulkEdit;
 
@@ -2303,10 +2346,6 @@ const ExplorerTree: React.FC = () => {
               }
               if (programmeCreateBlocked) {
                 message.warning('Create at least one Programme before creating other elements.');
-                return;
-              }
-              if (enterpriseCreateDisabled) {
-                message.warning('Only one Enterprise root is allowed per repository.');
                 return;
               }
               createObject(createType);

@@ -12,9 +12,23 @@ type MockModuleShape = {
 } & Record<string, unknown>;
 
 const PORT = Number(process.env.API_PORT ?? 3001);
+const REQUEST_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS ?? 15000);
+const NEO4J_CONNECT_TIMEOUT_MS = Number(process.env.NEO4J_CONNECT_TIMEOUT_MS ?? 5000);
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+
+app.use((req, res, next) => {
+  const timer = setTimeout(() => {
+    if (res.headersSent) return;
+    res.status(504).json({ success: false, errorMessage: 'Gateway Timeout' });
+  }, REQUEST_TIMEOUT_MS);
+
+  res.on('finish', () => clearTimeout(timer));
+  res.on('close', () => clearTimeout(timer));
+  req.setTimeout(REQUEST_TIMEOUT_MS);
+  next();
+});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -69,7 +83,17 @@ const mockFiles = fs
   .map((name) => path.join(mocksDir, name));
 
 const bootstrap = async () => {
-  await initNeo4jGraphFromEnv();
+  const neo4jInit = initNeo4jGraphFromEnv();
+  await Promise.race([
+    neo4jInit,
+    new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.warn('[neo4j] init timeout; continuing without graph adapter');
+        resolve();
+      }, NEO4J_CONNECT_TIMEOUT_MS);
+    }),
+  ]);
 
   for (const file of mockFiles) {
     loadMockFile(file);

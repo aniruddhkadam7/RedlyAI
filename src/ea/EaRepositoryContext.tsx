@@ -17,6 +17,7 @@ import {
   isRelationshipTypeAllowedForReferenceFramework,
 } from '@/repository/referenceFrameworkPolicy';
 import {
+  CUSTOM_CORE_EA_SEED,
   getCustomMetaModelConfig,
   isCustomFrameworkModelingEnabled,
   isObjectTypeEnabledForFramework,
@@ -51,6 +52,8 @@ export type EaRepositoryContextValue = {
 const EaRepositoryContext = React.createContext<EaRepositoryContextValue | undefined>(undefined);
 
 const STORAGE_KEY = 'ea.repository.snapshot.v1';
+const PROJECT_DIRTY_KEY = 'ea.project.dirty';
+const PROJECT_STATUS_EVENT = 'ea:projectStatusChanged';
 const HISTORY_LIMIT = 50;
 
 const stableStringify = (value: unknown): string => {
@@ -840,6 +843,14 @@ export const EaRepositoryProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setCanUndo(false);
       setCanRedo(false);
 
+      try {
+        const serialized = JSON.stringify(serializeRepository(res.repo, res.metadata));
+        lastSerializedRef.current = serialized;
+        suppressHistoryRef.current = true;
+      } catch {
+        lastSerializedRef.current = null;
+      }
+
       setEaRepositoryUnsafe(res.repo);
       setMetadata(freezeMetadata(res.metadata));
       return { ok: true } as const;
@@ -883,15 +894,30 @@ export const EaRepositoryProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const meta =
       metaRes.metadata.referenceFramework === 'Custom'
-        ? {
-            ...metaRes.metadata,
-            frameworkConfig: {
-              ...(metaRes.metadata.frameworkConfig ?? {}),
-              custom: {
-                enabledObjectTypes: [],
+        ? (() => {
+            const provided = metaRes.metadata.frameworkConfig?.custom as any | undefined;
+            const hasObjects = Array.isArray(provided?.enabledObjectTypes);
+            const hasRels = Array.isArray(provided?.enabledRelationshipTypes);
+
+            const custom =
+              hasObjects || hasRels
+                ? {
+                    enabledObjectTypes: Array.isArray(provided?.enabledObjectTypes) ? provided.enabledObjectTypes : [],
+                    enabledRelationshipTypes: Array.isArray(provided?.enabledRelationshipTypes) ? provided.enabledRelationshipTypes : [],
+                  }
+                : {
+                    enabledObjectTypes: CUSTOM_CORE_EA_SEED.enabledObjectTypes,
+                    enabledRelationshipTypes: CUSTOM_CORE_EA_SEED.enabledRelationshipTypes,
+                  };
+
+            return {
+              ...metaRes.metadata,
+              frameworkConfig: {
+                ...(metaRes.metadata.frameworkConfig ?? {}),
+                custom,
               },
-            },
-          }
+            };
+          })()
         : metaRes.metadata;
 
     setEaRepositoryUnsafe(repo);
@@ -982,14 +1008,30 @@ export const EaRepositoryProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (!eaRepository || !metadata) {
         localStorage.removeItem(STORAGE_KEY);
         lastSerializedRef.current = null;
+        try {
+          localStorage.removeItem(PROJECT_DIRTY_KEY);
+          window.dispatchEvent(new Event(PROJECT_STATUS_EVENT));
+        } catch {
+          // ignore
+        }
         return;
       }
 
       const nextSerialized = JSON.stringify(serializeRepository(eaRepository, metadata));
 
+      const prevSerialized = lastSerializedRef.current;
+      const isDirty = prevSerialized ? prevSerialized !== nextSerialized : true;
+      if (isDirty) {
+        try {
+          localStorage.setItem(PROJECT_DIRTY_KEY, 'true');
+          window.dispatchEvent(new Event(PROJECT_STATUS_EVENT));
+        } catch {
+          // ignore
+        }
+      }
+
       // Track history (repo-level undo/redo) for meaningful changes.
       if (!suppressHistoryRef.current) {
-        const prevSerialized = lastSerializedRef.current;
         if (prevSerialized && prevSerialized !== nextSerialized) {
           undoStackRef.current.push(prevSerialized);
           if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
@@ -1020,8 +1062,8 @@ export const EaRepositoryProvider: React.FC<{ children: React.ReactNode }> = ({ 
           const items: string[] = [];
           for (const f of debt.repoReport.findings.slice(0, 3)) items.push(`Mandatory: ${f.message} (${f.elementId})`);
           for (const f of debt.relationshipReport.findings.slice(0, 3)) items.push(`Relationship: ${f.message} (${f.subjectId})`);
-          for (const s of debt.invalidRelationshipInserts.slice(0, 3)) items.push(`Relationship insert: ${s}`);
-          for (const id of debt.lifecycleTagMissingIds.slice(0, 3)) items.push(`Lifecycle tag missing: ${id}`);
+          for (const s of debt.invalidRelationshipInserts.slice(0, 3)) items.push(`Relationship insert: ${s.message}`);
+          for (const issue of debt.lifecycleTagMissingIds.slice(0, 3)) items.push(`Lifecycle tag missing: ${issue.message}`);
           return items;
         };
 
