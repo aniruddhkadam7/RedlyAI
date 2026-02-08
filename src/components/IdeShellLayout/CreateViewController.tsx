@@ -1,17 +1,14 @@
 import React from 'react';
-import { Modal } from 'antd';
 import { useModel } from '@umijs/max';
 
-import { CreateViewWizard } from '@/pages/views/create';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { ENABLE_RBAC, hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
+import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 
 const CreateViewController: React.FC = () => {
   const { initialState } = useModel('@@initialState');
   const { metadata } = useEaRepository();
-  const [open, setOpen] = React.useState(false);
-  const [modalKey, setModalKey] = React.useState(0);
 
   const userRole: RepositoryRole = React.useMemo(() => {
     if (!ENABLE_RBAC) return 'Owner';
@@ -36,74 +33,36 @@ const CreateViewController: React.FC = () => {
 
   React.useEffect(() => {
     const onStudioViewCreate = () => {
+      const now = new Date().toISOString();
+      const defaultViewpointId = ViewpointRegistry.list()[0]?.id ?? 'application-landscape';
+      const draft: ViewInstance = {
+        id: generateWorkingViewId(),
+        name: 'Untitled View',
+        description: '',
+        viewpointId: defaultViewpointId,
+        scope: { kind: 'ManualSelection', elementIds: [] },
+        layoutMetadata: { workingView: true, positions: {}, visibleElementIds: [], freeShapes: [], freeConnectors: [] },
+        createdAt: now,
+        createdBy: initialState?.currentUser?.name || initialState?.currentUser?.userid || 'studio',
+        status: 'DRAFT',
+      };
+
       try {
-        setModalKey((prev) => prev + 1);
-        setOpen(true);
+        window.dispatchEvent(
+          new CustomEvent('ea:studio.view.open', {
+            detail: { viewId: draft.id, view: draft, readOnly: viewReadOnly, working: true, openMode: 'new' },
+          }),
+        );
       } catch (err) {
-        console.error('[CreateViewController] Failed to open Create View modal.', err);
+        console.error('[CreateViewController] Failed to open working view in Studio.', err);
       }
     };
 
     window.addEventListener('ea:studio.view.create', onStudioViewCreate as EventListener);
     return () => window.removeEventListener('ea:studio.view.create', onStudioViewCreate as EventListener);
-  }, []);
+  }, [generateWorkingViewId, initialState?.currentUser?.name, initialState?.currentUser?.userid, viewReadOnly]);
 
-  const handleCreated = React.useCallback(
-    (view: ViewInstance) => {
-      try {
-        const nextId = view.id?.trim() || generateWorkingViewId();
-        const draft: ViewInstance = {
-          ...view,
-          id: nextId,
-          status: 'DRAFT',
-          layoutMetadata: { ...(view.layoutMetadata ?? {}), workingView: true },
-        };
-        setOpen(false);
-        setModalKey((prev) => prev + 1);
-        if (canEditView) {
-          try {
-            window.dispatchEvent(
-              new CustomEvent('ea:studio.view.open', {
-                detail: { viewId: draft.id, view: draft, readOnly: viewReadOnly, working: true },
-              }),
-            );
-          } catch (err) {
-            console.error('[CreateViewController] Failed to open working view in Studio.', err);
-          }
-        }
-      } catch (err) {
-        console.error('[CreateViewController] Failed during Create View completion.', err);
-      }
-    },
-    [canEditView, generateWorkingViewId, viewReadOnly],
-  );
-
-  return (
-    <Modal
-      key={modalKey}
-      open={open}
-      title="Create View"
-      onCancel={() => {
-        try {
-          setOpen(false);
-          setModalKey((prev) => prev + 1);
-        } catch (err) {
-          console.error('[CreateViewController] Failed to close Create View modal.', err);
-        }
-      }}
-      footer={null}
-      destroyOnClose
-      width={820}
-    >
-      <CreateViewWizard
-        embedded
-        navigateOnCreate={false}
-        showCreatedPreview={false}
-        successMessage="View created"
-        onCreated={handleCreated}
-      />
-    </Modal>
-  );
+  return null;
 };
 
 export default CreateViewController;

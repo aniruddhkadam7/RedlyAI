@@ -378,6 +378,12 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+  contain: content;
+  will-change: scroll-position;
 }
 
 
@@ -950,6 +956,12 @@
   border: 1px solid var(--ide-border);
   border-radius: 8px;
   padding: 12px;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+  contain: content;
+  will-change: scroll-position;
 }
 
 .studioWorkspaceCard {

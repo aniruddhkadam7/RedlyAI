@@ -2,7 +2,6 @@ import {
   ApartmentOutlined,
   DeleteOutlined,
   EditOutlined,
-  FileAddOutlined,
   FileTextOutlined,
 } from '@ant-design/icons';
 import { Button, Input, Modal, Tree } from 'antd';
@@ -21,7 +20,7 @@ import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 
 const buildTree = (
   views: ViewInstance[],
-  opts?: { showCreate?: boolean; onRename?: (view: ViewInstance) => void; onDelete?: (view: ViewInstance) => void },
+  opts?: { onRename?: (view: ViewInstance) => void; onDelete?: (view: ViewInstance) => void },
 ): DataNode[] => {
   const savedOnly = views.filter((v) => v.status === 'SAVED');
   const sorted = [...savedOnly].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -76,16 +75,6 @@ const buildTree = (
         });
 
   const children: DataNode[] = [
-    ...(opts?.showCreate === false
-      ? []
-      : [
-          {
-            key: '/views/create',
-            title: 'Create View…',
-            icon: <FileAddOutlined />,
-            isLeaf: true,
-          } satisfies DataNode,
-        ]),
     {
       key: 'views:saved',
       title: 'Saved Views',
@@ -170,18 +159,18 @@ const DiagramsTree: React.FC = () => {
   const [treeData, setTreeData] = React.useState<DataNode[]>(() => {
     try {
       const views = ViewStore.list();
-      return buildTree(views, { showCreate: true, onRename: handleRenameView, onDelete: handleDeleteView });
+      return buildTree(views, { onRename: handleRenameView, onDelete: handleDeleteView });
     } catch {
-      return buildTree([], { showCreate: true, onRename: handleRenameView, onDelete: handleDeleteView });
+      return buildTree([], { onRename: handleRenameView, onDelete: handleDeleteView });
     }
   });
 
   React.useEffect(() => {
     const refresh = () => {
       try {
-        setTreeData(buildTree(ViewStore.list(), { showCreate: true, onRename: handleRenameView, onDelete: handleDeleteView }));
+        setTreeData(buildTree(ViewStore.list(), { onRename: handleRenameView, onDelete: handleDeleteView }));
       } catch {
-        setTreeData(buildTree([], { showCreate: true, onRename: handleRenameView, onDelete: handleDeleteView }));
+        setTreeData(buildTree([], { onRename: handleRenameView, onDelete: handleDeleteView }));
       }
     };
 
@@ -213,20 +202,9 @@ const DiagramsTree: React.FC = () => {
         selectable
         treeData={treeData}
         selectedKeys={selectedKeys}
-        onSelect={(selectedKeys: React.Key[], info) => {
+        onSelect={(selectedKeys: React.Key[], _info) => {
           const key = selectedKeys?.[0];
           if (typeof key !== 'string') return;
-
-          if (key === '/views/create') {
-            if (studioMode) {
-              setSelection({ kind: 'route', keys: [] });
-              window.dispatchEvent(new CustomEvent('ea:studio.view.create'));
-              return;
-            }
-            setSelection({ kind: 'route', keys: [] });
-            openRouteTab(key);
-            return;
-          }
 
           if (key.startsWith('view:')) {
             const viewId = key.slice('view:'.length);
@@ -235,9 +213,7 @@ const DiagramsTree: React.FC = () => {
             if (studioMode) {
               setSelectedElement(null);
               setSelection({ kind: 'none', keys: [] });
-              const native = info?.nativeEvent as MouseEvent | KeyboardEvent | undefined;
-              const modifier = Boolean(native && (native.metaKey || native.ctrlKey || native.shiftKey));
-              requestStudioViewSwitch(viewId, { openMode: modifier ? 'new' : 'replace' });
+              requestStudioViewSwitch(viewId, { openMode: 'new' });
               return;
             }
             openRouteTab(`/views/${viewId}`);

@@ -9,6 +9,21 @@ export type ViewScopeResolutionResult = {
 
 const normalize = (value: string): string => (value ?? '').trim();
 
+/**
+ * Resolve the elements and relationships visible in a view.
+ *
+ * VIEW ISOLATION RULE: A view is an **isolated projection** of the repository.
+ * Only elements and relationships explicitly listed in the view's membership
+ * sets are returned. Elements and relationships NEVER leak between views.
+ *
+ * - `ManualSelection` scope: only elements whose IDs are in `scope.elementIds`
+ *   AND that match the viewpoint's allowed element types are included.
+ * - `EntireRepository` scope: elements matching the viewpoint's allowed types
+ *   are included (backward-compatible, but new views should use ManualSelection).
+ * - Relationships: if `view.visibleRelationshipIds` is defined, ONLY those
+ *   relationships are considered. Otherwise, all repository relationships whose
+ *   type is allowed AND whose endpoints are both visible are included.
+ */
 export function resolveViewScope(args: {
   readonly view: ViewInstance;
   readonly repository: EaRepository;
@@ -33,11 +48,26 @@ export function resolveViewScope(args: {
 
   const allowedIds = new Set(elements.map((e) => normalize(e.id)));
 
+  // VIEW ISOLATION: If the view declares visibleRelationshipIds, only those
+  // relationships are eligible. This prevents relationships created in other
+  // views from appearing here.
+  const visibleRelIds = view.visibleRelationshipIds;
+  const hasExplicitRelFilter = Array.isArray(visibleRelIds) && visibleRelIds.length > 0;
+  const visibleRelIdSet = hasExplicitRelFilter
+    ? new Set(visibleRelIds?.map(normalize).filter(Boolean))
+    : null;
+
   const relationships = repository.relationships.filter((rel) => {
     if (!allowedRelationshipTypes.has(normalize(rel.type))) return false;
     const fromId = normalize(rel.fromId);
     const toId = normalize(rel.toId);
-    return allowedIds.has(fromId) && allowedIds.has(toId);
+    if (!allowedIds.has(fromId) || !allowedIds.has(toId)) return false;
+    // If the view tracks explicit relationship IDs, enforce the filter
+    if (visibleRelIdSet) {
+      const relId = normalize(rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`);
+      return visibleRelIdSet.has(relId);
+    }
+    return true;
   });
 
   return { elements, relationships };

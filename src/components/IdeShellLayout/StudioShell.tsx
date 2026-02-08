@@ -7,6 +7,20 @@ import cytoscape, { type Core } from 'cytoscape';
 import styles from './style.module.less';
 import { EA_CONNECTOR_REGISTRY, EA_SHAPE_REGISTRY, hasRegisteredEaShape } from '@/ea/archimateShapeRegistry';
 import { EA_LAYERS, OBJECT_TYPE_DEFINITIONS, RELATIONSHIP_TYPE_DEFINITIONS, type EaLayer, type EaObjectTypeDefinition, type ObjectType, type RelationshipType } from '@/pages/dependency-view/utils/eaMetaModel';
+import {
+  resolveConnection,
+  resolveConnectionsForSource,
+  getConnectionFeedback,
+  clearConnectionFeedbackClasses,
+  CONNECTION_FEEDBACK_CLASSES,
+  getConnectionFeedbackStyles,
+  InlineConnectionPalette,
+  ConnectionEditor,
+  type ConnectionResolution,
+  type ConnectionPaletteSelection,
+  type ConnectionEditAction,
+  type CreatedConnection,
+} from '@/ea/connectionResolution';
 import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
 import { canCreateObjectTypeForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
 import { isCustomFrameworkModelingEnabled, isObjectTypeEnabledForFramework } from '@/repository/customFrameworkConfig';
@@ -152,9 +166,10 @@ type ViewTabState = {
   saveStatus: 'saved' | 'saving' | 'dirty';
   lastSavedSignature: string;
   isWorking?: boolean;
+  viewport?: { zoom: number; pan: { x: number; y: number } };
+  selection?: { nodes: string[]; edges: string[] };
 };
 
-type ViewLifecycleState = 'DRAFT' | 'SAVED' | 'READ-ONLY';
 
 enum RightPanelMode {
   STUDIO = 'STUDIO',
@@ -647,6 +662,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (access === 'architect' || access === 'user') return 'Architect';
     return 'Viewer';
   }, [initialState?.currentUser?.access]);
+  const canEditView = React.useMemo(() => hasRepositoryPermission(userRole, 'editView'), [userRole]);
   const allowAnyRelationship = false;
   const hasModelingAccess =
     hasRepositoryPermission(userRole, 'createElement') ||
@@ -694,11 +710,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [designWorkspace.status, hasModelingAccess]);
   const cyRef = React.useRef<Core | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  // -----------------------------------------------------------------------
+  // DRAG-LOCK STATE: When a node is being dragged, we disable pan & zoom
+  // so that stray wheel / trackpad events cannot interrupt the drag gesture.
+  // The previous settings are captured on grab and restored on free.
+  // -----------------------------------------------------------------------
+  const preDragInteractionRef = React.useRef<{
+    panEnabled: boolean;
+    zoomEnabled: boolean;
+  } | null>(null);
+  /** Pointer ID captured during node drag for reliable gesture tracking. */
+  const dragPointerIdRef = React.useRef<number | null>(null);
   const [form] = Form.useForm<{ name: string; description?: string }>();
   const [freeShapeForm] = Form.useForm<{ label: string }>();
   const [workspaceForm] = Form.useForm<DesignWorkspaceForm>();
   const [viewSummaryForm] = Form.useForm<ViewSummaryForm>();
-  const [saveViewForm] = Form.useForm<{ name: string; viewpointId?: string; purpose?: string }>();
+  const [saveViewForm] = Form.useForm<{ name: string; viewpointId?: string; description?: string }>();
   const [quickCreateForm] = Form.useForm<QuickCreateForm>();
   const [bulkEditForm] = Form.useForm<BulkEditForm>();
   const [repoEndpointForm] = Form.useForm<{ repositoryElementId: string }>();
@@ -734,7 +761,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const [workspaceModalOpen, setWorkspaceModalOpen] = React.useState(false);
   const [saveViewModalOpen, setSaveViewModalOpen] = React.useState(false);
-  const [saveViewMode, setSaveViewMode] = React.useState<'save' | 'saveAs'>('save');
   const [studioRightWidth, setStudioRightWidth] = React.useState<number>(() => {
     try {
       const raw = localStorage.getItem(rightPanelStorageKey);
@@ -774,13 +800,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
         viewId: initialViewTabRef.current.viewId,
         view,
         saveStatus: 'saved',
-        lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors }),
+        lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
       },
     };
   });
   const [activeTabKey, setActiveTabKey] = React.useState<string>(() =>
     initialViewTabRef.current?.key ?? WORKSPACE_TAB_KEY,
   );
+  const [restoredTabs, setRestoredTabs] = React.useState(false);
+  const tabsStorageKey = React.useMemo(
+    () => `ea.studio.tabs:${encodeURIComponent(designWorkspace.repositoryName)}`,
+    [designWorkspace.repositoryName],
+  );
+  const pendingTabRestoreRef = React.useRef<{
+    activeViewId?: string | null;
+  } | null>(null);
   const [pendingExport, setPendingExport] = React.useState<{ viewId: string; format: 'png' | 'json' } | null>(null);
   const activeViewTab = React.useMemo(
     () => (activeTabKey === WORKSPACE_TAB_KEY ? null : viewTabs.find((tab) => tab.key === activeTabKey) ?? null),
@@ -798,6 +832,69 @@ const StudioShell: React.FC<StudioShellProps> = ({
   React.useEffect(() => {
     viewTabStateByIdRef.current = viewTabStateById;
   }, [viewTabStateById]);
+
+  React.useEffect(() => {
+    if (restoredTabs) return;
+    let didRestore = false;
+    try {
+      const raw = localStorage.getItem(tabsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          activeViewId?: string | null;
+          tabs?: Array<{ viewId: string; readOnly?: boolean; isWorking?: boolean; view?: ViewInstance | null }>;
+          viewStates?: Record<string, { viewport?: { zoom: number; pan: { x: number; y: number } }; selection?: { nodes: string[]; edges: string[] } }>;
+        };
+        if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
+          const nextTabs: StudioViewTab[] = [];
+          const nextState: Record<string, ViewTabState> = {};
+          parsed.tabs.forEach((entry) => {
+            const view = entry.isWorking ? (entry.view ?? null) : (ViewStore.get(entry.viewId) ?? null);
+            const tabKey = createViewTabKey(entry.viewId);
+            nextTabs.push({
+              key: tabKey,
+              viewId: entry.viewId,
+              name: view?.name ?? entry.viewId,
+              readOnly: entry.readOnly,
+              isWorking: entry.isWorking,
+            });
+            const positions = (view?.layoutMetadata as any)?.positions ?? {};
+            const freeShapes = (view?.layoutMetadata as any)?.freeShapes ?? [];
+            const freeConnectors = (view?.layoutMetadata as any)?.freeConnectors ?? [];
+            const stateEntry: ViewTabState = {
+              viewId: entry.viewId,
+              view,
+              saveStatus: entry.isWorking ? 'dirty' : 'saved',
+              lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
+              isWorking: entry.isWorking,
+            };
+            const restoredViewState = parsed.viewStates?.[entry.viewId];
+            if (restoredViewState?.viewport) stateEntry.viewport = restoredViewState.viewport;
+            if (restoredViewState?.selection) stateEntry.selection = restoredViewState.selection;
+            nextState[tabKey] = stateEntry;
+          });
+          setViewTabs(nextTabs);
+          setViewTabStateById(nextState);
+          pendingTabRestoreRef.current = { activeViewId: parsed.activeViewId ?? null };
+          didRestore = true;
+        }
+      }
+    } catch {
+      // Best-effort only.
+    }
+    setRestoredTabs(true);
+    if (!didRestore) pendingTabRestoreRef.current = null;
+  }, [restoredTabs, tabsStorageKey]);
+
+  React.useEffect(() => {
+    const pending = pendingTabRestoreRef.current;
+    if (!pending || viewTabs.length === 0) return;
+    const targetId = pending.activeViewId ?? viewTabs[0]?.viewId;
+    if (targetId) {
+      const targetTab = viewTabs.find((tab) => tab.viewId === targetId) ?? viewTabs[0];
+      if (targetTab) setActiveTabKey(targetTab.key);
+    }
+    pendingTabRestoreRef.current = null;
+  }, [viewTabs]);
   const activeViewIsWorking = Boolean(activeViewState?.isWorking);
   const activeViewIsWorkingRef = React.useRef(activeViewIsWorking);
   React.useEffect(() => {
@@ -808,7 +905,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     () => (activeView?.name ?? (activeViewId ? activeViewId : null)),
     [activeView, activeViewId],
   );
-  const viewReadOnly = Boolean(activeViewTab?.readOnly ?? viewContext?.readOnly);
+  const activeViewTitle = React.useMemo(() => {
+    const name = (activeViewName ?? '').trim();
+    return name || 'Untitled View';
+  }, [activeViewName]);
+  const activeViewDisplayLabel = activeViewTitle;
+  const governanceMode = metadata?.governanceMode ?? 'Advisory';
+  const viewEditLocked = governanceMode === 'Strict' && !canEditView;
+  const viewReadOnly = Boolean(activeViewTab?.readOnly ?? viewContext?.readOnly) || viewEditLocked;
   const [studioModeLevel, setStudioModeLevel] = React.useState<StudioMode>('Model');
   const [presentationView, setPresentationView] = React.useState(false);
   React.useEffect(() => {
@@ -839,10 +943,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     });
   }, [activeView, viewSummaryForm]);
 
-  const saveViewSummary = React.useCallback(async () => {
-    if (!activeView || presentationReadOnly) return;
-    try {
-      const values = await viewSummaryForm.validateFields();
+  const applyViewSummary = React.useCallback(
+    (values: ViewSummaryForm) => {
+      if (!activeView || presentationReadOnly) return;
       const next: ViewInstance = {
         ...activeView,
         layoutMetadata: {
@@ -854,36 +957,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
           },
         },
       };
-      const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
-      if (isWorking) {
-        setActiveView(next);
-        setViewTabStateById((prev) => {
-          const existing = prev[activeTabKey];
-          if (!existing) return prev;
-          return {
-            ...prev,
-            [activeTabKey]: {
-              ...existing,
-              view: next,
-              saveStatus: 'dirty',
-            },
-          };
-        });
-        message.success('View summary updated (unsaved).');
-        return;
-      }
-      ViewStore.save(next);
       setActiveView(next);
-      try {
-        window.dispatchEvent(new Event('ea:viewsChanged'));
-      } catch {
-        // Best-effort only.
-      }
-      message.success('View summary updated.');
-    } catch {
-      // validation handled by Form
-    }
-  }, [activeTabKey, activeView, presentationReadOnly, viewSummaryForm, viewTabStateById]);
+      setViewTabStateById((prev) => {
+        const existing = prev[activeTabKey];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [activeTabKey]: {
+            ...existing,
+            view: next,
+            saveStatus: 'dirty',
+          },
+        };
+      });
+      scheduleAutosave(500);
+    },
+    [activeTabKey, activeView, presentationReadOnly, scheduleAutosave],
+  );
   const isViewBoundWorkspace = Boolean(viewContext?.viewId);
   const viewBoundName = React.useMemo(() => {
     if (!isViewBoundWorkspace) return null;
@@ -906,11 +996,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     });
   }, [studioRightWidth]);
   const workspaceDisplayName = React.useMemo(() => {
-    const direct = (designWorkspace.name ?? '').trim();
-    if (direct) return direct;
+    if (activeViewTitle) return activeViewTitle;
     if (viewBoundName) return viewBoundName;
-    return 'Untitled Workspace';
-  }, [designWorkspace.name, viewBoundName]);
+    return 'Untitled View';
+  }, [activeViewTitle, viewBoundName]);
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
   const [quickCreatePlacement, setQuickCreatePlacement] = React.useState<{ x: number; y: number } | null>(null);
   const [quickCreateType, setQuickCreateType] = React.useState<ObjectType | null>(null);
@@ -1122,7 +1211,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewId,
             view: resolved,
             saveStatus,
-            lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors }),
+            lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (resolved?.layoutMetadata as any)?.viewport ?? null }),
             isWorking,
           },
         };
@@ -1137,11 +1226,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
       opts?: { readOnly?: boolean; mode?: 'new' | 'replace' | 'existing'; view?: ViewInstance | null; isWorking?: boolean },
     ) => {
       if (!viewId) return;
+      if (activeTabKey && activeTabKey !== WORKSPACE_TAB_KEY) {
+        captureCanvasState(activeTabKey);
+        autosaveActiveView({ silent: true });
+      }
       const resolved = opts?.view ?? ViewStore.get(viewId) ?? null;
       const name = resolved?.name ?? viewId;
       const isWorking = Boolean(opts?.isWorking);
       const mode = opts?.mode ?? 'new';
       let effectiveMode = mode;
+
+      const alreadyOpen = viewTabs.find((tab) => tab.viewId === viewId) ?? null;
+      if (alreadyOpen && mode !== 'replace') {
+        setViewTabs((prev) =>
+          prev.map((tab) =>
+            tab.key === alreadyOpen.key
+              ? { ...tab, name, readOnly: opts?.readOnly, isWorking: tab.isWorking ?? isWorking }
+              : tab,
+          ),
+        );
+        ensureViewTabState(alreadyOpen.key, viewId, resolved, { isWorking: alreadyOpen.isWorking ?? isWorking });
+        setActiveTabKey(alreadyOpen.key);
+        return;
+      }
 
       if (mode === 'replace' && activeTabKey !== WORKSPACE_TAB_KEY) {
         const activeState = viewTabStateById[activeTabKey];
@@ -1186,7 +1293,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       ensureViewTabState(tabKey, viewId, resolved, { force: true, isWorking });
       setActiveTabKey(tabKey);
     },
-    [activeTabKey, ensureViewTabState, viewTabStateById, viewTabs],
+    [activeTabKey, autosaveActiveView, captureCanvasState, ensureViewTabState, viewTabStateById, viewTabs],
   );
 
   const closeViewTab = React.useCallback(
@@ -1243,7 +1350,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
           viewId: tab.viewId,
           view,
           saveStatus: existing?.saveStatus ?? 'saved',
-          lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors }),
+          lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
         };
         nextState = nextState === prev ? { ...prev } : nextState;
         nextState[tab.key] = nextEntry;
@@ -1277,7 +1384,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewId: existing.viewId,
             view,
             saveStatus: existing?.saveStatus ?? 'saved',
-            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors }),
+            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
           };
           nextState = nextState === prev ? { ...prev } : nextState;
           nextState[id] = nextEntry;
@@ -1381,7 +1488,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewId: activeViewId,
             view: next,
             saveStatus: existing?.saveStatus ?? 'saved',
-            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors }),
+            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (next?.layoutMetadata as any)?.viewport ?? null }),
             isWorking: existing?.isWorking ?? false,
           },
         };
@@ -1394,8 +1501,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [activeTabKey, activeViewId]);
 
   React.useEffect(() => {
-    if (activeTabKey !== WORKSPACE_TAB_KEY && !viewTabs.some((tab) => tab.key === activeTabKey)) {
-      setActiveTabKey(viewTabs[viewTabs.length - 1]?.key ?? WORKSPACE_TAB_KEY);
+    if (!viewTabs.some((tab) => tab.key === activeTabKey)) {
+      setActiveTabKey(viewTabs[0]?.key ?? WORKSPACE_TAB_KEY);
     }
   }, [activeTabKey, viewTabs]);
   const elementDragMovedRef = React.useRef(false);
@@ -1409,10 +1516,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const connectionDragOriginRef = React.useRef<Map<string, { x: number; y: number }>>(new Map());
   const skipCanvasRebuildRef = React.useRef(false);
   const persistWorkspaceRef = React.useRef<(() => void) | null>(null);
+  const workspaceAutosavePendingRef = React.useRef(false);
   const draftAnchorPosRef = React.useRef<{ x: number; y: number } | null>(null);
   const draftTargetIdRef = React.useRef<string | null>(null);
   const middlePanActiveRef = React.useRef(false);
   const middlePanLastRef = React.useRef<{ x: number; y: number } | null>(null);
+  /** True while any kind of canvas panning is in progress (middle-mouse OR
+   *  Cytoscape native left-click PAN mode).  Used to suppress per-frame
+   *  React state updates that cause stutter. Viewport is committed once
+   *  when panning ends. */
+  const panningActiveRef = React.useRef(false);
+  /** rAF id for throttling middle-mouse pan updates. */
+  const middlePanRafRef = React.useRef<number | null>(null);
+  /** Accumulated pan delta between rAF frames for middle-mouse drag. */
+  const middlePanDeltaRef = React.useRef({ dx: 0, dy: 0 });
   const layoutUndoStackRef = React.useRef<Record<string, { x: number; y: number }>[]>([]);
   const layoutRedoStackRef = React.useRef<Record<string, { x: number; y: number }>[]>([]);
   const layoutDragSnapshotRef = React.useRef<Record<string, { x: number; y: number }> | null>(null);
@@ -1444,6 +1561,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
     dragging: false,
   });
   const [relationshipChooser, setRelationshipChooser] = React.useState<RelationshipChooserState | null>(null);
+
+  // ─── Connection Resolution State (user-first EA connection system) ──
+  const connectionResolutionCacheRef = React.useRef<Map<string, ConnectionResolution>>(new Map());
+  const [connectionPalette, setConnectionPalette] = React.useState<{
+    resolution: ConnectionResolution;
+    position: { x: number; y: number };
+  } | null>(null);
+  const connectionPaletteRef = React.useRef<HTMLDivElement | null>(null);
+  const [connectionEditor, setConnectionEditor] = React.useState<{
+    connection: CreatedConnection;
+    validTypes: RelationshipType[];
+    validIndirectPaths: any[];
+    position: { x: number; y: number };
+  } | null>(null);
+  const createdConnectionsRef = React.useRef<Map<string, CreatedConnection>>(new Map());
+  // ────────────────────────────────────────────────────────────────────
+
   const relationshipDraftRef = React.useRef(relationshipDraft);
   const freeConnectorDragRef = React.useRef<{ sourceId: string | null; dragging: boolean }>({
     sourceId: null,
@@ -1704,12 +1838,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [layerVisibility]);
 
 
-  const workspaceStatusColor: Record<DesignWorkspaceStatus, string> = {
-    DRAFT: 'gold',
-    COMMITTED: 'green',
-    DISCARDED: 'red',
-  };
-
   const stagedElementById = React.useMemo(() => {
     return new Map(stagedElements.map((e) => [e.id, e] as const));
   }, [stagedElements]);
@@ -1928,19 +2056,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
       name: 'Untitled View',
       description: '',
       viewpointId: defaultViewpointId,
-      scope: { kind: 'EntireRepository' },
-      layoutMetadata: { workingView: true },
+      scope: { kind: 'ManualSelection', elementIds: [] },
+      layoutMetadata: { workingView: true, positions: {}, visibleElementIds: [], visibleRelationshipIds: [], freeShapes: [], freeConnectors: [] },
       createdAt: now,
       createdBy: actor,
       status: 'DRAFT',
+      visibleRelationshipIds: [],
     };
   }, [actor, defaultViewpointId]);
 
   React.useEffect(() => {
+    if (!restoredTabs) return;
     if (viewTabs.length > 0) return;
     const workingView = createWorkingView();
     ensureViewTab(workingView.id, { mode: 'new', view: workingView, isWorking: true });
-  }, [createWorkingView, ensureViewTab, viewTabs.length]);
+  }, [createWorkingView, ensureViewTab, restoredTabs, viewTabs.length]);
 
   const addFreeShape = React.useCallback(
     (kind: FreeShapeKind, position: { x: number; y: number }, labelOverride?: string) => {
@@ -1976,7 +2106,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
         const node = cyRef.current.getElementById(id);
         if (node && !node.empty()) {
-          node.grabbable(!viewReadOnly);
+          node.grabbable(!viewReadOnly && !viewLayoutLocked);
           node.select();
         }
       }
@@ -2028,7 +2158,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
   }, []);
 
-  const governanceMode = metadata?.governanceMode ?? 'Advisory';
   const repositoryOnlyCanvas = true;
 
   const declareModelingAction = React.useCallback((decl: CanvasModelingDeclaration) => {
@@ -2408,6 +2537,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
           didUpdate = true;
         }
 
+        // VIEW ISOLATION: Also remove relationships connected to this element
+        // from the view's visibleRelationshipIds
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        if (currentRelIds.length > 0 && eaRepository) {
+          const connectedRelIds = new Set(
+            eaRepository.relationships
+              .filter((rel) => rel.fromId === elementId || rel.toId === elementId)
+              .map((rel) => rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`),
+          );
+          const filteredRelIds = currentRelIds.filter((id) => !connectedRelIds.has(id));
+          if (filteredRelIds.length !== currentRelIds.length) {
+            nextView = { ...nextView, visibleRelationshipIds: filteredRelIds };
+            const nextLayoutMeta = nextView.layoutMetadata ?? {};
+            nextView = {
+              ...nextView,
+              layoutMetadata: { ...nextLayoutMeta, visibleRelationshipIds: filteredRelIds },
+            };
+            didUpdate = true;
+          }
+        }
+
         if (didUpdate) {
           setActiveView(nextView);
           setViewTabStateById((prev) => {
@@ -2534,10 +2684,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
         cyRef.current.remove(`edge#${relationshipId}`);
       }
       setSelectedEdgeId((prev) => (prev === relationshipId ? null : prev));
+
+      // VIEW ISOLATION: remove relationship from active view's visibleRelationshipIds
+      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      if (isViewCanvas && activeView) {
+        const currentRelIds = Array.isArray(activeView.visibleRelationshipIds) ? [...activeView.visibleRelationshipIds] : [];
+        if (currentRelIds.includes(relationshipId)) {
+          const nextRelIds = currentRelIds.filter((id) => id !== relationshipId);
+          const nextView: ViewInstance = {
+            ...activeView,
+            visibleRelationshipIds: nextRelIds,
+            layoutMetadata: { ...(activeView.layoutMetadata ?? {}), visibleRelationshipIds: nextRelIds },
+          };
+          setActiveView(nextView);
+          setViewTabStateById((prev) => {
+            const existing = prev[activeTabKey];
+            if (!existing) return prev;
+            return { ...prev, [activeTabKey]: { ...existing, view: nextView, saveStatus: 'dirty' } };
+          });
+        }
+      }
+
       // WRITE-THROUGH: persist workspace immediately after relationship deletion
       persistWorkspaceDebounced(100);
     },
-    [applyRepositoryTransaction, persistWorkspaceDebounced],
+    [activeTabKey, activeView, activeViewId, applyRepositoryTransaction, persistWorkspaceDebounced, setViewTabStateById],
   );
 
   const clearRelationshipDraftArtifacts = React.useCallback(() => {
@@ -2552,6 +2723,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     (node: any) => {
       if (iterativeModeling) return true;
       if (!node || typeof node.data !== 'function') return false;
+      if (activeViewIdRef.current) return true;
       return Boolean(node.data('staged') || node.data('freeShape') || node.data('viewInstance'));
     },
     [iterativeModeling],
@@ -3192,6 +3364,53 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [hasDuplicateRelationship, validateRelationshipEndpoints],
   );
 
+  const getInferredRelationshipTypesForPair = React.useCallback(
+    (sourceId: string, targetId: string) => {
+      const source = resolveElementLabel(sourceId);
+      const target = resolveElementLabel(targetId);
+      if (!source || !target) return [] as RelationshipType[];
+      const allowedByView = activeViewpoint?.allowedRelationshipTypes?.length
+        ? new Set(activeViewpoint.allowedRelationshipTypes)
+        : null;
+      const inferred: RelationshipType[] = [];
+      (Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]).forEach((type) => {
+        if (allowedByView && !allowedByView.has(type)) return;
+        const relDef = RELATIONSHIP_TYPE_DEFINITIONS[type];
+        if (!relDef) return;
+        const pairs = relDef.allowedEndpointPairs ?? [];
+        const endpointOk = pairs.length > 0
+          ? pairs.some((p) => p.from === source.type && p.to === target.type)
+          : relDef.fromTypes.includes(source.type) && relDef.toTypes.includes(target.type);
+        if (!endpointOk) return;
+        inferred.push(type);
+      });
+      return inferred;
+    },
+    [activeViewpoint?.allowedRelationshipTypes, resolveElementLabel],
+  );
+
+  const buildInferenceErrorMessage = React.useCallback(
+    (sourceId: string, targetId: string) => {
+      const source = resolveElementLabel(sourceId);
+      const target = resolveElementLabel(targetId);
+      if (!source || !target) return 'Select valid source and target elements.';
+      const sourceDef = OBJECT_TYPE_DEFINITIONS[source.type];
+      const targetDef = OBJECT_TYPE_DEFINITIONS[target.type];
+      const sourceLayer = sourceDef?.layer;
+      const targetLayer = targetDef?.layer;
+      const layerHint =
+        sourceLayer && targetLayer && sourceLayer !== targetLayer
+          ? `Layer mismatch: ${sourceLayer} → ${targetLayer} has no direct ArchiMate relationship.`
+          : `No direct ArchiMate relationship exists between ${source.type} and ${target.type}.`;
+      const suggestion =
+        sourceLayer && targetLayer && sourceLayer !== targetLayer
+          ? 'Try connecting via Application Service or Business Process.'
+          : 'Try connecting via an intermediate element (e.g., Application Service or Business Process).';
+      return `${layerHint} ${suggestion}`;
+    },
+    [resolveElementLabel],
+  );
+
   const getValidRelationshipTypesForPair = React.useCallback(
     (sourceId: string, targetId: string) => {
       const source = resolveElementLabel(sourceId);
@@ -3227,12 +3446,44 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const targetId = String(n.id());
         if (!targetId || targetId === sourceId) return;
         if (n.data('draftTarget') || n.data('freeShape')) return;
-        const types = getValidRelationshipTypesForPair(sourceId, targetId);
+        const types = getInferredRelationshipTypesForPair(sourceId, targetId);
         if (types.length > 0) next.set(targetId, types);
       });
       return next;
     },
-    [getValidRelationshipTypesForPair],
+    [getInferredRelationshipTypesForPair],
+  );
+
+  // ─── Connection Resolution: build candidates for user-first drag ──
+  /**
+   * Pre-compute connection resolutions for ALL targets on the canvas.
+   * Unlike buildIntentConnectionCandidates which only finds direct relationships,
+   * this also discovers indirect paths (max depth 2) through intermediate elements.
+   * Returns a Map of targetId → ConnectionResolution.
+   */
+  const buildConnectionResolutions = React.useCallback(
+    (sourceId: string) => {
+      if (!cyRef.current) return new Map<string, ConnectionResolution>();
+      const sourceType = resolveElementLabel(sourceId)?.type;
+      if (!sourceType) return new Map<string, ConnectionResolution>();
+
+      const targets: Array<{ id: string; type: ObjectType }> = [];
+      cyRef.current.nodes().forEach((n) => {
+        const targetId = String(n.id());
+        if (!targetId || targetId === sourceId) return;
+        if (n.data('draftTarget') || n.data('freeShape')) return;
+        const resolved = resolveElementLabel(targetId);
+        if (!resolved) return;
+        targets.push({ id: targetId, type: resolved.type });
+      });
+
+      const viewpointFilter = activeViewpoint?.allowedRelationshipTypes?.length
+        ? new Set(activeViewpoint.allowedRelationshipTypes)
+        : undefined;
+
+      return resolveConnectionsForSource(sourceId, sourceType, targets, viewpointFilter);
+    },
+    [activeViewpoint?.allowedRelationshipTypes, resolveElementLabel],
   );
 
   const getValidTargetsForSource = React.useCallback(
@@ -3399,6 +3650,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const resetLayout = React.useCallback(() => {
     if (!cyRef.current) return;
     recordLayoutUndoSnapshot();
+    // resetLayout is user-triggered ("Reset Layout" button) so fit: true
+    // is intentional — the user expects the viewport to re-center.
     cyRef.current.layout({ name: 'grid', fit: true, avoidOverlap: true }).run();
   }, [recordLayoutUndoSnapshot]);
 
@@ -3748,11 +4001,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (persistWorkspaceDebounceRef.current) {
         clearTimeout(persistWorkspaceDebounceRef.current);
       }
-      persistWorkspaceDebounceRef.current = setTimeout(() => {
+      workspaceAutosavePendingRef.current = true;
+      const attemptPersist = () => {
         persistWorkspaceDebounceRef.current = null;
+        if (draggingRef.current || panningActiveRef.current) {
+          // Defer until interaction settles to avoid a hitch at drag/pan start.
+          persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, 300);
+          return;
+        }
         // Call via ref to get the latest closure (avoids stale stagedElements)
         persistWorkspaceNowRef.current();
-      }, delayMs);
+      };
+      persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, delayMs);
     },
     [],
   );
@@ -3791,30 +4051,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
     };
   }, [persistWorkspaceNow]);
 
-  const saveActiveView = React.useCallback(
+  const autosaveActiveView = React.useCallback(
     (opts?: { silent?: boolean }) => {
-      if (!activeViewId || !activeView || viewReadOnly || activeTabKey === WORKSPACE_TAB_KEY) return;
+      if (!activeViewId || !activeView || viewReadOnly || activeTabKey === WORKSPACE_TAB_KEY) {
+        return { ok: false, skipped: true } as const;
+      }
       setValidationGateOpen(true);
       const { layout, positions } = buildViewPositionsFromCanvas();
       const visibleElementIds = layout.nodes.map((n) => n.id);
       const visibleRelationshipIds = layout.edges.map((e) => e.id);
       const nextFreeShapes = buildFreeShapesFromCanvas();
       const nextFreeConnectors = buildFreeConnectorsFromCanvas();
-      const signature = stableStringify({ positions, freeShapes: nextFreeShapes, freeConnectors: nextFreeConnectors });
+      const viewport = cyRef.current ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() } : null;
+      const signature = stableStringify({ positions, freeShapes: nextFreeShapes, freeConnectors: nextFreeConnectors, viewport });
       const lastSignature = viewTabStateById[activeTabKey]?.lastSavedSignature ?? '';
-      if (signature === lastSignature) {
-        if (viewTabStateById[activeTabKey]?.saveStatus === 'dirty') {
-          setViewTabStateById((prev) => ({
-            ...prev,
-            [activeTabKey]: {
-              viewId: activeViewId,
-              view: activeView,
-              saveStatus: 'saved',
-              lastSavedSignature: lastSignature,
-            },
-          }));
-        }
-        return;
+
+      if (signature === lastSignature && viewTabStateById[activeTabKey]?.saveStatus === 'saved') {
+        return { ok: true, skipped: true } as const;
       }
 
       setViewTabStateById((prev) => ({
@@ -3824,14 +4077,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
           view: activeView,
           saveStatus: 'saving',
           lastSavedSignature: prev[activeTabKey]?.lastSavedSignature ?? '',
+          isWorking: prev[activeTabKey]?.isWorking,
         },
       }));
-      const nextScope = activeView.scope.kind === 'ManualSelection'
-        ? { kind: 'ManualSelection' as const, elementIds: visibleElementIds }
-        : activeView.scope;
+
+      const now = new Date().toISOString();
+      const nextScope = { kind: 'ManualSelection' as const, elementIds: visibleElementIds };
       const next: ViewInstance = {
         ...activeView,
         scope: nextScope,
+        visibleRelationshipIds,
         layoutMetadata: {
           ...(activeView.layoutMetadata ?? {}),
           positions,
@@ -3839,75 +4094,72 @@ const StudioShell: React.FC<StudioShellProps> = ({
           freeConnectors: nextFreeConnectors,
           visibleElementIds,
           visibleRelationshipIds,
-          lastSavedAt: new Date().toISOString(),
+          viewport: viewport ?? (activeView.layoutMetadata as any)?.viewport,
+          lastSavedAt: now,
           annotations: (activeView.layoutMetadata as any)?.annotations ?? [],
           filters: (activeView.layoutMetadata as any)?.filters,
         },
-        status: 'SAVED',
+        status: activeViewIsWorking ? 'DRAFT' : 'SAVED',
       };
-      ViewStore.save(next);
-      // WRITE-THROUGH: Also persist positions to ViewLayoutStore for deterministic
-      // rehydration. ViewStore embeds positions in layoutMetadata but ViewLayoutStore
-      // is the canonical per-view position index used during canvas rebuild.
-      ViewLayoutStore.set(activeViewId, positions);
-      try {
-        window.dispatchEvent(new Event('ea:viewsChanged'));
-      } catch {
-        // Best-effort only.
+
+      if (activeViewIsWorking) {
+        setActiveView(next);
+        setViewTabStateById((prev) => ({
+          ...prev,
+          [activeTabKey]: {
+            viewId: activeViewId,
+            view: next,
+            saveStatus: 'saved',
+            lastSavedSignature: signature,
+            isWorking: true,
+          },
+        }));
+      } else {
+        ViewStore.save(next);
+        ViewLayoutStore.set(activeViewId, positions);
+        try {
+          window.dispatchEvent(new Event('ea:viewsChanged'));
+        } catch {
+          // Best-effort only.
+        }
+        setActiveView(next);
+        setViewTabStateById((prev) => ({
+          ...prev,
+          [activeTabKey]: {
+            viewId: activeViewId,
+            view: next,
+            saveStatus: 'saved',
+            lastSavedSignature: signature,
+            isWorking: false,
+          },
+        }));
       }
-      setActiveView(next);
-      setViewTabStateById((prev) => ({
-        ...prev,
-        [activeTabKey]: {
-          viewId: activeViewId,
-          view: next,
-          saveStatus: 'saved',
-          lastSavedSignature: signature,
-          isWorking: false,
-        },
-      }));
-      setViewTabs((prev) =>
-        prev.map((tab) => (tab.key === activeTabKey ? { ...tab, name: next.name, isWorking: false } : tab)),
-      );
-      if (!opts?.silent) message.success('View saved.');
+
+      if (!opts?.silent) {
+        // Autosave is silent by default; no toast unless explicitly requested.
+      }
+      return { ok: true } as const;
     },
-    [activeTabKey, activeView, activeViewId, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, viewReadOnly, viewTabStateById],
+    [activeTabKey, activeView, activeViewId, activeViewIsWorking, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, viewReadOnly, viewTabStateById],
   );
 
-  const openSaveViewDialog = React.useCallback(
-    (mode: 'save' | 'saveAs') => {
-      if (!activeView) return;
-      const summary = (activeView.layoutMetadata as any)?.summary as ViewSummaryForm | undefined;
-      saveViewForm.setFieldsValue({
-        name: activeView.name || 'Untitled View',
-        viewpointId: activeView.viewpointId || defaultViewpointId,
-        purpose: summary?.purpose ?? '',
-      });
-      setSaveViewMode(mode);
-      setSaveViewModalOpen(true);
-    },
-    [activeView, defaultViewpointId, saveViewForm],
-  );
-
-  const handleSaveViewClick = React.useCallback(() => {
-    if (!activeView) {
-      message.warning('No view to save.');
-      return;
-    }
-    if (activeViewIsWorking) {
-      openSaveViewDialog('save');
-      return;
-    }
-    saveActiveView();
-  }, [activeView, activeViewIsWorking, openSaveViewDialog, saveActiveView]);
+  const openSaveAsDialog = React.useCallback(() => {
+    if (!activeView) return;
+    saveViewForm.setFieldsValue({
+      name: activeView.name || 'Untitled View',
+      viewpointId: activeView.viewpointId || defaultViewpointId,
+      description: activeView.description ?? '',
+    });
+    setSaveViewModalOpen(true);
+  }, [activeView, defaultViewpointId, saveViewForm]);
 
   const handleSaveAsViewClick = React.useCallback(() => {
     if (!activeView) {
       message.warning('No view to save.');
       return;
     }
-    openSaveViewDialog('saveAs');
-  }, [activeView, openSaveViewDialog]);
+    openSaveAsDialog();
+  }, [activeView, openSaveAsDialog]);
 
   const confirmSaveView = React.useCallback(async () => {
     if (!activeView) return;
@@ -3922,38 +4174,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const { layout, positions } = buildViewPositionsFromCanvas();
       const visibleElementIds = layout.nodes.map((n) => n.id);
       const visibleRelationshipIds = layout.edges.map((e) => e.id);
-      const isSaveAs = saveViewMode === 'saveAs';
-      const isWorking = activeViewIsWorking;
-      const nextId = isSaveAs || isWorking ? `view_${generateUUID()}` : activeView.id;
       const viewpointId = String(values.viewpointId || activeView.viewpointId || defaultViewpointId);
-      const purpose = String(values.purpose || '').trim();
+      const description = String(values.description || '').trim();
       const summary = (activeView.layoutMetadata as any)?.summary ?? {};
-      const nextScope = activeView.scope.kind === 'ManualSelection' || isWorking
-        ? { kind: 'ManualSelection' as const, elementIds: visibleElementIds }
-        : activeView.scope;
-
+      const viewport = cyRef.current ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() } : null;
+      const nextFreeShapes = buildFreeShapesFromCanvas();
+      const nextFreeConnectors = buildFreeConnectorsFromCanvas();
       const next: ViewInstance = {
         ...activeView,
-        id: nextId,
+        id: `view_${generateUUID()}`,
         name,
+        description: description || activeView.description || '',
         viewpointId,
-        scope: nextScope,
-        createdAt: isSaveAs || isWorking ? now : activeView.createdAt,
-        createdBy: isSaveAs || isWorking ? actor : activeView.createdBy,
+        scope: { kind: 'ManualSelection' as const, elementIds: visibleElementIds },
+        visibleRelationshipIds,
+        createdAt: now,
+        createdBy: actor,
         status: 'SAVED',
         layoutMetadata: {
           ...(activeView.layoutMetadata ?? {}),
           positions,
-          freeShapes: buildFreeShapesFromCanvas(),
-          freeConnectors: buildFreeConnectorsFromCanvas(),
+          freeShapes: nextFreeShapes,
+          freeConnectors: nextFreeConnectors,
           visibleElementIds,
           visibleRelationshipIds,
-          summary: { ...summary, purpose: purpose || summary?.purpose || '' },
+          viewport: viewport ?? (activeView.layoutMetadata as any)?.viewport,
+          summary,
           lastSavedAt: now,
           workingView: false,
         },
       };
 
+      // Persist the new saved view
       ViewStore.save(next);
       ViewLayoutStore.set(next.id, positions);
       try {
@@ -3962,43 +4214,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
         // Best-effort only.
       }
 
-      if (isSaveAs) {
-        ensureViewTab(next.id, { mode: 'new' });
-      } else if (isWorking) {
-        setViewTabs((prev) =>
-          prev.map((tab) => (tab.key === activeTabKey ? { ...tab, viewId: next.id, name: next.name, isWorking: false } : tab)),
-        );
-        setViewTabStateById((prev) => ({
-          ...prev,
-          [activeTabKey]: {
-            viewId: next.id,
-            view: next,
-            saveStatus: 'saved',
-            lastSavedSignature: stableStringify({ positions, freeShapes: next.layoutMetadata.freeShapes ?? [], freeConnectors: next.layoutMetadata.freeConnectors ?? [] }),
-            isWorking: false,
-          },
-        }));
-        setActiveView(next);
-      } else {
-        setActiveView(next);
-        setViewTabStateById((prev) => ({
-          ...prev,
-          [activeTabKey]: {
-            viewId: next.id,
-            view: next,
-            saveStatus: 'saved',
-            lastSavedSignature: stableStringify({ positions, freeShapes: next.layoutMetadata.freeShapes ?? [], freeConnectors: next.layoutMetadata.freeConnectors ?? [] }),
-            isWorking: false,
-          },
-        }));
-      }
+      // SAVE AS: Replace the CURRENT tab in-place with the newly saved view.
+      // The canvas must NOT change — the user's work simply transitions from
+      // working/draft to a persisted saved view. No new tab is opened.
+      const signature = stableStringify({ positions, freeShapes: nextFreeShapes, freeConnectors: nextFreeConnectors, viewport });
+      setActiveView(next);
+      setViewTabs((prev) =>
+        prev.map((tab) =>
+          tab.key === activeTabKey
+            ? { ...tab, viewId: next.id, name: next.name, isWorking: false, readOnly: false }
+            : tab,
+        ),
+      );
+      setViewTabStateById((prev) => ({
+        ...prev,
+        [activeTabKey]: {
+          viewId: next.id,
+          view: next,
+          saveStatus: 'saved',
+          lastSavedSignature: signature,
+          isWorking: false,
+        },
+      }));
 
       setSaveViewModalOpen(false);
-      message.success(isSaveAs ? 'View saved as new.' : 'View saved.');
+      message.success('View saved.');
     } catch {
       // validation handled by Form
     }
-  }, [activeTabKey, activeView, activeViewIsWorking, actor, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, defaultViewpointId, ensureViewTab, saveViewForm, saveViewMode]);
+  }, [activeTabKey, activeView, actor, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, defaultViewpointId, saveViewForm]);
 
   const buildLayoutFromView = React.useCallback(
     (view: ViewInstance): DesignWorkspaceLayout | null => {
@@ -4008,34 +4252,46 @@ const StudioShell: React.FC<StudioShellProps> = ({
         ?? (isWorkingView ? {} : ViewLayoutStore.get(view.id));
       const existingNodeMap = new Map((designWorkspace.layout?.nodes ?? []).map((n) => [n.id, n] as const));
 
-      if (isWorkingView) {
-        const elements = Array.from(eaRepository.objects.values()).filter((obj) => (obj.attributes as any)?._deleted !== true);
-        const nodes: DesignWorkspaceLayoutNode[] = elements.map((el, index) => {
-          const saved = positions[el.id] ?? existingNodeMap.get(el.id);
-          const fallbackX = 80 + (index % 4) * 180;
-          const fallbackY = 80 + Math.floor(index / 4) * 140;
-          return {
-            id: el.id,
-            label: ((el.attributes as any)?.name as string) || el.id,
-            elementType: el.type,
-            x: saved?.x ?? fallbackX,
-            y: saved?.y ?? fallbackY,
-            viewInstance: true,
-          };
-        });
-        const nodeIdSet = new Set(nodes.map((n) => n.id));
-        const edges: DesignWorkspaceLayoutEdge[] = eaRepository.relationships
-          .filter((rel) => nodeIdSet.has(rel.fromId) && nodeIdSet.has(rel.toId))
-          .map((rel) => ({
-            id: rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
-            source: rel.fromId,
-            target: rel.toId,
-            relationshipType: rel.type,
-          }));
-        return { nodes, edges };
-      }
+      // =====================================================================
+      // VIEW REHYDRATION — direct element resolution for ManualSelection.
+      //
+      // RULE: Saved views must render EXACTLY the elements that were saved.
+      // We must NOT re-apply viewpoint type filtering because the viewpoint
+      // was already applied when elements were originally added to the view.
+      // Re-filtering would strip out elements whose types aren't in the
+      // viewpoint's allowedElementTypes, causing "empty canvas on reopen".
+      //
+      // For ManualSelection scope (both working AND saved views):
+      //   - Use scope.elementIds to find elements directly in the repository
+      //   - Use visibleRelationshipIds to filter relationships
+      //   - NO viewpoint type filtering
+      //
+      // For EntireRepository scope (legacy, backward-compat):
+      //   - Use resolveViewScope which applies viewpoint filtering
+      // =====================================================================
 
-      const resolution = resolveViewScope({ view, repository: eaRepository });
+      const resolution = (() => {
+        if (view.scope.kind === 'ManualSelection') {
+          const ids = new Set((view.scope.elementIds ?? []).map((id) => String(id).trim()).filter(Boolean));
+          const elements = Array.from(eaRepository.objects.values()).filter((obj) => ids.has(String(obj.id).trim()));
+          const allowedIds = new Set(elements.map((e) => String(e.id).trim()));
+          const viewRelIds = view.visibleRelationshipIds;
+          const hasExplicitRels = Array.isArray(viewRelIds) && viewRelIds.length > 0;
+          const viewRelIdSet = hasExplicitRels ? new Set(viewRelIds!.map((id) => String(id).trim())) : null;
+          const relationships = eaRepository.relationships.filter((rel) => {
+            const fromId = String(rel.fromId).trim();
+            const toId = String(rel.toId).trim();
+            if (!allowedIds.has(fromId) || !allowedIds.has(toId)) return false;
+            if (viewRelIdSet) {
+              const relId = String(rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`).trim();
+              return viewRelIdSet.has(relId);
+            }
+            return true;
+          });
+          return { elements, relationships };
+        }
+        return resolveViewScope({ view, repository: eaRepository });
+      })();
 
       const nodes: DesignWorkspaceLayoutNode[] = resolution.elements.map((el, index) => {
         const saved = positions[el.id] ?? existingNodeMap.get(el.id);
@@ -4051,21 +4307,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         };
       });
 
-      const nodeIdSet = new Set(nodes.map((n) => n.id));
-      stagedElements.forEach((el, index) => {
-        if (nodeIdSet.has(el.id)) return;
-        const existing = existingNodeMap.get(el.id);
-        const offset = nodes.length + index;
-        const fallbackX = 80 + (offset % 4) * 180;
-        const fallbackY = 80 + Math.floor(offset / 4) * 140;
-        nodes.push({
-          id: el.id,
-          label: el.name || el.id,
-          elementType: el.type,
-          x: existing?.x ?? fallbackX,
-          y: existing?.y ?? fallbackY,
-        });
-      });
+      // VIEW ISOLATION: Do NOT append global stagedElements here.
+      // Each view is an isolated projection — only elements explicitly in the
+      // view's scope (via scope.elementIds / visibleElementIds) are rendered.
+      // stageElement() already adds new elements to the active view's scope,
+      // so they will appear via resolveViewScope on the next rebuild.
 
       const edges: DesignWorkspaceLayoutEdge[] = resolution.relationships.map((rel) => ({
         id: rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
@@ -4074,20 +4320,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
         relationshipType: rel.type,
       }));
 
-      const edgeIdSet = new Set(edges.map((e) => e.id));
-      stagedRelationships.forEach((rel) => {
-        if (edgeIdSet.has(rel.id)) return;
-        edges.push({
-          id: rel.id,
-          source: rel.fromId,
-          target: rel.toId,
-          relationshipType: rel.type,
-        });
-      });
+      // VIEW ISOLATION: Do NOT append global stagedRelationships here.
+      // Each view tracks its own visibleRelationshipIds. stageRelationship()
+      // adds new relationships to the active view, so they resolve correctly.
 
       return { nodes, edges };
     },
-    [designWorkspace.layout?.nodes, eaRepository, stagedElements, stagedRelationships],
+    [designWorkspace.layout?.nodes, eaRepository],
   );
 
   React.useEffect(() => {
@@ -4101,7 +4340,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const positions = (activeView.layoutMetadata as any)?.positions ?? {};
     const freeShapes = (activeView.layoutMetadata as any)?.freeShapes ?? [];
     const freeConnectors = (activeView.layoutMetadata as any)?.freeConnectors ?? [];
-    const signature = stableStringify({ positions, freeShapes, freeConnectors });
+    const signature = stableStringify({ positions, freeShapes, freeConnectors, viewport: (activeView.layoutMetadata as any)?.viewport ?? null });
     setViewTabStateById((prev) => {
       const existing = prev[activeTabKey];
       if (existing?.lastSavedSignature === signature && existing?.saveStatus === 'saved' && existing?.view === activeView) {
@@ -4123,24 +4362,43 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!activeViewId || !cyRef.current) return;
     if (viewReadOnly || activeTabKey === WORKSPACE_TAB_KEY) return;
     const cy = cyRef.current;
-    const markDirty = () =>
-      setViewTabStateById((prev) => {
-        const existing = prev[activeTabKey];
-        if (!existing) return prev;
-        if (existing.saveStatus === 'dirty') return prev;
-        return {
-          ...prev,
-          [activeTabKey]: {
-            ...existing,
-            saveStatus: 'dirty',
-          },
-        };
+    let dirtyScheduled = false;
+    const markDirty = () => {
+      // During an active node drag, skip — position events fire on every
+      // pixel of movement and queueing React state updates for each one
+      // causes jitter.  The drag-end handler (handleNodeDragFree) will
+      // mark dirty once when the drag completes.
+      if (draggingRef.current) return;
+      if (dirtyScheduled) return;
+      dirtyScheduled = true;
+      // Coalesce into a single microtask so rapid add/remove/data bursts
+      // only trigger one React setState.
+      queueMicrotask(() => {
+        dirtyScheduled = false;
+        setViewTabStateById((prev) => {
+          const existing = prev[activeTabKey];
+          if (!existing) return prev;
+          if (existing.saveStatus === 'dirty') return prev;
+          return {
+            ...prev,
+            [activeTabKey]: {
+              ...existing,
+              saveStatus: 'dirty',
+            },
+          };
+        });
       });
+    };
     cy.on('position', 'node', markDirty);
     cy.on('add', markDirty);
     cy.on('remove', markDirty);
     cy.on('data', 'node', markDirty);
     cy.on('data', 'edge', markDirty);
+    // NOTE: We intentionally do NOT mark dirty on 'pan zoom'.  Viewport
+    // changes (panning/zooming around the canvas) are not data mutations —
+    // they should not trigger autosave cycles or show a "dirty" badge.
+    // Viewport state is captured separately by captureCanvasState and
+    // persisted into view metadata only on explicit save or tab switch.
     return () => {
       cy.off('position', 'node', markDirty);
       cy.off('add', markDirty);
@@ -4149,6 +4407,62 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cy.off('data', 'edge', markDirty);
     };
   }, [activeTabKey, activeViewId, viewReadOnly]);
+
+  // =========================================================================
+  // VIEWPORT OWNERSHIP — each view persists its own zoom + pan.
+  // We listen for Cytoscape 'pan zoom' events and debounce-capture the
+  // viewport into the current tab's ViewTabState.  This runs independently
+  // of the "dirty" flag so that panning/zooming alone does not trigger
+  // autosave, but the viewport IS remembered when the user switches tabs.
+  // =========================================================================
+  // suppressViewportPersistRef: set to true during programmatic viewport
+  // changes (rebuild restoreCanvasState) so these internal zoom/pan mutations
+  // don't overwrite the saved viewport with transient intermediate values.
+  const suppressViewportPersistRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !activeTabKey || activeTabKey === WORKSPACE_TAB_KEY) return;
+    let rafId: number | null = null;
+    const persistViewport = () => {
+      rafId = null;
+      if (!cyRef.current) return;
+      // Don't capture viewport during programmatic changes, active drag,
+      // or active panning.  Panning fires pan/zoom on every frame;
+      // committing to React state each time causes stutter.
+      if (suppressViewportPersistRef.current) return;
+      if (draggingRef.current) return;
+      if (panningActiveRef.current) return;
+      const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+      setViewTabStateById((prev) => {
+        const existing = prev[activeTabKey];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [activeTabKey]: {
+            ...existing,
+            viewport,
+            saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+          },
+        };
+      });
+    };
+    const onViewportChange = () => {
+      // Coalesce rapid viewport events into a single state update via rAF.
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(persistViewport);
+    };
+    cy.on('pan zoom', onViewportChange);
+    return () => {
+      cy.off('pan zoom', onViewportChange);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [activeTabKey]);
+
+  React.useEffect(() => {
+    if (viewSaveStatus !== 'dirty') return;
+    scheduleAutosave();
+  }, [scheduleAutosave, viewSaveStatus]);
 
 
 
@@ -4353,6 +4667,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       visualKind?: string | null;
       source?: CanvasModelingSource;
     }) => {
+      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
       setValidationGateOpen(true);
       const modelingState: ModelingState = 'COMMITTED';
       const id = input.id ?? generateElementId(input.type);
@@ -4411,6 +4726,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             label: input.name,
             elementType: input.type,
             staged: true,
+            viewInstance: isViewCanvas,
             ...visualData,
           },
           position: input.placement ? { x: input.placement.x, y: input.placement.y } : undefined,
@@ -4433,6 +4749,82 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setSelectedNodeIds([id]);
       setSelectedFreeShapeId(null);
       setSelectedFreeConnectorId(null);
+
+      if (isViewCanvas && activeView) {
+        let nextView: ViewInstance = activeView;
+        let didUpdateView = false;
+
+        // VIEW ISOLATION: Always use ManualSelection scope for view isolation.
+        // If the view uses EntireRepository scope, convert it to ManualSelection
+        // with the current visible elements plus the new one.
+        if (nextView.scope.kind === 'ManualSelection') {
+          const currentIds = Array.isArray(nextView.scope.elementIds) ? nextView.scope.elementIds : [];
+          if (!currentIds.includes(id)) {
+            nextView = {
+              ...nextView,
+              scope: { kind: 'ManualSelection', elementIds: [...currentIds, id] },
+            };
+            didUpdateView = true;
+          }
+        } else {
+          // Convert EntireRepository → ManualSelection with existing visible elements + new one
+          const existingVisible = ((nextView.layoutMetadata as any)?.visibleElementIds as string[]) ?? [];
+          const newElementIds = existingVisible.includes(id) ? existingVisible : [...existingVisible, id];
+          nextView = {
+            ...nextView,
+            scope: { kind: 'ManualSelection', elementIds: newElementIds },
+          };
+          didUpdateView = true;
+        }
+
+        const layoutMetadata = nextView.layoutMetadata ?? {};
+        const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as string[] | undefined;
+        const nextVisible = Array.isArray(visibleElementIds) ? visibleElementIds : [];
+        if (!nextVisible.includes(id)) {
+          nextView = {
+            ...nextView,
+            layoutMetadata: { ...layoutMetadata, visibleElementIds: [...nextVisible, id] },
+          };
+          didUpdateView = true;
+        }
+
+        if (input.placement) {
+          const basePositions = layoutPositionsForView(nextView);
+          const nextPositions = { ...basePositions, [id]: { x: input.placement.x, y: input.placement.y } };
+          nextView = {
+            ...nextView,
+            layoutMetadata: { ...(nextView.layoutMetadata ?? {}), positions: nextPositions },
+          };
+          didUpdateView = true;
+        }
+
+        if (didUpdateView) {
+          const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
+          if (isWorking) {
+            setActiveView(nextView);
+            setViewTabStateById((prev) => {
+              const existing = prev[activeTabKey];
+              if (!existing) return prev;
+              return {
+                ...prev,
+                [activeTabKey]: {
+                  ...existing,
+                  view: nextView,
+                  saveStatus: 'dirty',
+                },
+              };
+            });
+          } else {
+            ViewStore.save(nextView);
+            setActiveView(nextView);
+            try {
+              window.dispatchEvent(new Event('ea:viewsChanged'));
+            } catch {
+              // Best-effort only.
+            }
+          }
+        }
+      }
 
       // WRITE-THROUGH: persist element position to ViewLayoutStore if in view mode
       if (activeViewId && input.placement && !activeViewIsWorkingRef.current) {
@@ -4481,7 +4873,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       return id;
     },
-      [activeTabKey, actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, persistWorkspaceDebounced, relationshipStyleForType, setViewTabStateById],
+      [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, layoutPositionsForView, persistWorkspaceDebounced, relationshipStyleForType, setViewTabStateById, viewTabStateById],
     );
 
   const updateElementName = React.useCallback(
@@ -4645,12 +5037,50 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setSelectedFreeShapeId(null);
       setSelectedFreeConnectorId(null);
 
+      // VIEW ISOLATION: Add the relationship ID to the active view's
+      // visibleRelationshipIds so it is scoped to this view only.
+      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      if (isViewCanvas && activeView) {
+        let nextView: ViewInstance = activeView;
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        if (!currentRelIds.includes(relationshipId)) {
+          currentRelIds.push(relationshipId);
+          nextView = { ...nextView, visibleRelationshipIds: currentRelIds };
+        }
+        // Also store in layoutMetadata for persistence
+        const layoutMetadata = nextView.layoutMetadata ?? {};
+        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as string[] | undefined;
+        const nextMetaRelIds = Array.isArray(metaRelIds) ? [...metaRelIds] : [];
+        if (!nextMetaRelIds.includes(relationshipId)) {
+          nextMetaRelIds.push(relationshipId);
+          nextView = {
+            ...nextView,
+            layoutMetadata: { ...nextView.layoutMetadata, visibleRelationshipIds: nextMetaRelIds },
+          };
+        }
+        const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
+        if (isWorking) {
+          setActiveView(nextView);
+          setViewTabStateById((prev) => {
+            const existing = prev[activeTabKey];
+            if (!existing) return prev;
+            return { ...prev, [activeTabKey]: { ...existing, view: nextView, saveStatus: 'dirty' } };
+          });
+        } else {
+          ViewStore.save(nextView);
+          setActiveView(nextView);
+          try {
+            window.dispatchEvent(new Event('ea:viewsChanged'));
+          } catch { /* best-effort */ }
+        }
+      }
+
       // WRITE-THROUGH: persist workspace immediately after relationship creation
       persistWorkspaceDebounced(100);
 
       return relationshipId;
     },
-    [actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, persistWorkspaceDebounced, validateRelationshipCreation],
+    [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, persistWorkspaceDebounced, setViewTabStateById, validateRelationshipCreation, viewTabStateById],
   );
 
   const formatInlineWarningLabel = React.useCallback((message?: string) => {
@@ -4754,17 +5184,65 @@ const StudioShell: React.FC<StudioShellProps> = ({
       };
 
       setStagedRelationships((prev) => [...prev, staged]);
+      skipCanvasRebuildRef.current = true;
+
+      if (cyRef.current) {
+        cyRef.current.add({
+          data: {
+            id: relationshipId,
+            source: input.fromId,
+            target: input.toId,
+            relationshipType: input.type,
+            relationshipStyle: relationshipStyleForType(input.type),
+            staged: true,
+          },
+        });
+        const edge = cyRef.current.getElementById(relationshipId);
+        if (edge && !edge.empty()) edge.select();
+      }
 
       setSelectedNodeIds([]);
       setSelectedEdgeId(relationshipId);
       setSelectedFreeShapeId(null);
       setSelectedFreeConnectorId(null);
       clearGovernanceWarningEdges({ fromId: input.fromId, toId: input.toId, type: input.type });
+      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      if (isViewCanvas && activeView) {
+        let nextView: ViewInstance = activeView;
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        if (!currentRelIds.includes(relationshipId)) {
+          currentRelIds.push(relationshipId);
+          nextView = { ...nextView, visibleRelationshipIds: currentRelIds };
+        }
+        const layoutMetadata = nextView.layoutMetadata ?? {};
+        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as string[] | undefined;
+        const nextMetaRelIds = Array.isArray(metaRelIds) ? [...metaRelIds] : [];
+        if (!nextMetaRelIds.includes(relationshipId)) {
+          nextMetaRelIds.push(relationshipId);
+          nextView = {
+            ...nextView,
+            layoutMetadata: { ...nextView.layoutMetadata, visibleRelationshipIds: nextMetaRelIds },
+          };
+        }
+        setActiveView(nextView);
+        setViewTabStateById((prev) => {
+          const existing = prev[activeTabKey];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [activeTabKey]: {
+              ...existing,
+              view: nextView,
+              saveStatus: 'dirty',
+            },
+          };
+        });
+      }
       // WRITE-THROUGH: persist workspace immediately after canvas relationship creation
       persistWorkspaceDebounced(100);
       return { ok: true, id: relationshipId } as const;
     },
-    [actor, applyRepositoryTransaction, clearGovernanceWarningEdges, declareModelingAction, persistWorkspaceDebounced, validateRelationshipCreation],
+    [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, clearGovernanceWarningEdges, declareModelingAction, persistWorkspaceDebounced, relationshipStyleForType, setViewTabStateById, validateRelationshipCreation],
   );
 
   const confirmRelationshipChoice = React.useCallback(
@@ -4786,6 +5264,135 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setRelationshipChooser(null);
     },
     [createRelationshipFromCanvas, relationshipChooser],
+  );
+
+  // ─── Connection Palette: handle user selection from InlineConnectionPalette ──
+  const confirmConnectionPaletteSelection = React.useCallback(
+    (selection: ConnectionPaletteSelection) => {
+      if (!connectionPalette) return;
+      const { resolution } = connectionPalette;
+      setConnectionPalette(null);
+
+      if (selection.kind === 'direct') {
+        const creation = createRelationshipFromCanvas({
+          fromId: resolution.sourceId,
+          toId: resolution.targetId,
+          type: selection.type,
+        });
+        if (!creation.ok) {
+          eaConsole.push({
+            level: 'error',
+            domain: 'relationship',
+            message: creation.error ?? 'Failed to create connection.',
+            context: { elementId: resolution.sourceId, relationshipType: selection.type },
+          });
+        } else if (creation.id) {
+          createdConnectionsRef.current.set(creation.id, {
+            primaryEdgeId: creation.id,
+            primaryType: selection.type,
+            sourceId: resolution.sourceId,
+            targetId: resolution.targetId,
+            isDerived: false,
+            intermediateElementIds: [],
+            intermediateEdgeIds: [],
+            collapsed: false,
+          });
+        }
+      } else if (selection.kind === 'indirect') {
+        // Indirect path — create intermediate elements and relationships
+        const path = selection.path;
+        const intermediateIds: string[] = [];
+        const edgeIds: string[] = [];
+        let success = true;
+
+        // Step 1: Create intermediate elements (marked as derived)
+        for (const intermediateType of path.intermediateTypes) {
+          const stageName = `${intermediateType} (auto)`;
+          // Use the element creation pipeline to stage a derived element
+          const newId = `derived-${crypto.randomUUID?.() ?? Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const staged: DesignWorkspaceStagedElement = {
+            id: newId,
+            kind: 'element',
+            type: intermediateType,
+            name: stageName,
+            visualKind: null,
+            attributes: { name: stageName, derived: true },
+            status: 'staged',
+            source: 'canvas',
+            createdAt: new Date().toISOString(),
+            actor: 'user',
+          };
+          setStagedElements((prev) => [...prev, staged]);
+
+          // Add to canvas at midpoint
+          if (cyRef.current) {
+            const sourceNode = cyRef.current.getElementById(resolution.sourceId);
+            const targetNode = cyRef.current.getElementById(resolution.targetId);
+            const sPos = sourceNode && !sourceNode.empty() ? sourceNode.position() : { x: 0, y: 0 };
+            const tPos = targetNode && !targetNode.empty() ? targetNode.position() : { x: 0, y: 0 };
+            const midX = (sPos.x + tPos.x) / 2;
+            const midY = (sPos.y + tPos.y) / 2 + (intermediateIds.length * 60);
+
+            cyRef.current.add({
+              data: {
+                id: newId,
+                label: stageName,
+                objectType: intermediateType,
+                staged: true,
+                derived: true,
+              },
+              position: { x: midX, y: midY },
+            });
+          }
+          intermediateIds.push(newId);
+        }
+
+        // Step 2: Create relationships along the path
+        const nodeChain = [resolution.sourceId, ...intermediateIds, resolution.targetId];
+        for (let i = 0; i < path.hops.length; i++) {
+          const hop = path.hops[i];
+          const fromId = nodeChain[i];
+          const toId = nodeChain[i + 1];
+          const creation = createRelationshipFromCanvas({
+            fromId,
+            toId,
+            type: hop.relationshipType,
+          });
+          if (!creation.ok) {
+            eaConsole.push({
+              level: 'warn',
+              domain: 'relationship',
+              message: `Failed to create segment ${hop.fromType} → ${hop.toType}: ${creation.error}`,
+              context: { elementId: fromId, relationshipType: hop.relationshipType },
+            });
+            success = false;
+            break;
+          }
+          if (creation.id) edgeIds.push(creation.id);
+        }
+
+        if (success && edgeIds.length > 0) {
+          const primaryId = edgeIds[edgeIds.length - 1];
+          createdConnectionsRef.current.set(primaryId, {
+            primaryEdgeId: primaryId,
+            primaryType: path.hops[path.hops.length - 1].relationshipType,
+            sourceId: resolution.sourceId,
+            targetId: resolution.targetId,
+            isDerived: true,
+            intermediateElementIds: intermediateIds,
+            intermediateEdgeIds: edgeIds,
+            collapsed: false,
+          });
+          eaConsole.push({
+            level: 'success',
+            domain: 'relationship',
+            message: `Connected via ${path.intermediateTypes.join(' → ')} (${intermediateIds.length} intermediate${intermediateIds.length === 1 ? '' : 's'} created).`,
+            context: { elementId: resolution.sourceId },
+          });
+        }
+      }
+    },
+    [connectionPalette, createRelationshipFromCanvas, setStagedElements],
   );
 
   const stageExistingElement = React.useCallback(
@@ -4881,7 +5488,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             node.data('eaColor', visualData.eaColor);
             node.data('eaBorder', visualData.eaBorder);
             node.data('eaVisualKind', visualData.eaVisualKind);
-            node.grabbable(!viewReadOnly && isNodeEditable(node));
+            node.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(node));
             if (placement) {
               node.position({ x: placement.x, y: placement.y });
             }
@@ -4907,7 +5514,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
               added.data('eaColor', visualData.eaColor);
               added.data('eaBorder', visualData.eaBorder);
               added.data('eaVisualKind', visualData.eaVisualKind);
-              added.grabbable(!viewReadOnly && isNodeEditable(added));
+              added.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(added));
               added.select();
             }
           }
@@ -5262,6 +5869,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const autoSaveWorkspace = React.useCallback(() => {
     if (designWorkspace.status === 'DISCARDED') return;
+    if (!workspaceAutosavePendingRef.current) return;
     const layout = buildLayoutFromCanvas();
     const next: DesignWorkspace = {
       ...designWorkspace,
@@ -5273,6 +5881,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     };
     onUpdateWorkspace(next);
     setLastAutoSaveAt(next.updatedAt);
+    workspaceAutosavePendingRef.current = false;
   }, [buildLayoutFromCanvas, currentRepositoryUpdatedAt, designWorkspace, onUpdateWorkspace, stagedElements, stagedRelationships]);
 
   React.useEffect(() => {
@@ -5699,7 +6308,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cyRef.current = cytoscape({
         container: containerRef.current,
         elements: [],
-        layout: { name: 'grid', fit: true, avoidOverlap: true } as const,
+        layout: { name: 'preset' } as const,
+        minZoom: 0.2,
+        maxZoom: 2.5,
+        wheelSensitivity: 0.3,
         style: [
           {
             selector: 'node',
@@ -5961,6 +6573,45 @@ const StudioShell: React.FC<StudioShellProps> = ({
               'border-opacity': 0.7,
             },
           },
+          // ── Connection Resolution: visual feedback styles ──
+          // Green outline — direct valid relationship exists
+          {
+            selector: 'node.connection-direct-valid',
+            style: {
+              'border-width': 3,
+              'border-color': '#52c41a',
+              'border-opacity': 0.9,
+              'border-style': 'solid',
+            },
+          },
+          // Blue outline — indirect valid relationship exists (through intermediates)
+          {
+            selector: 'node.connection-indirect-valid',
+            style: {
+              'border-width': 3,
+              'border-color': '#1890ff',
+              'border-opacity': 0.9,
+              'border-style': 'solid',
+            },
+          },
+          // Derived (auto-inserted) elements — subtle dashed border
+          {
+            selector: 'node[?derived]',
+            style: {
+              'border-style': 'dashed',
+              'border-width': 2,
+              'border-color': '#bbb',
+              'border-opacity': 0.6,
+            },
+          },
+          // Derived edges — dashed line
+          {
+            selector: 'edge[?derived]',
+            style: {
+              'line-style': 'dashed',
+              opacity: 0.7,
+            },
+          },
           {
             selector: 'node.connectionSource',
             style: {
@@ -6001,10 +6652,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const connectionMode = currentToolMode === 'CREATE_RELATIONSHIP' || currentToolMode === 'CREATE_FREE_CONNECTOR';
       cy.userPanningEnabled(panEnabled);
       cy.boxSelectionEnabled(selectEnabled);
-      cy.autoungrabify(panEnabled || connectionDragLockRef.current || connectionMode);
+      cy.autoungrabify(panEnabled || connectionDragLockRef.current || connectionMode || viewLayoutLocked);
     };
 
     applyToolMode();
+
+    // DRAG-FENCE: If the effect is re-registering handlers while a drag
+    // is in flight, capture pointer on the container to guarantee that
+    // mousemove/mouseup continue reaching Cytoscape even if the cursor
+    // leaves the container bounds.
+    if (draggingRef.current && containerRef.current && dragPointerIdRef.current !== null) {
+      try {
+        containerRef.current.setPointerCapture(dragPointerIdRef.current);
+      } catch {
+        // Best-effort — some browsers reject re-capture.
+      }
+    }
 
     const handleTap = (evt: any) => {
       if (!cyRef.current) return;
@@ -6183,17 +6846,41 @@ const StudioShell: React.FC<StudioShellProps> = ({
         undefined;
       if (currentToolMode === 'SELECT') {
         if (relationshipChooser) setRelationshipChooser(null);
+        if (connectionPalette) setConnectionPalette(null);
         if (viewReadOnly || !canDiagramMode || designWorkspace.status !== 'DRAFT') return;
         if (node.data('freeShape')) return;
         const selected = cy.nodes(':selected').filter((n) => !n.data('freeShape'));
         if (selected.length > 1) return;
         intentConnectionRef.current = { sourceId, active: true };
+
+        // ── User-first resolution: pre-compute ALL connection possibilities ──
+        const resolutions = buildConnectionResolutions(sourceId);
+        connectionResolutionCacheRef.current = resolutions;
+
+        // Also build legacy candidates for backward compat
         const candidates = buildIntentConnectionCandidates(sourceId);
         intentConnectionCandidatesRef.current = candidates;
-        cy.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
-        candidates.forEach((_, targetId) => {
+
+        // Clear all classes and apply resolution-based visual feedback
+        cy.nodes().forEach((n) => {
+          n.removeClass('validTarget');
+          n.removeClass('invalidTarget');
+          n.removeClass('validTargetCandidate');
+          clearConnectionFeedbackClasses(n);
+        });
+
+        // Green = direct, Blue = indirect, Neutral = no class (no error)
+        resolutions.forEach((resolution, targetId) => {
           const target = cy.getElementById(targetId);
-          if (target && !target.empty()) target.addClass('validTargetCandidate');
+          if (!target || target.empty()) return;
+          const feedback = getConnectionFeedback(resolution);
+          if (feedback.kind === 'direct-valid') {
+            target.addClass(CONNECTION_FEEDBACK_CLASSES.directValid);
+            target.addClass('validTargetCandidate');
+          } else if (feedback.kind === 'indirect-valid') {
+            target.addClass(CONNECTION_FEEDBACK_CLASSES.indirectValid);
+            target.addClass('validTargetCandidate');
+          }
         });
       }
       if (currentToolMode === 'CREATE_FREE_CONNECTOR' && repositoryOnlyCanvas) {
@@ -6308,9 +6995,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget');
       if (validation.valid) {
         node.addClass('validTarget');
-      } else {
-        node.addClass('invalidTarget');
       }
+      // No invalidTarget class — neutral means no outline, no red, no error on hover
       if (isDragging) {
         const edge = cyRef.current.getElementById(DRAFT_EDGE_ID);
         if (!edge.empty() && validation.valid) {
@@ -6607,11 +7293,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const pos = evt?.position ?? evt?.cyPosition ?? node.position();
       if (!pos) return;
       const hoverNode = findNodeAtPosition(pos);
+      // Clear active hover feedback from all nodes (keep static feedback classes)
       cyRef.current.nodes().removeClass('validTarget');
       if (hoverNode && !hoverNode.empty()) {
         const targetId = String(hoverNode.id());
-        if (targetId && targetId !== sourceId && intentConnectionCandidatesRef.current.has(targetId)) {
-          hoverNode.addClass('validTarget');
+        if (targetId && targetId !== sourceId) {
+          // Resolution-based hover: check if ANY path (direct or indirect) exists
+          const resolution = connectionResolutionCacheRef.current.get(targetId);
+          if (resolution && resolution.hasAnyPath) {
+            hoverNode.addClass('validTarget');
+          }
+          // No 'invalidTarget' class — neutral means no visual change, no error
         }
       }
     };
@@ -6627,11 +7319,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (!isNodeEditable(node)) return;
       draggingRef.current = false;
 
+      // -------------------------------------------------------------------
+      // DRAG-UNLOCK: Restore the pan & zoom settings that were frozen in
+      // handleNodeGrab.  This ensures the canvas is interactive again.
+      // -------------------------------------------------------------------
+      const preDrag = preDragInteractionRef.current;
+      if (preDrag) {
+        cyRef.current.userPanningEnabled(preDrag.panEnabled);
+        cyRef.current.userZoomingEnabled(preDrag.zoomEnabled);
+        preDragInteractionRef.current = null;
+      }
+
+      // Release pointer capture that was set during grab.
+      if (dragPointerIdRef.current !== null && containerRef.current) {
+        try {
+          containerRef.current.releasePointerCapture(dragPointerIdRef.current);
+        } catch {
+          // Best-effort only.
+        }
+        dragPointerIdRef.current = null;
+      }
+
       if (intentConnectionRef.current.active) {
         const sourceId = intentConnectionRef.current.sourceId;
         intentConnectionRef.current = { sourceId: null, active: false };
         const pos = evt?.position ?? evt?.cyPosition ?? node.position();
         const cy = cyRef.current;
+        const resolutions = connectionResolutionCacheRef.current;
         const candidates = intentConnectionCandidatesRef.current;
         const targetNode = (() => {
           if (!pos) return null;
@@ -6645,52 +7359,140 @@ const StudioShell: React.FC<StudioShellProps> = ({
           return fallback ?? null;
         })();
 
-        cy.nodes().removeClass('validTarget').removeClass('validTargetCandidate').removeClass('invalidTarget');
+        // Clear all feedback classes
+        cy.nodes().forEach((n) => {
+          n.removeClass('validTarget');
+          n.removeClass('validTargetCandidate');
+          n.removeClass('invalidTarget');
+          clearConnectionFeedbackClasses(n);
+        });
         intentConnectionCandidatesRef.current = new Map();
+        connectionResolutionCacheRef.current = new Map();
 
         if (sourceId && targetNode && !targetNode.empty()) {
           const targetId = String(targetNode.id());
           if (targetId && targetId !== sourceId) {
-            const validTypes = candidates.get(targetId) ?? getValidRelationshipTypesForPair(sourceId, targetId);
-            if (validTypes.length === 0) {
-              eaConsole.push({
-                level: 'info',
-                domain: 'relationship',
-                message: 'No valid architectural relationship exists between these elements.',
-                context: { elementId: sourceId },
-              });
-            } else if (validTypes.length === 1) {
-              const creation = createRelationshipFromCanvas({
-                fromId: sourceId,
-                toId: targetId,
-                type: validTypes[0],
-              });
-              if (!creation.ok) {
-                eaConsole.push({
-                  level: 'error',
-                  domain: 'relationship',
-                  message: creation.error ?? 'Failed to create connection.',
-                  context: { elementId: sourceId, relationshipType: validTypes[0] },
-                });
+            // ── User-first connection resolution pipeline ──
+            const resolution = resolutions.get(targetId);
+
+            if (resolution && resolution.hasAnyPath) {
+              // Pipeline: auto-create / choose-direct / choose-any
+              switch (resolution.recommendation) {
+                case 'auto-create': {
+                  const choice = resolution.autoCreateChoice;
+                  if (choice?.kind === 'direct') {
+                    // Single direct relationship — auto-create
+                    const creation = createRelationshipFromCanvas({
+                      fromId: sourceId,
+                      toId: targetId,
+                      type: choice.type,
+                    });
+                    if (!creation.ok) {
+                      eaConsole.push({
+                        level: 'error',
+                        domain: 'relationship',
+                        message: creation.error ?? 'Failed to create connection.',
+                        context: { elementId: sourceId, relationshipType: choice.type },
+                      });
+                    } else if (creation.id) {
+                      createdConnectionsRef.current.set(creation.id, {
+                        primaryEdgeId: creation.id,
+                        primaryType: choice.type,
+                        sourceId,
+                        targetId,
+                        isDerived: false,
+                        intermediateElementIds: [],
+                        intermediateEdgeIds: [],
+                        collapsed: false,
+                      });
+                    }
+                  } else if (choice?.kind === 'indirect') {
+                    // Single indirect path — show palette to confirm
+                    const sourceNode = cy.getElementById(sourceId);
+                    const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                    const targetPos = targetNode.position();
+                    const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                    const rendered = toRenderedPosition(mid);
+                    const rect = containerRef.current?.getBoundingClientRect();
+                    const offsetX = rect?.left ?? 0;
+                    const offsetY = rect?.top ?? 0;
+                    setConnectionPalette({
+                      resolution,
+                      position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                    });
+                  }
+                  break;
+                }
+
+                case 'choose-direct':
+                case 'choose-any': {
+                  // Multiple options — show the inline connection palette
+                  const sourceNode = cy.getElementById(sourceId);
+                  const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                  const targetPos = targetNode.position();
+                  const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                  const rendered = toRenderedPosition(mid);
+                  const rect = containerRef.current?.getBoundingClientRect();
+                  const offsetX = rect?.left ?? 0;
+                  const offsetY = rect?.top ?? 0;
+                  setConnectionPalette({
+                    resolution,
+                    position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                  });
+                  break;
+                }
+
+                default:
+                  break;
               }
             } else {
-              const sourceNode = cy.getElementById(sourceId);
-              const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
-              const targetPos = targetNode.position();
-              const mid = {
-                x: (sourcePos.x + targetPos.x) / 2,
-                y: (sourcePos.y + targetPos.y) / 2,
-              };
-              const rendered = toRenderedPosition(mid);
-              const rect = containerRef.current?.getBoundingClientRect();
-              const offsetX = rect?.left ?? 0;
-              const offsetY = rect?.top ?? 0;
-              setRelationshipChooser({
-                sourceId,
-                targetId,
-                types: validTypes,
-                position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
-              });
+              // ── Fallback: resolution cache miss or no-path —
+              // Try legacy candidates or compute inline as the old flow did.
+              const validTypes = candidates.get(targetId) ?? getValidRelationshipTypesForPair(sourceId, targetId);
+              if (validTypes.length === 1) {
+                const creation = createRelationshipFromCanvas({
+                  fromId: sourceId,
+                  toId: targetId,
+                  type: validTypes[0],
+                });
+                if (!creation.ok) {
+                  eaConsole.push({
+                    level: 'error',
+                    domain: 'relationship',
+                    message: creation.error ?? 'Failed to create connection.',
+                    context: { elementId: sourceId, relationshipType: validTypes[0] },
+                  });
+                }
+              } else if (validTypes.length > 1) {
+                const sourceNode = cy.getElementById(sourceId);
+                const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                const targetPos = targetNode.position();
+                const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                const rendered = toRenderedPosition(mid);
+                const rect = containerRef.current?.getBoundingClientRect();
+                const offsetX = rect?.left ?? 0;
+                const offsetY = rect?.top ?? 0;
+                setRelationshipChooser({
+                  sourceId,
+                  targetId,
+                  types: validTypes,
+                  position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                });
+              } else {
+                // Truly no path — show actionable suggestion
+                const sourceType = resolveElementLabel(sourceId)?.type;
+                const targetType = resolveElementLabel(targetId)?.type;
+                const suggestion = resolution?.noPathSuggestion
+                  ?? (sourceType && targetType
+                    ? `No standard EA path between ${sourceType} and ${targetType}. You can use a free connector for visual links.`
+                    : buildInferenceErrorMessage(sourceId, targetId));
+                eaConsole.push({
+                  level: 'info',
+                  domain: 'relationship',
+                  message: suggestion,
+                  context: { elementId: sourceId },
+                });
+              }
             }
           }
         }
@@ -6771,6 +7573,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // Persist moved positions to ViewLayoutStore for saved views
       if (activeViewIdRef.current && !activeViewIsWorkingRef.current && Object.keys(posUpdates).length > 0) {
         ViewLayoutStore.updatePositions(activeViewIdRef.current, posUpdates);
+        setViewTabStateById((prev) => {
+          const existing = prev[activeTabKey];
+          if (!existing) return prev;
+          if (existing.saveStatus === 'dirty') return prev;
+          return {
+            ...prev,
+            [activeTabKey]: {
+              ...existing,
+              saveStatus: 'dirty',
+            },
+          };
+        });
       }
 
       // Update in-memory positions for working views
@@ -6809,6 +7623,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       // Restore grabbable state after drag completes.
+      // Wrap in a batch so we don't trigger per-node style recalcs.
       const cy = cyRef.current;
       const currentToolMode = toolModeRef.current;
       const panEnabled = currentToolMode === 'PAN';
@@ -6816,12 +7631,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const connectionMode = currentToolMode === 'CREATE_RELATIONSHIP' || currentToolMode === 'CREATE_FREE_CONNECTOR';
       cy.userPanningEnabled(presentationView ? true : panEnabled);
       cy.boxSelectionEnabled(presentationView ? false : selectEnabled);
-      cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLockRef.current || connectionMode);
+      cy.startBatch();
+      cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLockRef.current || connectionMode || viewLayoutLocked);
       if (presentationView || connectionDragLockRef.current || connectionMode) {
         cy.nodes().forEach((n) => n.grabbable(false));
       } else {
-        cy.nodes().forEach((n) => n.grabbable(!viewReadOnly && isNodeEditable(n)));
+        cy.nodes().forEach((n) => n.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(n)));
       }
+      cy.endBatch();
+
+      // Mark dirty once at drag end (position events were suppressed).
+      setViewTabStateById((prev) => {
+        const existing = prev[activeTabKey];
+        if (!existing) return prev;
+        if (existing.saveStatus === 'dirty') return prev;
+        return { ...prev, [activeTabKey]: { ...existing, saveStatus: 'dirty' } };
+      });
     };
 
     const handleNodeGrab = (evt: any) => {
@@ -6831,8 +7656,81 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const node = evt.target as any;
       if (!node || node === cyRef.current) return;
       if (!isNodeEditable(node)) return;
+      if (!intentConnectionRef.current.active) {
+        if (relationshipChooser) setRelationshipChooser(null);
+        if (connectionPalette) setConnectionPalette(null);
+        if (!viewReadOnly && canDiagramMode && designWorkspace.status === 'DRAFT' && !node.data('freeShape')) {
+          const selected = cyRef.current.nodes(':selected').filter((n) => !n.data('freeShape'));
+          if (selected.length <= 1) {
+            const sourceId = String(node.id());
+            if (sourceId) {
+              intentConnectionRef.current = { sourceId, active: true };
+
+              // ── User-first resolution: pre-compute ALL connection possibilities ──
+              const resolutions = buildConnectionResolutions(sourceId);
+              connectionResolutionCacheRef.current = resolutions;
+
+              // Also build legacy candidates for backward compat
+              const candidates = buildIntentConnectionCandidates(sourceId);
+              intentConnectionCandidatesRef.current = candidates;
+
+              // Clear all feedback classes
+              cyRef.current.nodes().forEach((n) => {
+                n.removeClass('validTarget');
+                n.removeClass('invalidTarget');
+                n.removeClass('validTargetCandidate');
+                clearConnectionFeedbackClasses(n);
+              });
+
+              // Apply resolution-based visual feedback:
+              //   Green = direct path available
+              //   Blue = indirect path available
+              //   No class = neutral (no path, but NOT an error)
+              resolutions.forEach((resolution, targetId) => {
+                const target = cyRef.current?.getElementById(targetId);
+                if (!target || target.empty()) return;
+                const feedback = getConnectionFeedback(resolution);
+                if (feedback.kind === 'direct-valid') {
+                  target.addClass(CONNECTION_FEEDBACK_CLASSES.directValid);
+                  target.addClass('validTargetCandidate'); // backward compat
+                } else if (feedback.kind === 'indirect-valid') {
+                  target.addClass(CONNECTION_FEEDBACK_CLASSES.indirectValid);
+                  target.addClass('validTargetCandidate'); // allow drop
+                }
+                // neutral → no class → no outline → no error
+              });
+            }
+          }
+        }
+      }
       draggingRef.current = true;
       const cy = cyRef.current;
+
+      // -------------------------------------------------------------------
+      // DRAG-LOCK: Freeze pan & zoom so that scroll-wheel, trackpad, or
+      // accidental gestures cannot interrupt the node drag.
+      // Settings are captured here and restored in handleNodeDragFree.
+      // -------------------------------------------------------------------
+      preDragInteractionRef.current = {
+        panEnabled: cy.userPanningEnabled(),
+        zoomEnabled: cy.userZoomingEnabled(),
+      };
+      cy.userPanningEnabled(false);
+      cy.userZoomingEnabled(false);
+
+      // POINTER CAPTURE: Lock pointer events to the container so that even
+      // if the cursor escapes the canvas bounds mid-drag, we keep receiving
+      // move/up events and the node never "detaches".
+      const oe = evt.originalEvent as PointerEvent | MouseEvent | undefined;
+      if (oe && 'pointerId' in oe && containerRef.current) {
+        dragPointerIdRef.current = (oe as PointerEvent).pointerId;
+        try {
+          containerRef.current.setPointerCapture(dragPointerIdRef.current);
+        } catch {
+          // Best-effort only — some environments don't support pointer capture.
+        }
+      }
+
       // Keep nodes grabbable during drag so they don't drop mid-move.
       cy.autoungrabify(false);
       layoutDragSnapshotRef.current = captureLayoutSnapshot();
@@ -6967,20 +7865,34 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cyRef.current?.removeListener('select unselect', 'edge', handleSelectionChange);
       cyRef.current?.removeListener('cxttap', 'node', handleContextMenu);
       cyRef.current?.removeListener('position', 'node', handleNodePositionChange);
-      draggingRef.current = false;
+      // NOTE: Do NOT reset draggingRef or preDragInteractionRef here.
+      // This cleanup runs when any of the ~35 effect dependencies change,
+      // which can happen MID-DRAG.  Resetting drag state here would cause
+      // the node to "detach" because:
+      //   1. draggingRef becomes false → wheel zoom resumes during drag
+      //   2. preDragInteractionRef is cleared → can't restore on dragfree
+      //   3. New handlers lose awareness that a drag is in progress
+      // On true unmount, cy.destroy() (in separate effect) handles cleanup.
     };
-  }, [addGovernanceWarningEdge, buildIntentConnectionCandidates, canDiagramMode, captureLayoutSnapshot, clearRelationshipDraftArtifacts, createRelationshipFromCanvas, designWorkspace.status, getFallbackAnchorPos, getValidRelationshipTypesForPair, getValidTargetsForSource, hierarchyRelationshipType, isHierarchicalView, isLargeGraph, isNodeEditable, iterativeModeling, layoutSnapshotSignature, lockNodesForConnection, openInlineCreatePrompt, openInlineRenamePrompt, openPropertiesPanel, pendingElementType, pendingElementVisualKind, refreshConnectionPositionSnapshot, rejectVisualOnlyAction, relationshipChooser, releaseConnectionDragLock, removeDraftTarget, repositoryOnlyCanvas, resolveElementLabel, restoreDraggedNodePosition, snapPosition, toRenderedPosition, updateDraftEdgeTarget, updateRelationshipDraft, validateRelationshipCreation, viewReadOnly]);
+  }, [addGovernanceWarningEdge, buildConnectionResolutions, buildInferenceErrorMessage, buildIntentConnectionCandidates, canDiagramMode, captureLayoutSnapshot, clearRelationshipDraftArtifacts, connectionPalette, createRelationshipFromCanvas, designWorkspace.status, getFallbackAnchorPos, getInferredRelationshipTypesForPair, getValidRelationshipTypesForPair, getValidTargetsForSource, hierarchyRelationshipType, isHierarchicalView, isLargeGraph, isNodeEditable, iterativeModeling, layoutSnapshotSignature, lockNodesForConnection, openInlineCreatePrompt, openInlineRenamePrompt, openPropertiesPanel, pendingElementType, pendingElementVisualKind, refreshConnectionPositionSnapshot, rejectVisualOnlyAction, relationshipChooser, releaseConnectionDragLock, removeDraftTarget, repositoryOnlyCanvas, resolveElementLabel, restoreDraggedNodePosition, snapPosition, toRenderedPosition, updateDraftEdgeTarget, updateRelationshipDraft, validateRelationshipCreation, viewReadOnly]);
 
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const handleWheel = (event: WheelEvent) => {
       if (!cyRef.current) return;
+      // Always prevent browser default scroll on the canvas element
       event.preventDefault();
+
+      // DRAG-LOCK: If a node is currently being dragged, completely
+      // suppress wheel zoom.  The drag gesture MUST NOT be interrupted.
+      if (draggingRef.current) return;
+
       const rect = container.getBoundingClientRect();
       const renderedPosition = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const zoom = cyRef.current.zoom();
-      const factor = Math.exp(-event.deltaY * 0.001);
+      // Lower sensitivity for smoother zoom feel (was 0.001)
+      const factor = Math.exp(-event.deltaY * 0.0007);
       const next = Math.min(2.5, Math.max(0.2, zoom * factor));
       cyRef.current.zoom({ level: next, renderedPosition });
     };
@@ -7036,6 +7948,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
     };
   }, [relationshipChooser]);
 
+  // ─── Connection Palette dismiss (click-outside + Escape) ──
+  React.useEffect(() => {
+    if (!connectionPalette) return;
+    const handleDismiss = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (connectionPaletteRef.current && target && connectionPaletteRef.current.contains(target)) return;
+      setConnectionPalette(null);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConnectionPalette(null);
+    };
+    window.addEventListener('mousedown', handleDismiss);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('mousedown', handleDismiss);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [connectionPalette]);
+
   React.useEffect(() => {
     if (!cyRef.current) return;
     const cy = cyRef.current;
@@ -7045,11 +7976,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const connectionMode = toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR';
     cy.userPanningEnabled(presentationView ? true : panEnabled);
     cy.boxSelectionEnabled(presentationView ? false : selectEnabled);
-    cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLocked || connectionMode);
+    cy.startBatch();
+    cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLocked || connectionMode || viewLayoutLocked);
     if (presentationView || connectionDragLocked || connectionMode) {
       cy.nodes().forEach((node) => node.grabbable(false));
     }
-  }, [connectionDragLocked, presentationView, toolMode]);
+    cy.endBatch();
+  }, [connectionDragLocked, presentationView, toolMode, viewLayoutLocked]);
 
   React.useEffect(() => {
     if (!cyRef.current) return;
@@ -7061,10 +7994,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cy.nodes().forEach((node) => node.grabbable(false));
     } else {
       cy.nodes().forEach((node) => {
-        node.grabbable(!viewReadOnly && isNodeEditable(node));
+        node.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(node));
       });
     }
-  }, [connectionDragLocked, isNodeEditable, presentationView, toolMode, viewReadOnly]);
+  }, [connectionDragLocked, isNodeEditable, presentationView, toolMode, viewLayoutLocked, viewReadOnly]);
 
   React.useEffect(() => {
     applyLayerVisibility();
@@ -7111,6 +8044,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   React.useEffect(() => {
     if (!cyRef.current) return;
+    // ===================================================================
+    // DRAG-FENCE: NEVER rebuild the canvas while a node is being dragged.
+    // cy.elements().remove() would destroy the grabbed node, causing the
+    // drag to "break away" and the node to detach from the cursor.
+    // The rebuild will re-run after the drag ends because
+    // handleNodeDragFree triggers state updates (setActiveView, etc.)
+    // that satisfy the dependency array.
+    // ===================================================================
+    if (draggingRef.current) return;
     // Skip exactly one rebuild cycle after a canvas-initiated relationship creation.
     // The edge was already added directly to Cytoscape by createRelationshipFromCanvas.
     if (skipCanvasRebuildRef.current) {
@@ -7136,6 +8078,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
         setFreeConnectors(viewFreeConnectors);
       }
       const cy = cyRef.current;
+      // Batch all DOM mutations to avoid visual flicker during view switch
+      cy.startBatch();
       cy.elements().remove();
 
       // =====================================================================
@@ -7261,7 +8205,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
         const node = cy.getElementById(n.id);
         if (node && !node.empty()) {
-          node.grabbable(!viewReadOnly && (Boolean(isStaged) || Boolean(n.viewInstance) || iterativeModeling));
+          node.grabbable(!viewReadOnly && !viewLayoutLocked && (Boolean(isStaged) || Boolean(n.viewInstance) || iterativeModeling));
         }
       });
       edges.forEach((e) => {
@@ -7292,7 +8236,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
         const node = cy.getElementById(shape.id);
         if (node && !node.empty()) {
-          node.grabbable(!viewReadOnly);
+          node.grabbable(!viewReadOnly && !viewLayoutLocked);
         }
       });
       freeConnectorsSeed.forEach((connector: FreeConnector) => {
@@ -7307,20 +8251,46 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
       });
       setIsLargeGraph(cy.nodes().length > LARGE_GRAPH_THRESHOLD);
-      // Auto-layout only when there are no saved positions at all
+
+      // End the batch — Cytoscape now renders all changes in one pass,
+      // eliminating the flash of an empty canvas during view switch.
+      cy.endBatch();
+
+      // EDIT MODE: Explicitly ensure nodes are interactive after rebuild.
+      // autoungrabify(false) allows individual node.grabbable() settings
+      // to take effect. Without this, Cytoscape may lock all nodes.
+      if (!viewReadOnly) {
+        cy.autoungrabify(false);
+      }
+
+      // Auto-layout only when there are no saved positions at all.
+      // IMPORTANT: Use fit: false — the layout should position nodes but
+      // NOT force a viewport change.  Viewport is owned by the view tab.
       const hasAnySavedPosition = nodes.some((n) => {
         const wsNodes = workspace.layout?.nodes ?? [];
         return wsNodes.some((wn) => wn.id === n.id);
       });
       if (!hasAnySavedPosition && nodes.length > 0) {
-        cy.layout({ name: 'grid', fit: true, avoidOverlap: true }).run();
+        cy.layout({ name: 'grid', fit: false, avoidOverlap: true }).run();
       }
       applyLayerVisibility();
+      if (activeTabKey !== WORKSPACE_TAB_KEY) {
+        // Suppress viewport persistence during programmatic restore so the
+        // pan/zoom listener doesn't overwrite the saved viewport with the
+        // intermediate state produced by cy.zoom() / cy.pan().
+        suppressViewportPersistRef.current = true;
+        restoreCanvasState(activeTabKey);
+        // Allow one frame for the batched zoom/pan to settle, then re-enable.
+        requestAnimationFrame(() => {
+          suppressViewportPersistRef.current = false;
+        });
+      }
     } catch {
       message.error('Workspace load failed. Staged items were not applied.');
+      cyRef.current?.endBatch();
       cyRef.current?.elements().remove();
     }
-  }, [activeView, activeViewId, applyLayerVisibility, buildLayoutFromView, designWorkspace, eaRepository, iterativeModeling, stagedElements, stagedRelationships, viewReadOnly]);
+  }, [activeTabKey, activeView, activeViewId, applyLayerVisibility, buildLayoutFromView, designWorkspace, eaRepository, iterativeModeling, restoreCanvasState, stagedElements, stagedRelationships, viewReadOnly]);
 
   const handleExit = React.useCallback(() => {
     if (stagedElements.length > 0 || stagedRelationships.length > 0) {
@@ -7846,19 +8816,208 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const viewSaveLabel = React.useMemo(() => {
     if (!activeViewId) return null;
-    if (viewReadOnly) return 'Read-only';
+    if (viewReadOnly || viewEditLocked) return 'Read-only';
     if (activeViewIsWorking) return 'Unsaved';
     if (viewSaveStatus === 'saving') return 'Saving…';
-    if (viewSaveStatus === 'dirty') return 'Unsaved changes';
+    if (viewSaveStatus === 'dirty') return 'Unsaved';
     return 'Saved';
-  }, [activeViewId, activeViewIsWorking, viewReadOnly, viewSaveStatus]);
+  }, [activeViewId, activeViewIsWorking, viewEditLocked, viewReadOnly, viewSaveStatus]);
   const lastViewSavedAt = React.useMemo(() => {
     return (activeView?.layoutMetadata as any)?.lastSavedAt ?? null;
   }, [activeView]);
+  const viewLayoutLocked = Boolean((activeView?.layoutMetadata as any)?.layoutLocked);
+
+  const autosaveTimerRef = React.useRef<number | null>(null);
+  const tabSessionPayloadRef = React.useRef<string | null>(null);
+  const tabSessionPersistTimerRef = React.useRef<number | null>(null);
+
+  const captureCanvasState = React.useCallback(
+    (tabKey?: string) => {
+      if (!cyRef.current) return;
+      const key = tabKey ?? activeTabKey;
+      if (!key || key === WORKSPACE_TAB_KEY) return;
+      const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+      const selectedNodes = cyRef.current.nodes(':selected').map((n) => String(n.id()));
+      const selectedEdges = cyRef.current.edges(':selected').map((e) => String(e.id()));
+      setViewTabStateById((prev) => {
+        const existing = prev[key];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [key]: {
+            ...existing,
+            viewport,
+            selection: { nodes: selectedNodes, edges: selectedEdges },
+          },
+        };
+      });
+    },
+    [activeTabKey],
+  );
+
+  const restoreCanvasState = React.useCallback(
+    (tabKey: string) => {
+      if (!cyRef.current) return;
+      const state = viewTabStateByIdRef.current[tabKey];
+      if (!state) return;
+      const viewport = state.viewport ?? ((state.view?.layoutMetadata as any)?.viewport ?? null);
+      if (viewport && typeof viewport.zoom === 'number' && viewport.pan) {
+        // Apply zoom + pan in a single atomic operation to avoid visual jump.
+        // Cytoscape's zoom({ level, position }) with pan afterwards causes
+        // two separate renders.  We batch them instead.
+        const cy = cyRef.current;
+        cy.startBatch();
+        cy.zoom(viewport.zoom);
+        cy.pan(viewport.pan);
+        cy.endBatch();
+      }
+      // NOTE: Do NOT call cy.fit() or cy.center() here.
+      // If no saved viewport exists the canvas stays at its current position
+      // which is valid — the user can pan/zoom manually.
+      if (state.selection) {
+        cyRef.current.elements().unselect();
+        state.selection.nodes.forEach((id) => {
+          const node = cyRef.current?.getElementById(id);
+          if (node && !node.empty()) node.select();
+        });
+        state.selection.edges.forEach((id) => {
+          const edge = cyRef.current?.getElementById(id);
+          if (edge && !edge.empty()) edge.select();
+        });
+      }
+    },
+    [],
+  );
+
+  const scheduleAutosave = React.useCallback(
+    (delayMs = 600) => {
+      if (!activeViewId || !activeView || viewReadOnly) return;
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = window.setTimeout(() => {
+        autosaveTimerRef.current = null;
+        autosaveActiveView({ silent: true });
+      }, delayMs);
+    },
+    [activeView, activeViewId, autosaveActiveView, viewReadOnly],
+  );
+
+  const persistTabSession = React.useCallback(() => {
+    try {
+      const tabs = viewTabs.map((tab) => {
+        const state = viewTabStateById[tab.key];
+        const viewSnapshot = tab.isWorking ? (state?.view ?? (tab.viewId === activeViewId ? activeView : null)) : null;
+        return {
+          viewId: tab.viewId,
+          readOnly: tab.readOnly,
+          isWorking: tab.isWorking,
+          view: viewSnapshot ?? undefined,
+        };
+      });
+      const viewStates = viewTabs.reduce<Record<string, { viewport?: { zoom: number; pan: { x: number; y: number } }; selection?: { nodes: string[]; edges: string[] } }>>(
+        (acc, tab) => {
+          const state = viewTabStateById[tab.key];
+          if (state?.viewport || state?.selection) {
+            acc[tab.viewId] = {
+              viewport: state.viewport,
+              selection: state.selection,
+            };
+          }
+          return acc;
+        },
+        {},
+      );
+      const payload = JSON.stringify({
+        activeViewId: activeViewId ?? null,
+        tabs,
+        viewStates,
+      });
+      if (payload === tabSessionPayloadRef.current) return;
+      tabSessionPayloadRef.current = payload;
+      localStorage.setItem(tabsStorageKey, payload);
+    } catch {
+      // Best-effort only.
+    }
+  }, [activeView, activeViewId, tabsStorageKey, viewTabStateById, viewTabs]);
+
+  const schedulePersistTabSession = React.useCallback(
+    (delayMs = 300) => {
+      if (tabSessionPersistTimerRef.current) window.clearTimeout(tabSessionPersistTimerRef.current);
+      tabSessionPersistTimerRef.current = window.setTimeout(() => {
+        tabSessionPersistTimerRef.current = null;
+        persistTabSession();
+      }, delayMs);
+    },
+    [persistTabSession],
+  );
+
+  const autosaveAllOpenViews = React.useCallback(() => {
+    captureCanvasState(activeTabKey);
+    autosaveActiveView({ silent: true });
+    viewTabs.forEach((tab) => {
+      if (tab.key === activeTabKey) return;
+      const state = viewTabStateByIdRef.current[tab.key];
+      if (!state) return;
+      if (state.isWorking && state.view) {
+        const now = new Date().toISOString();
+        const nextView = {
+          ...state.view,
+          layoutMetadata: {
+            ...(state.view.layoutMetadata ?? {}),
+            lastSavedAt: now,
+          },
+        } as ViewInstance;
+        setViewTabStateById((prev) => ({
+          ...prev,
+          [tab.key]: {
+            ...prev[tab.key],
+            view: nextView,
+            saveStatus: 'saved',
+            isWorking: true,
+          },
+        }));
+        return;
+      }
+      if (state.viewId) {
+        const view = ViewStore.get(state.viewId);
+        if (view) ViewStore.save(view);
+      }
+    });
+    schedulePersistTabSession();
+  }, [activeTabKey, autosaveActiveView, captureCanvasState, persistTabSession, viewTabs]);
+
+  React.useEffect(() => {
+    const handleBeforeUnload = () => {
+      autosaveAllOpenViews();
+    };
+    const handleVisibility = () => {
+      if (document.hidden) autosaveAllOpenViews();
+    };
+    const handleBlur = () => {
+      autosaveAllOpenViews();
+    };
+    const handleRepositoryChange = () => {
+      autosaveAllOpenViews();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('ea:repositoryChanged', handleRepositoryChange as EventListener);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('ea:repositoryChanged', handleRepositoryChange as EventListener);
+    };
+  }, [autosaveAllOpenViews]);
+
+  React.useEffect(() => {
+    schedulePersistTabSession();
+  }, [schedulePersistTabSession, viewTabs, activeTabKey, viewTabStateById]);
 
   const handleRenameActiveView = React.useCallback(() => {
     if (!activeViewId || !activeView) return;
-    if (viewReadOnly) {
+    if (viewReadOnly || viewEditLocked) {
       message.warning('This view is read-only. Rename is disabled.');
       return;
     }
@@ -7914,11 +9073,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         message.success('View renamed.');
       },
     });
-  }, [activeTabKey, activeView, activeViewId, viewReadOnly, viewTabStateById]);
+  }, [activeTabKey, activeView, activeViewId, viewEditLocked, viewReadOnly, viewTabStateById]);
 
   const handleDuplicateActiveView = React.useCallback(() => {
     if (!activeView) return;
-    if (viewReadOnly) {
+    if (viewReadOnly || viewEditLocked) {
       message.warning('This view is read-only. Duplicate is disabled.');
       return;
     }
@@ -7930,7 +9089,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       name: `${activeView.name} Copy`,
       createdAt: now,
       createdBy: actor,
-      status: 'DRAFT',
+      status: 'SAVED',
     };
     const saved = ViewStore.save(copy);
     try {
@@ -7940,10 +9099,110 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
     ensureViewTab(saved.id, { mode: 'new' });
     message.success('View duplicated.');
-  }, [activeView, actor, ensureViewTab, viewReadOnly]);
+  }, [activeView, actor, ensureViewTab, viewEditLocked, viewReadOnly]);
+
+  const isTabDirty = React.useCallback(
+    (tab: StudioViewTab) => {
+      const state = viewTabStateById[tab.key];
+      if (!state) return false;
+      return state.saveStatus === 'dirty' || state.saveStatus === 'saving' || Boolean(state.isWorking);
+    },
+    [viewTabStateById],
+  );
+
+  const requestCloseViewTab = React.useCallback(
+    (tabKey: string) => {
+      if (!tabKey || tabKey === WORKSPACE_TAB_KEY) return;
+      const tab = viewTabs.find((candidate) => candidate.key === tabKey) ?? null;
+      if (!tab) return;
+      const state = viewTabStateById[tabKey];
+      const hasUnsaved = Boolean(state?.saveStatus === 'dirty' || state?.saveStatus === 'saving' || state?.isWorking);
+      if (!hasUnsaved) {
+        closeViewTab(tabKey);
+        return;
+      }
+      let autosaveOk = false;
+      if (tabKey === activeTabKey) {
+        const result = autosaveActiveView({ silent: true });
+        autosaveOk = result.ok;
+      } else if (state?.isWorking && state.view) {
+        setViewTabStateById((prev) => ({
+          ...prev,
+          [tabKey]: {
+            ...prev[tabKey],
+            saveStatus: 'saved',
+          },
+        }));
+        autosaveOk = true;
+      } else if (state?.viewId) {
+        const view = ViewStore.get(state.viewId);
+        if (view) {
+          ViewStore.save(view);
+          autosaveOk = true;
+        }
+      }
+
+      if (autosaveOk) {
+        closeViewTab(tabKey);
+        return;
+      }
+      Modal.confirm({
+        title: 'Close view?',
+        content: `Autosave failed for "${tab.name}". Close without saving?`,
+        okText: 'Close',
+        okButtonProps: { danger: true },
+        cancelText: 'Cancel',
+        onOk: () => closeViewTab(tabKey),
+      });
+    },
+    [activeTabKey, autosaveActiveView, closeViewTab, viewTabStateById, viewTabs],
+  );
+
+  const handleCreateWorkingView = React.useCallback(() => {
+    if (viewEditLocked) {
+      message.warning('View editing is locked by governance policy.');
+      return;
+    }
+    const workingView = createWorkingView();
+    ensureViewTab(workingView.id, { mode: 'new', view: workingView, isWorking: true });
+  }, [createWorkingView, ensureViewTab, viewEditLocked]);
+
+
+  const handleToggleViewLock = React.useCallback(
+    (locked: boolean) => {
+      if (!activeView) return;
+      if (viewReadOnly || viewEditLocked) {
+        message.warning('This view is read-only.');
+        return;
+      }
+      const layoutMetadata = activeView.layoutMetadata ?? {};
+      const next: ViewInstance = {
+        ...activeView,
+        layoutMetadata: { ...layoutMetadata, layoutLocked: locked },
+      };
+      setActiveView(next);
+      setViewTabStateById((prev) => {
+        const existing = prev[activeTabKey];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [activeTabKey]: {
+            ...existing,
+            view: next,
+            saveStatus: 'dirty',
+          },
+        };
+      });
+    },
+    [activeTabKey, activeView, viewEditLocked, viewReadOnly],
+  );
 
   const handleDeleteActiveView = React.useCallback(() => {
     if (!activeView) return;
+    if (viewEditLocked) {
+      message.warning('This view is read-only. Delete is disabled.');
+      return;
+    }
     const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
     if (isWorking) {
       Modal.confirm({
@@ -7986,7 +9245,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         message.success('View deleted.');
       },
     });
-  }, [activeTabKey, activeView, actor, closeViewTab, userRole, viewTabStateById]);
+  }, [activeTabKey, activeView, actor, closeViewTab, userRole, viewEditLocked, viewTabStateById]);
 
   const handleExportActiveViewJson = React.useCallback(() => {
     if (!activeView) return;
@@ -8007,21 +9266,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
   }, [activeView]);
 
-  const getLifecycleState = React.useCallback(
-    (tab: StudioViewTab): ViewLifecycleState => {
-      if (tab.readOnly) return 'READ-ONLY';
-      const status = viewTabStateById[tab.key]?.saveStatus ?? 'saved';
-      if (status === 'dirty' || status === 'saving') return 'DRAFT';
-      return 'SAVED';
-    },
-    [viewTabStateById],
-  );
-
-  const lifecycleTagColor: Record<ViewLifecycleState, string> = {
-    DRAFT: 'gold',
-    SAVED: 'green',
-    'READ-ONLY': 'default',
-  };
 
   const [rightPanelMode, setRightPanelMode] = React.useState<RightPanelMode>(RightPanelMode.STUDIO);
   const [lastNonSwitchMode, setLastNonSwitchMode] = React.useState<RightPanelMode>(RightPanelMode.STUDIO);
@@ -8151,29 +9395,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [stagedElements, stagedRelationships]);
 
   const studioTabItems = React.useMemo(
-    () => [
-      { key: WORKSPACE_TAB_KEY, label: 'Workspace', closable: false },
-      ...viewTabs.map((tab) => {
-        const state = getLifecycleState(tab);
-        const modeLabel = tab.readOnly ? 'READ-ONLY' : 'EDITABLE';
+    () => (
+      viewTabs.map((tab) => {
+        const state = viewTabStateById[tab.key];
+        const isDirty = Boolean(state?.saveStatus === 'dirty' || state?.saveStatus === 'saving' || state?.isWorking);
         return {
           key: tab.key,
           closable: true,
           label: (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span>{tab.name}</span>
-              <Tag color={lifecycleTagColor[state]} style={{ marginInlineEnd: 0 }}>
-                {state}
-              </Tag>
-              <Tag color={tab.readOnly ? 'red' : 'blue'} style={{ marginInlineEnd: 0 }}>
-                {modeLabel}
-              </Tag>
+              <span>{tab.name}{isDirty ? ' ● Unsaved' : ''}</span>
+              {tab.readOnly ? (
+                <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                  Read-only
+                </Tag>
+              ) : null}
             </span>
           ),
         };
-      }),
-    ],
-    [getLifecycleState, viewTabs],
+      })
+    ),
+    [viewTabs, viewTabStateById],
   );
 
   const diagramTypeName = React.useMemo(
@@ -8551,10 +9793,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
             </Tooltip>
           </div>
           <div className={styles.studioRibbonGroupSmall}>
+            <Tooltip title="Create a new working view">
+              <Button
+                size="small"
+                icon={<PlusSquareOutlined />}
+                onClick={handleCreateWorkingView}
+                disabled={viewEditLocked}
+              >
+                Create View
+              </Button>
+            </Tooltip>
+          </div>
+          <div className={styles.studioRibbonGroupSmall}>
             <Tooltip title="Presentation View hides modeling tools, locks layout, and enlarges labels.">
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <Typography.Text style={{ color: token.colorTextSecondary }}>Presentation View</Typography.Text>
                 <Switch size="small" checked={presentationView} onChange={setPresentationView} />
+              </div>
+            </Tooltip>
+          </div>
+          <div className={styles.studioRibbonGroupSmall}>
+            <Tooltip title="Lock view layout to prevent accidental moves.">
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Typography.Text style={{ color: token.colorTextSecondary }}>View Lock</Typography.Text>
+                <Switch
+                  size="small"
+                  checked={viewLayoutLocked}
+                  onChange={handleToggleViewLock}
+                  disabled={!activeView || viewReadOnly}
+                />
               </div>
             </Tooltip>
           </div>
@@ -8620,35 +9887,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
             </Tooltip>
           </div>
           <div className={styles.studioRibbonGroupSmall}>
-            <Tooltip title="Save the current view as a reusable architectural perspective">
-              <Space size={6}>
-                <Button
-                  size="small"
-                  type="primary"
-                  onClick={handleSaveViewClick}
-                  disabled={presentationReadOnly}
-                >
-                  Save View
-                </Button>
-                <Button
-                  size="small"
-                  onClick={handleSaveAsViewClick}
-                  disabled={presentationReadOnly}
-                >
-                  Save As
-                </Button>
-              </Space>
+            <Tooltip title="Save the current canvas state as a named view">
+              <Button
+                size="small"
+                type="primary"
+                onClick={handleSaveAsViewClick}
+                disabled={presentationReadOnly}
+              >
+                Save As
+              </Button>
             </Tooltip>
           </div>
           <div className={styles.studioRibbonGroupMuted}>
-            <div className={styles.studioRibbonItemMutedLabel}>{workspaceDisplayName}</div>
-            <Tag color={isViewBoundWorkspace ? 'geekblue' : 'default'}>
-              {isViewBoundWorkspace ? 'VIEW-BOUND' : 'FREE WORKSPACE'}
-            </Tag>
-            <Tag color={workspaceStatusColor[designWorkspace.status]}>{designWorkspace.status}</Tag>
-            {designWorkspace.scope ? (
-              <div className={styles.studioRibbonItemMuted}>Scope: {designWorkspace.scope}</div>
+            <div className={styles.studioRibbonItemMutedLabel}>{activeViewDisplayLabel}</div>
+            {activeViewpoint ? (
+              <div className={styles.studioRibbonItemMuted}>
+                Viewpoint: {activeViewpoint.name}
+              </div>
             ) : null}
+            {viewReadOnly ? <Tag color="default">Read-only</Tag> : null}
           </div>
         </div>
       </div>
@@ -8656,7 +9913,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       <div className={styles.studioSubHeader}>
         <div className={styles.studioSubHeaderLeft}>
           <Typography.Text strong className={styles.studioSubHeaderTitle}>
-            {workspaceDisplayName}
+            {activeViewDisplayLabel}
           </Typography.Text>
           {currentRepositoryUpdatedAt &&
           designWorkspace.repositoryUpdatedAt &&
@@ -8665,11 +9922,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
               Repository updated
             </Tag>
           ) : null}
-          {designWorkspace.status === 'DISCARDED' ? (
-            <Tag color={workspaceStatusColor.DISCARDED}>Discarded</Tag>
-          ) : null}
           <Typography.Text type="secondary" className={styles.studioSubHeaderLabel}>
-            {designWorkspace.description || 'No workspace description'}
+            {activeView?.description || 'No view description'}
           </Typography.Text>
         </div>
         <div className={styles.studioSubHeaderRight}>
@@ -8710,12 +9964,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
           hideAdd
           activeKey={activeTabKey}
           items={studioTabItems}
-          onChange={(key) => setActiveTabKey(key)}
+          onChange={(key) => {
+            if (key === activeTabKey) return;
+            captureCanvasState(activeTabKey);
+            autosaveActiveView({ silent: true });
+            setActiveTabKey(key);
+          }}
           onEdit={(targetKey, action) => {
             if (action !== 'remove') return;
             if (typeof targetKey !== 'string') return;
-            if (targetKey === WORKSPACE_TAB_KEY) return;
-            closeViewTab(targetKey);
+            requestCloseViewTab(targetKey);
           }}
         />
       </div>
@@ -8758,8 +10016,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (e.button === 1) {
                 e.preventDefault();
                 middlePanActiveRef.current = true;
+                panningActiveRef.current = true;
                 middlePanLastRef.current = { x: e.clientX, y: e.clientY };
                 return;
+              }
+              // Suppress viewport persistence during native Cytoscape left-click panning.
+              if (e.button === 0 && toolModeRef.current === 'PAN') {
+                panningActiveRef.current = true;
               }
               if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType || !placementModeActive) return;
               const pos = toCanvasPosition(e.clientX, e.clientY);
@@ -8769,14 +10032,101 @@ const StudioShell: React.FC<StudioShellProps> = ({
               setElementDragGhost(null);
             }}
             onMouseUp={() => {
+              // Native left-click PAN mode: commit viewport once on release.
+              if (panningActiveRef.current && !middlePanActiveRef.current) {
+                panningActiveRef.current = false;
+                if (cyRef.current) {
+                  const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                  setViewTabStateById((prev) => {
+                    const key = activeTabKey;
+                    const existing = prev[key];
+                    if (!existing) return prev;
+                    return {
+                      ...prev,
+                      [key]: {
+                        ...existing,
+                        viewport,
+                        saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                      },
+                    };
+                  });
+                }
+                return;
+              }
               if (!middlePanActiveRef.current) return;
               middlePanActiveRef.current = false;
+              panningActiveRef.current = false;
               middlePanLastRef.current = null;
+              // Cancel any pending rAF pan frame.
+              if (middlePanRafRef.current !== null) {
+                cancelAnimationFrame(middlePanRafRef.current);
+                middlePanRafRef.current = null;
+              }
+              // Commit viewport to React state once on pan end.
+              if (cyRef.current) {
+                const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                setViewTabStateById((prev) => {
+                  const key = activeTabKey;
+                  const existing = prev[key];
+                  if (!existing) return prev;
+                  return {
+                    ...prev,
+                    [key]: {
+                      ...existing,
+                      viewport,
+                      saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                    },
+                  };
+                });
+              }
             }}
             onMouseLeave={() => {
+              // Native left-click PAN mode: commit viewport on leave.
+              if (panningActiveRef.current && !middlePanActiveRef.current) {
+                panningActiveRef.current = false;
+                if (cyRef.current) {
+                  const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                  setViewTabStateById((prev) => {
+                    const key = activeTabKey;
+                    const existing = prev[key];
+                    if (!existing) return prev;
+                    return {
+                      ...prev,
+                      [key]: {
+                        ...existing,
+                        viewport,
+                        saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                      },
+                    };
+                  });
+                }
+                return;
+              }
               if (!middlePanActiveRef.current) return;
               middlePanActiveRef.current = false;
+              panningActiveRef.current = false;
               middlePanLastRef.current = null;
+              if (middlePanRafRef.current !== null) {
+                cancelAnimationFrame(middlePanRafRef.current);
+                middlePanRafRef.current = null;
+              }
+              // Commit viewport on leave.
+              if (cyRef.current) {
+                const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                setViewTabStateById((prev) => {
+                  const key = activeTabKey;
+                  const existing = prev[key];
+                  if (!existing) return prev;
+                  return {
+                    ...prev,
+                    [key]: {
+                      ...existing,
+                      viewport,
+                      saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                    },
+                  };
+                });
+              }
             }}
             onPointerDown={(e) => {
               const currentToolMode = toolModeRef.current;
@@ -8882,7 +10232,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     hoverNode.addClass('validTarget');
                     updateDraftEdgeTarget(pos, hoverNode);
                   } else {
-                    hoverNode.addClass('invalidTarget');
+                    // Neutral — no red/invalidTarget on hover
                     updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
                   }
                 } else {
@@ -8897,11 +10247,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (middlePanActiveRef.current && cyRef.current) {
                 const last = middlePanLastRef.current;
                 if (last) {
-                  const dx = e.clientX - last.x;
-                  const dy = e.clientY - last.y;
-                  middlePanLastRef.current = { x: e.clientX, y: e.clientY };
-                  const pan = cyRef.current.pan();
-                  cyRef.current.pan({ x: pan.x + dx, y: pan.y + dy });
+                  const clientX = e.clientX;
+                  const clientY = e.clientY;
+                  const dx = clientX - last.x;
+                  const dy = clientY - last.y;
+                  // Skip tiny sub-pixel movements to avoid unnecessary work.
+                  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+                  middlePanLastRef.current = { x: clientX, y: clientY };
+                  // Accumulate delta for the next rAF frame.
+                  middlePanDeltaRef.current.dx += dx;
+                  middlePanDeltaRef.current.dy += dy;
+                  // Throttle cy.pan() to one call per animation frame.
+                  // Direct cy.pan() on every mousemove fires Cytoscape's
+                  // internal pan event causing cascading React renders.
+                  if (middlePanRafRef.current === null) {
+                    middlePanRafRef.current = requestAnimationFrame(() => {
+                      middlePanRafRef.current = null;
+                      if (!cyRef.current || !middlePanActiveRef.current) return;
+                      const accumulated = middlePanDeltaRef.current;
+                      const adx = accumulated.dx;
+                      const ady = accumulated.dy;
+                      accumulated.dx = 0;
+                      accumulated.dy = 0;
+                      if (Math.abs(adx) < 0.01 && Math.abs(ady) < 0.01) return;
+                      const pan = cyRef.current.pan();
+                      cyRef.current.pan({ x: pan.x + adx, y: pan.y + ady });
+                    });
+                  }
                 }
                 return;
               }
@@ -8921,7 +10293,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     hoverNode.addClass('validTarget');
                     updateDraftEdgeTarget(pos, hoverNode);
                   } else {
-                    hoverNode.addClass('invalidTarget');
+                    // Neutral — no red/invalidTarget on hover
                     updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
                   }
                 } else {
@@ -9259,6 +10631,65 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 ))}
               </div>
             </div>
+          ) : null}
+          {/* ── User-first Connection Palette (replaces legacy chooser for resolution-based flow) ── */}
+          {connectionPalette ? (
+            <div ref={connectionPaletteRef}>
+              <InlineConnectionPalette
+                resolution={connectionPalette.resolution}
+                position={connectionPalette.position}
+                onSelect={confirmConnectionPaletteSelection}
+                onDismiss={() => setConnectionPalette(null)}
+              />
+            </div>
+          ) : null}
+          {/* ── Post-creation Connection Editor ── */}
+          {connectionEditor ? (
+            <ConnectionEditor
+              connection={connectionEditor.connection}
+              validTypes={connectionEditor.validTypes}
+              validIndirectPaths={connectionEditor.validIndirectPaths}
+              position={connectionEditor.position}
+              onAction={(action: ConnectionEditAction) => {
+                if (!connectionEditor) return;
+                const conn = connectionEditor.connection;
+                if (action.action === 'change-type') {
+                  // Update the relationship type in the connection registry
+                  const updated = { ...conn, primaryType: action.newType };
+                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
+                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  eaConsole.push({
+                    level: 'info',
+                    domain: 'relationship',
+                    message: `Relationship type changed to ${action.newType.replace(/_/g, ' ')}.`,
+                    context: { elementId: conn.sourceId },
+                  });
+                } else if (action.action === 'expand-intermediates') {
+                  const updated = { ...conn, collapsed: false };
+                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
+                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  // Show intermediate nodes on canvas
+                  conn.intermediateElementIds.forEach((id) => {
+                    const node = cyRef.current?.getElementById(id);
+                    if (node && !node.empty()) node.style('display', 'element');
+                  });
+                  conn.intermediateEdgeIds.forEach((id) => {
+                    const edge = cyRef.current?.getElementById(id);
+                    if (edge && !edge.empty()) edge.style('display', 'element');
+                  });
+                } else if (action.action === 'collapse-intermediates') {
+                  const updated = { ...conn, collapsed: true };
+                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
+                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  // Hide intermediate nodes
+                  conn.intermediateElementIds.forEach((id) => {
+                    const node = cyRef.current?.getElementById(id);
+                    if (node && !node.empty()) node.style('display', 'none');
+                  });
+                }
+              }}
+              onDismiss={() => setConnectionEditor(null)}
+            />
           ) : null}
           {nodeContextMenu ? (
             <div
@@ -9795,10 +11226,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <Button
                             size="small"
                             type="primary"
-                            onClick={() => saveActiveView()}
+                            onClick={handleSaveAsViewClick}
                             disabled={presentationReadOnly}
                           >
-                            Save View
+                            Save As
                           </Button>
                           <Button size="small" onClick={handleRenameActiveView} disabled={presentationReadOnly}>
                             Rename
@@ -9837,7 +11268,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     {activeView ? (
                       <div style={{ display: 'grid', gap: 8 }}>
                         <Typography.Text strong>View Summary</Typography.Text>
-                        <Form form={viewSummaryForm} layout="vertical">
+                        <Form
+                          form={viewSummaryForm}
+                          layout="vertical"
+                          onValuesChange={(_, allValues) => applyViewSummary(allValues)}
+                        >
                           <Form.Item label="Purpose" name="purpose">
                             <Input.TextArea rows={2} placeholder="Why this view exists" disabled={presentationReadOnly} />
                           </Form.Item>
@@ -9847,9 +11282,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <Form.Item label="Key insights" name="insights">
                             <Input.TextArea rows={3} placeholder="Executive takeaways" disabled={presentationReadOnly} />
                           </Form.Item>
-                          <Button type="primary" size="small" onClick={() => void saveViewSummary()} disabled={presentationReadOnly}>
-                            Save summary
-                          </Button>
                         </Form>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           Stored in view metadata (not rendered on canvas).
@@ -10048,8 +11480,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       <Modal
         open={saveViewModalOpen}
-        title={saveViewMode === 'saveAs' ? 'Save View As' : 'Save View'}
-        okText={saveViewMode === 'saveAs' ? 'Save As' : 'Save View'}
+        title="Save As"
+        okText="Save As"
         cancelText="Cancel"
         onCancel={() => setSaveViewModalOpen(false)}
         onOk={() => void confirmSaveView()}
@@ -10057,8 +11489,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
         <Alert
           type="info"
           showIcon
-          message="Save a reusable architectural view"
-          description="Views are saved perspectives of repository data. Layout and visible elements are stored with the view."
+          message="Save current canvas as a named view"
+          description="Your current layout, visible elements, and relationships will be persisted. The canvas will remain unchanged."
           style={{ marginBottom: 12 }}
         />
         <Form form={saveViewForm} layout="vertical">
@@ -10072,8 +11504,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
               options={ViewpointRegistry.list().map((vp) => ({ value: vp.id, label: vp.name }))}
             />
           </Form.Item>
-          <Form.Item label="Purpose (optional)" name="purpose">
-            <Input.TextArea rows={3} placeholder="Why this view exists" allowClear />
+          <Form.Item label="Description (optional)" name="description">
+            <Input.TextArea rows={3} placeholder="Optional description" allowClear />
           </Form.Item>
         </Form>
       </Modal>

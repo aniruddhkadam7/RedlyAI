@@ -32,4 +32,11 @@ export type ViewInstance = {
   readonly createdAt: string;
   readonly createdBy: string;
   readonly status: ViewStatus;
+  /**
+   * Relationship IDs explicitly visible in this view.
+   * Only relationships whose IDs appear here AND whose endpoints are both
+   * present in `scope.elementIds` will be rendered on the view canvas.
+   * This ensures complete view isolation — relationships never leak between views.
+   */
+  readonly visibleRelationshipIds?: readonly string[];
 };

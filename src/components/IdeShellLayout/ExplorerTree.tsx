@@ -441,10 +441,10 @@ const relationshipHierarchy = (args: {
     if (parentFor.has(childId)) return;
     parentFor.set(childId, parentId);
     if (!childrenFor.has(parentId)) childrenFor.set(parentId, []);
-    childrenFor.get(parentId)!.push(childId);
+    childrenFor.get(parentId)?.push(childId);
   };
 
-  edges.forEach((e) => attach(e.parent, e.child));
+  edges.forEach((e) => { attach(e.parent, e.child); });
 
   const dataNodes = new Map<string, DataNode>();
   nodes.forEach((n) => {
@@ -572,7 +572,7 @@ const applicationsByLifecycleGrouping = (args: {
   apps.forEach((app) => {
     const lifecycle = normalize((app.attributes as any)?.lifecycleState);
     if (!groups.has(lifecycle)) groups.set(lifecycle, []);
-    groups.get(lifecycle)!.push(makeAppNode(app));
+    groups.get(lifecycle)?.push(makeAppNode(app));
   });
 
   const nodes: DataNode[] = [];
@@ -627,7 +627,7 @@ const technologiesByLayerGrouping = (args: {
   techs.forEach((t) => {
     const layer = normalizeLayer(t.attributes);
     if (!byLayer.has(layer)) byLayer.set(layer, []);
-    byLayer.get(layer)!.push(makeTechNode(t));
+    byLayer.get(layer)?.push(makeTechNode(t));
   });
 
   const nodes: DataNode[] = [];
@@ -749,6 +749,7 @@ const ExplorerTree: React.FC = () => {
   const { eaRepository, setEaRepository, trySetEaRepository, metadata, initializationState } = useEaRepository();
   // Force full platform access in local mode.
   const userRole: RepositoryRole = 'Owner';
+  const canEditView = hasRepositoryPermission(userRole, 'editView');
 
   const [relationshipModalOpen, setRelationshipModalOpen] = React.useState(false);
   const [relationshipSource, setRelationshipSource] = React.useState<{ id: string; type: ObjectType; name: string } | null>(null);
@@ -1940,7 +1941,7 @@ const ExplorerTree: React.FC = () => {
 
   const parentByKey = React.useMemo(() => {
     const map = new Map<string, string | null>();
-    nodeMetaByKey.forEach((meta, key) => map.set(key, meta.parent));
+    nodeMetaByKey.forEach((meta, key) => { map.set(key, meta.parent); });
     return map;
   }, [nodeMetaByKey]);
 
