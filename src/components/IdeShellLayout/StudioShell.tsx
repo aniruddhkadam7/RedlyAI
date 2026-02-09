@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/correctness/noInvalidUseBeforeDeclaration: allow use-before in this file */
 import {
   AppstoreOutlined,
   ArrowsAltOutlined,
@@ -585,8 +586,8 @@ const resolveEaVisualForElement = (args: {
     args.visualKindOverride ?? (args.attributes as any)?.eaVisualKind;
   const kind = typeof rawKind === 'string' ? rawKind.trim() : '';
   if (kind && EA_VISUAL_BY_KIND.has(kind)) {
-    const visual = EA_VISUAL_BY_KIND.get(kind)!;
-    if (visual.type === args.type) return visual;
+    const visual = EA_VISUAL_BY_KIND.get(kind) ?? null;
+    if (visual && visual.type === args.type) return visual;
   }
   return EA_DEFAULT_VISUAL_BY_TYPE.get(args.type) ?? null;
 };
@@ -762,7 +763,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const { token } = theme.useToken();
   const { initialState } = useModel('@@initialState');
   const { openPropertiesPanel, openRouteTab } = useIdeShell();
-  const { selection } = useIdeSelection();
+  const { selection, setSelectedElement } = useIdeSelection();
   const {
     eaRepository,
     metadata,
@@ -829,25 +830,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
     },
     [],
   );
-  const pendingElementLabel = React.useMemo(
-    () =>
-      pendingElementType
-        ? resolveElementVisualLabel(
-            pendingElementType,
-            pendingElementVisualKind,
-          )
-        : null,
-    [pendingElementType, pendingElementVisualKind, resolveElementVisualLabel],
-  );
-  const createElementHelperText = React.useMemo(() => {
-    if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
-    return `Click on canvas to name and place ${pendingElementLabel ?? pendingElementType}`;
-  }, [pendingElementLabel, pendingElementType, toolMode]);
-  const createElementFloatingHint = React.useMemo(() => {
-    if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
-    return `Naming: ${pendingElementLabel ?? pendingElementType}`;
-  }, [pendingElementLabel, pendingElementType, toolMode]);
-
   const hasStagedChanges =
     stagedElements.length > 0 || stagedRelationships.length > 0;
   const commitDisabled =
@@ -2075,6 +2057,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
     React.useState<ObjectType | null>(null);
   const [pendingElementVisualKind, setPendingElementVisualKind] =
     React.useState<string | null>(null);
+  const pendingElementLabel = React.useMemo(
+    () =>
+      pendingElementType
+        ? resolveElementVisualLabel(
+            pendingElementType,
+            pendingElementVisualKind,
+          )
+        : null,
+    [pendingElementType, pendingElementVisualKind, resolveElementVisualLabel],
+  );
+  const createElementHelperText = React.useMemo(() => {
+    if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
+    return `Click on canvas to name and place ${pendingElementLabel ?? pendingElementType}`;
+  }, [pendingElementLabel, pendingElementType, toolMode]);
+  const createElementFloatingHint = React.useMemo(() => {
+    if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
+    return `Naming: ${pendingElementLabel ?? pendingElementType}`;
+  }, [pendingElementLabel, pendingElementType, toolMode]);
   const [placement, setPlacement] = React.useState<{
     x: number;
     y: number;
@@ -2917,6 +2917,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return resolveElementLabel(selectedNodeId)?.type ?? null;
   }, [resolveElementLabel, selectedNodeId]);
 
+  React.useEffect(() => {
+    if (!eaRepository) return;
+    if (!selectedNodeId) return;
+    const obj = eaRepository.objects.get(selectedNodeId);
+    if (!obj) return;
+    setSelectedElement({ id: obj.id, type: obj.type, source: 'Diagram' });
+  }, [
+    eaRepository,
+    selectedNodeId,
+    selection.selectedSource,
+    setSelectedElement,
+  ]);
+
   const consoleFocusRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -3359,10 +3372,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
         closable: false,
         maskClosable: false,
         onOk: () => {
-          elementIds.forEach((id) => deleteStagedElement(id));
+          elementIds.forEach((id) => {
+            deleteStagedElement(id);
+          });
         },
         onCancel: () => {
-          elementIds.forEach((id) => removeElementFromView(id));
+          elementIds.forEach((id) => {
+            removeElementFromView(id);
+          });
         },
       });
     },
@@ -5327,7 +5344,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
           const hasExplicitRels =
             Array.isArray(viewRelIds) && viewRelIds.length > 0;
           const viewRelIdSet = hasExplicitRels
-            ? new Set(viewRelIds!.map((id) => String(id).trim()))
+            ? new Set(viewRelIds.map((id) => String(id).trim()))
             : null;
           const relationships = eaRepository.relationships.filter((rel) => {
             const fromId = String(rel.fromId).trim();
@@ -8224,6 +8241,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const currentRelationshipType = pendingRelationshipTypeRef.current;
       const currentFreeConnectorKind = pendingFreeConnectorKindRef.current;
 
+      if (evt.target && evt.target !== cyRef.current) {
+        const node = evt.target;
+        if (!node.data?.('freeShape')) {
+          const nodeId = String(node.id());
+          const repoObj = eaRepository?.objects.get(nodeId);
+          const nodeType =
+            repoObj?.type ?? (node.data?.('elementType') as string | null);
+          if (nodeId && nodeType) {
+            setSelectedElement({
+              id: nodeId,
+              type: nodeType,
+              source: 'Diagram',
+            });
+          }
+        }
+      } else if (selection.selectedSource === 'Diagram') {
+        setSelectedElement(null);
+      }
+
       if (currentToolMode === 'CREATE_ELEMENT' && suppressNextTapRef.current) {
         suppressNextTapRef.current = false;
         return;
@@ -9369,7 +9405,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const selected = cyRef.current.nodes(':selected');
       if (selected.length > 1) {
-        selected.forEach((n) => restoreNodeSize(n));
+        selected.forEach((n) => {
+          restoreNodeSize(n);
+        });
       } else {
         restoreNodeSize(node);
       }
@@ -9498,11 +9536,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
               viewLayoutLocked,
       );
       if (presentationView || connectionDragLockRef.current || connectionMode) {
-        cy.nodes().forEach((n) => n.grabbable(false));
+        cy.nodes().forEach((n) => {
+          n.grabbable(false);
+        });
       } else {
-        cy.nodes().forEach((n) =>
-          n.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(n)),
-        );
+        cy.nodes().forEach((n) => {
+          n.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(n));
+        });
       }
       cy.endBatch();
 
@@ -9629,7 +9669,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const selected = cyRef.current.nodes(':selected');
       if (node.selected() && selected.length > 1) {
-        selected.forEach((n) => applySizeLock(n));
+        selected.forEach((n) => {
+          applySizeLock(n);
+        });
         selected.forEach((n) => {
           if (!isNodeEditable(n)) return;
           n.grabify(true);
@@ -9666,6 +9708,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setSelectedFreeShapeId(
         freeNodes.length === 1 ? String(freeNodes[0].id()) : null,
       );
+
+      if (eaNodes.length === 1) {
+        const nodeId = String(eaNodes[0].id());
+        const repoObj = eaRepository?.objects.get(nodeId);
+        const nodeType =
+          repoObj?.type ?? (eaNodes[0].data('elementType') as string | null);
+        if (nodeType) {
+          setSelectedElement({ id: nodeId, type: nodeType, source: 'Diagram' });
+        }
+      } else if (selection.selectedSource === 'Diagram') {
+        setSelectedElement(null);
+      }
 
       const selectedEdges = cyRef.current.edges(':selected');
       const freeEdges = selectedEdges.filter((e) => e.data('freeConnector'));
@@ -9814,6 +9868,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     resolveElementLabel,
     restoreDraggedNodePosition,
     snapPosition,
+    setSelectedElement,
+    eaRepository,
+    selection.selectedSource,
     toRenderedPosition,
     updateDraftEdgeTarget,
     updateRelationshipDraft,
@@ -9946,7 +10003,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewLayoutLocked,
     );
     if (presentationView || connectionDragLocked || connectionMode) {
-      cy.nodes().forEach((node) => node.grabbable(false));
+      cy.nodes().forEach((node) => {
+        node.grabbable(false);
+      });
     }
     cy.endBatch();
   }, [connectionDragLocked, presentationView, toolMode, viewLayoutLocked]);
@@ -9958,7 +10017,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const fontSize = presentationView ? 14 : 11;
     cy.style().selector('node').style('font-size', fontSize).update();
     if (presentationView || connectionDragLocked) {
-      cy.nodes().forEach((node) => node.grabbable(false));
+      cy.nodes().forEach((node) => {
+        node.grabbable(false);
+      });
     } else {
       cy.nodes().forEach((node) => {
         node.grabbable(
@@ -10619,7 +10680,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const clearValidationConsoleMessages = React.useCallback(() => {
     if (validationConsoleIdsRef.current.length === 0) return;
-    validationConsoleIdsRef.current.forEach((id) => eaConsole.remove(id));
+    validationConsoleIdsRef.current.forEach((id) => {
+      eaConsole.remove(id);
+    });
     validationConsoleIdsRef.current = [];
   }, []);
 
@@ -12426,32 +12489,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
           >
             Validation: {validationCount}
           </Typography.Text>
+          <Tooltip title="Exit Studio">
+            <button
+              type="button"
+              className={styles.studioExitButton}
+              aria-label="Exit Studio"
+              onClick={handleExit}
+            >
+              <LogoutOutlined />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
-      {visibleDesignPrompts.length > 0 ? (
-        <div className={styles.studioPromptRow}>
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            {visibleDesignPrompts.map((prompt) => (
-              <Alert
-                key={prompt.id}
-                type="info"
-                showIcon
-                message={prompt.title}
-                description={prompt.description}
-                action={
-                  <Button
-                    size="small"
-                    onClick={() => dismissDesignPrompt(prompt.id)}
-                  >
-                    Don’t show again
-                  </Button>
-                }
-              />
-            ))}
-          </Space>
-        </div>
-      ) : null}
+      {null}
 
       <div className={styles.studioViewTabs}>
         <Tabs
@@ -13509,11 +13560,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
           ) : null}
         </div>
 
-        <div
+        <hr
           className={styles.rightResizer}
-          role="separator"
           aria-label="Resize Studio right panel"
+          aria-orientation="vertical"
+          aria-valuemin={STUDIO_RIGHT_PANEL_MIN_WIDTH}
+          aria-valuemax={getStudioRightPanelMaxWidth()}
+          aria-valuenow={studioRightWidth}
           aria-disabled={elementDragActive || relationshipDraft.dragging}
+          tabIndex={0}
           onMouseDown={(event) => {
             if (elementDragActive || relationshipDraft.dragging) return;
             beginStudioRightResize(event);

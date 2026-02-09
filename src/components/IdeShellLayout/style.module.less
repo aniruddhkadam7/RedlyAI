@@ -72,12 +72,12 @@
 }
 
 .activitySider {
-  background: var(--ide-bg-sidebar) !important;
+  background: var(--ide-rail-bg) !important;
   color: var(--ide-rail-icon);
 }
 
 .activitySider :global(.ant-layout-sider-children) {
-  background: var(--ide-bg-sidebar);
+  background: var(--ide-rail-bg);
 }
 
 .activitySider :global(.ant-btn),
@@ -192,7 +192,7 @@
   gap: 6px;
   padding: 7px 7px;
   border-right: 1px solid var(--ide-border);
-  background: var(--ide-bg-sidebar);
+  background: var(--ide-rail-bg);
 }
 
 .iconRailTop {
@@ -225,7 +225,8 @@
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid var(--ide-border);
-  background: var(--ide-bg-sidebar);
+  background: linear-gradient(180deg, var(--ide-bg-sidebar) 0%, #dde3ea 100%);
+  box-shadow: 2px 0 10px rgba(15, 23, 42, 0.08);
 }
 
 .leftDockResizer {
@@ -383,12 +384,27 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  background: var(--ide-bg-sidebar);
   scroll-behavior: smooth;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
   contain: content;
   will-change: scroll-position;
+}
+
+.sidebarBody::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sidebarBody::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.6);
+}
+
+.sidebarBody::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
 }
 
 
@@ -874,7 +890,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-panel);
 }
 
 .studioSubHeaderLeft {
@@ -884,7 +900,7 @@
 .studioPromptRow {
   padding: 8px 12px;
   border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-panel);
 }
   align-items: center;
   gap: 8px;
@@ -910,6 +926,24 @@
   flex: 0 0 auto;
 }
 
+.studioExitButton {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ide-text-secondary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.studioExitButton:hover {
+  background: var(--ide-control-hover);
+  border-color: var(--ide-border-subtle);
+  color: var(--ide-text);
+}
+
 
 .studioSubHeaderMeta {
   font-size: 12px;
@@ -924,7 +958,7 @@
 .studioViewTabs {
   padding: 4px 12px 6px;
   border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-panel);
 }
 
 .studioViewTabs :global(.ant-tabs-nav) {
@@ -1466,9 +1500,12 @@
 }
 
 .bottomResizer {
-  height: 6px;
+  height: 4px;
   cursor: row-resize;
   flex: 0 0 auto;
+  background: var(--ide-bg-panel);
+  border-top: 1px solid var(--ide-border);
+  border-bottom: 1px solid var(--ide-border-subtle);
 }
 
 .bottomResizer:hover {
@@ -1483,6 +1520,148 @@
   border-top: 1px solid var(--ide-border);
   background: var(--ide-bg-panel);
   box-shadow: var(--ide-shadow-subtle);
+}
+
+.bottomPaletteContainer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 2px solid var(--ide-border);
+  background: var(--ide-bg-container);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+  padding: 8px 12px;
+}
+
+.bottomPaletteHeader {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--ide-border);
+  background: var(--ide-bg-panel);
+  position: relative;
+  min-height: 32px;
+}
+
+.bottomPaletteContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ide-bg-container);
+  color: var(--ide-text);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottomPaletteScroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+  background: var(--ide-bg-container);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) rgba(226, 232, 240, 0.6);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.bottomPaletteScroll :global(.ant-table) {
+  width: 100%;
+  margin: 0;
+}
+
+.bottomPaletteScroll :global(.ant-table table) {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bottomPaletteScroll :global(.ant-table-container) {
+  border: none;
+  padding: 0;
+}
+
+.bottomPaletteScroll :global(.ant-table-thead > tr > th),
+.bottomPaletteScroll :global(.ant-table-tbody > tr > td) {
+  border: 1px solid var(--ide-border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bottomPaletteScroll :global(.ant-table-thead > tr > th) {
+  background: var(--ide-bg-panel);
+  font-weight: 600;
+}
+
+.bottomPaletteScroll :global(.ant-table-selection-column) {
+  width: 36px;
+}
+
+.bottomPaletteScroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.bottomPaletteScroll::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.6);
+}
+
+.bottomPaletteScroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+}
+
+.bottomPaletteMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ide-text-secondary);
+  margin-bottom: 10px;
+}
+
+.bottomPaletteHeader .panelTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.bottomPaletteHeader .panelTab,
+.bottomPaletteHeader .panelTabActive {
+  border: none;
+  border-right: 1px solid var(--ide-border-subtle);
+  border-radius: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--ide-text-secondary);
+  cursor: pointer;
+  position: relative;
+  top: 0;
+  opacity: 0.75;
+}
+
+.bottomPaletteHeader .panelTab:hover {
+  background: var(--ide-control-hover);
+  opacity: 0.9;
+}
+
+.bottomPaletteHeader .panelTabActive {
+  background: var(--ide-bg-container);
+  font-weight: 600;
+  color: var(--ide-text);
+  opacity: 1;
 }
 
 .bottomPanelHeader {
@@ -1524,18 +1703,7 @@
 .panelTabActive {
   border-color: var(--ide-border);
   color: var(--ide-text);
-  background: #ffffff;
-}
-
-.panelTabActive::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -6px;
-  height: 2px;
-  background: #2563eb;
-  border-radius: 2px;
+  background: var(--ide-bg-container);
 }
 
 .bottomPanelTitle {
@@ -1687,6 +1855,7 @@
   padding: 2px 4px 4px;
   font-size: 12px;
   color: var(--ide-tree-text);
+  background: var(--ide-bg-sidebar);
 }
 
 /* Clear hierarchy: 12-14px indentation per level. */
@@ -1829,7 +1998,7 @@
   line-height: 1;
   border: 1px solid var(--ide-tree-muted);
   color: var(--ide-tree-text);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-sidebar);
   font-weight: 600;
 }
 
@@ -2437,6 +2606,25 @@
 :global([data-theme="dark"]) .bottomPanel {
   background: #252526;
   border-color: #3c3c3c;
+}
+
+:global([data-theme="dark"]) .bottomPaletteContainer {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+:global([data-theme="dark"]) .bottomPaletteHeader {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+:global([data-theme="dark"]) .bottomPaletteContent {
+  background: #252526;
+}
+
+:global([data-theme="dark"]) .bottomPaletteScroll {
+  background: #252526;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 }
 
 :global([data-theme="dark"]) .bottomPanelHeader {

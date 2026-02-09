@@ -26,7 +26,7 @@ const readGovernanceMode = (): string | null => {
   }
 };
 
-const generateWorkspaceId = (): string => {
+export const generateWorkspaceId = (): string => {
   try {
     if (typeof globalThis.crypto?.randomUUID === 'function') {
       return globalThis.crypto.randomUUID();

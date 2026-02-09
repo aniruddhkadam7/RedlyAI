@@ -130,11 +130,11 @@ const CatalogInspectorGrid: React.FC = () => {
   const { eaRepository, trySetEaRepository } = useEaRepository();
   const { selection } = useIdeSelection();
   const elementId = selection.selectedElementId;
-  const elementType = selection.selectedElementType;
   const element = React.useMemo(() => {
     if (!eaRepository || !elementId) return null;
     return eaRepository.objects.get(elementId) ?? null;
   }, [eaRepository, elementId]);
+  const elementType = selection.selectedElementType ?? element?.type ?? null;
 
   const [draft, setDraft] = React.useState<InspectorDraft | null>(null);
   const [activeSection, setActiveSection] = React.useState('identity');
@@ -269,10 +269,13 @@ const CatalogInspectorGrid: React.FC = () => {
 
   if (!draft) {
     return (
-      <div className={styles.emptyState}>
-        <Typography.Text type="secondary">
-          Select an element in the registry to inspect.
-        </Typography.Text>
+      <div className={styles.inspectorRoot}>
+        <div className={styles.inspectorEmptyHeader} />
+        <div className={styles.emptyState}>
+          <Typography.Text type="secondary">
+            Select an element to edit metadata.
+          </Typography.Text>
+        </div>
       </div>
     );
   }
@@ -427,6 +430,11 @@ const CatalogInspectorGrid: React.FC = () => {
 
   const columns = columnsBySection[activeSection] ?? [];
   const editableColumns = columns.filter((column) => !column.readOnly);
+  const resolveColumnWidth = (value?: string) => {
+    if (!value) return undefined;
+    const match = value.match(/\d+px/);
+    return match ? match[0] : undefined;
+  };
 
   const moveToNextEditable = (direction: 1 | -1) => {
     if (!editingKey) return;
@@ -568,41 +576,40 @@ const CatalogInspectorGrid: React.FC = () => {
         onChange={setActiveSection}
       />
       <div className={styles.gridWrap}>
-        <div
-          className={styles.gridHeader}
-          style={{
-            gridTemplateColumns: `28px ${columns
-              .map((column) => column.width ?? 'minmax(140px, 1fr)')
-              .join(' ')}`,
-          }}
-        >
-          <div className={styles.gridHeaderCell} />
-          {columns.map((column) => (
-            <div key={String(column.key)} className={styles.gridHeaderCell}>
-              {column.label}
-            </div>
-          ))}
-        </div>
-        <div className={styles.gridBody}>
-          <div
-            className={styles.gridRow}
-            style={{
-              gridTemplateColumns: `28px ${columns
-                .map((column) => column.width ?? 'minmax(140px, 1fr)')
-                .join(' ')}`,
-            }}
-          >
-            <div className={styles.gridCellWrapper} />
+        <table className={styles.gridTable}>
+          <colgroup>
+            <col style={{ width: '40px' }} />
             {columns.map((column) => (
-              <div
+              <col
                 key={String(column.key)}
-                className={`${styles.gridCellWrapper} ${editingKey === column.key ? styles.gridCellActive : ''}`}
-              >
-                {renderCell(column)}
-              </div>
+                style={{ width: resolveColumnWidth(column.width) }}
+              />
             ))}
-          </div>
-        </div>
+          </colgroup>
+          <thead className={styles.gridHead}>
+            <tr>
+              <th className={styles.gridHeadCell}>#</th>
+              {columns.map((column) => (
+                <th key={String(column.key)} className={styles.gridHeadCell}>
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className={styles.gridBody}>
+            <tr className={styles.gridRow}>
+              <td className={styles.gridIndexCell}>1</td>
+              {columns.map((column) => (
+                <td
+                  key={String(column.key)}
+                  className={`${styles.gridCellWrapper} ${editingKey === column.key ? styles.gridCellActive : ''}`}
+                >
+                  {renderCell(column)}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

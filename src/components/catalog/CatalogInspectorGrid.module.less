@@ -2,9 +2,10 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 6px 10px 10px;
-  background: var(--ide-bg-panel);
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  margin: 0;
   overflow: hidden;
 }
 
@@ -12,30 +13,55 @@
   padding: 12px;
 }
 
+.inspectorEmptyHeader {
+  height: 32px;
+  border: 1px solid var(--ide-border-subtle);
+  border-radius: 6px;
+  background: var(--ide-tab-inactive-bg);
+}
+
 .sectionTabs {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding-bottom: 4px;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  padding: 0;
+  background: var(--ide-bg-panel);
   border-bottom: 1px solid var(--ide-border);
 }
 
 .sectionTab,
 .sectionTabActive {
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 2px 8px;
+  border: none;
+  border-right: 1px solid var(--ide-border-subtle);
+  border-radius: 0;
+  padding: 5px 10px;
   font-size: 12px;
+  font-weight: 400;
   background: transparent;
   color: var(--ide-text-secondary);
   cursor: pointer;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.sectionTab:last-child,
+.sectionTabActive:last-child {
+  border-right: none;
 }
 
 .sectionTabActive {
-  color: var(--ide-text-primary);
-  border-color: var(--ide-border);
-  background: rgba(148, 163, 184, 0.15);
+  color: var(--ide-text);
+  background: var(--ide-bg-panel);
+  font-weight: 400;
+  opacity: 1;
 }
+
+.sectionTab:hover {
+  background: var(--ide-control-hover);
+}
+
+
 
 .gridWrap {
   display: flex;
@@ -45,75 +71,67 @@
   overflow: hidden;
 }
 
-.gridHeader {
-  display: grid;
-  gap: 0;
-  padding: 6px 6px 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--ide-table-header-text);
-  font-weight: 600;
-  border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-table-header-bg);
+
+.gridTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  margin-top: 0;
 }
 
-.gridHeaderCell {
-  padding: 0 6px;
+.gridHead {
+  background: var(--ide-bg-panel);
+}
+
+.gridHeadCell {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--ide-bg-panel);
+  color: var(--ide-text);
+  border: 1px solid var(--ide-border);
+  border-bottom: 2px solid var(--ide-border);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-left: 2px solid #c8d0dd;
-}
-
-.gridHeaderCell:first-child {
-  border-left: none;
 }
 
 .gridBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
+  background: var(--ide-bg-container);
 }
 
 .gridRow {
-  display: grid;
-  align-items: center;
-  min-height: 32px;
-  background: #ffffff;
+  background: var(--ide-bg-container);
 }
 
-.gridRow:hover {
-  background: #f5f9ff;
-}
-
-.gridRow:nth-child(even) {
-  background: #f9fafb;
+.gridIndexCell {
+  border: 1px solid var(--ide-border);
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--ide-text-secondary);
+  background: var(--ide-bg-container);
 }
 
 .gridCellWrapper {
   padding: 0;
   min-width: 0;
-  border-left: 2px solid #c8d0dd;
-  border-top: 2px solid #c8d0dd;
-  background: transparent;
-}
-
-.gridCellWrapper:first-child {
-  border-left: none;
-}
-
-.gridBody {
-  border-right: 2px solid #c8d0dd;
-  border-bottom: 2px solid #c8d0dd;
+  border: 1px solid var(--ide-border);
+  vertical-align: middle;
 }
 
 .gridCell {
-  min-height: 28px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  color: var(--ide-table-body-text);
+  padding: 6px 8px;
+  color: var(--ide-text);
   font-weight: 500;
   cursor: text;
   white-space: nowrap;
@@ -124,7 +142,7 @@
 }
 
 .gridCell:hover {
-  background: #f3f6fb;
+  background: var(--ide-control-hover);
 }
 
 .gridCellEmpty {
@@ -133,12 +151,12 @@
 
 .gridCellReadOnly {
   color: var(--ide-text-secondary);
-  background: #f3f4f6;
+  background: var(--ide-bg-panel);
   cursor: default;
 }
 
 .gridCellReadOnly:hover {
-  background: #f3f4f6;
+  background: var(--ide-bg-panel);
 }
 
 .gridCellWrapper :global(.ant-input),
@@ -146,13 +164,13 @@
 .gridCellWrapper :global(.ant-select-selector),
 .gridCellWrapper :global(.ant-input-number) {
   min-height: 28px;
-  height: 28px;
+  height: 100%;
   background: transparent;
   border: none;
   box-shadow: none;
   outline: none;
-  color: #111827;
-  padding: 0 8px;
+  color: var(--ide-text);
+  padding: 6px 8px;
 }
 
 .gridCellWrapper :global(.ant-input-number),
@@ -165,13 +183,20 @@
   color: #9aa4b2;
 }
 
+.gridCellWrapper :global(.ant-input-number-input) {
+  padding: 0;
+  height: 100%;
+  line-height: 1.4;
+}
+
 .gridCellWrapper :global(.ant-select-selector) {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 6px 8px;
   background: transparent;
   border: none;
   box-shadow: none;
+  height: 100%;
 }
 
 .gridCellWrapper :global(.ant-select-arrow) {
@@ -179,12 +204,12 @@
 }
 
 .gridCellWrapper:focus-within {
-  background: #f0f4ff;
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .gridCellActive {
-  border: 3px solid #1d4ed8;
-  margin: -1px 0 0 -1px;
+  outline: 2px solid #1d4ed8;
+  outline-offset: -2px;
 }
 
 .expandButton {

@@ -62,6 +62,7 @@ import {
   isGapAnalysisAllowedForLifecycleCoverage,
   isRoadmapAllowedForLifecycleCoverage,
 } from '@/repository/lifecycleCoveragePolicy';
+import { generateWorkspaceId } from '@/services/studio';
 import { useAppTheme } from '@/theme/ThemeContext';
 import { getBaselineById } from '../../../backend/baselines/BaselineStore';
 import { getPlateauById } from '../../../backend/roadmap/PlateauStore';
@@ -103,6 +104,7 @@ type PanelDock = 'bottom' | 'right';
 const TOP_MENU_BAR_HEIGHT_WEB = 44;
 const TOP_MENU_BAR_HEIGHT_DESKTOP = 34;
 const STATUS_BAR_HEIGHT = 22;
+const BOTTOM_PALETTE_HEIGHT = 320;
 
 // ---------------------------------------------------------------------------
 // Theme toggle button — tiny, icon-only, no-drag for Electron titlebar
@@ -559,6 +561,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
   } = useIdeSelection();
   const { project } = useEaProject();
   const { eaRepository, metadata } = useEaRepository();
+  const repositoryName = metadata?.repositoryName || 'default';
   const userRole: RepositoryRole = React.useMemo(() => {
     if (!ENABLE_RBAC) return 'Owner';
     const access = initialState?.currentUser?.access;
@@ -618,14 +621,14 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     if (!isDark) {
       return {
         ...baseVars,
-        '--ide-bg-layout': '#f4f6f9',
+        '--ide-bg-layout': '#ffffff',
         '--ide-bg-container': '#ffffff',
-        '--ide-bg-panel': '#fafbfc',
-        '--ide-bg-sidebar': '#f8f9fb',
+        '--ide-bg-panel': '#e7ebf1',
+        '--ide-bg-sidebar': '#e7ebf1',
         '--ide-border': '#e3e6ea',
         '--ide-border-subtle': '#e8ecf1',
         '--ide-header-bg': '#ffffff',
-        '--ide-rail-bg': '#f8f9fb',
+        '--ide-rail-bg': '#1b2a55',
         '--ide-control-hover': '#eef2f6',
         '--ide-resizer-hover': '#e8ecf1',
         '--ide-tab-inactive-bg': '#f3f5f8',
@@ -633,9 +636,9 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
         '--ide-table-header-text': '#344054',
         '--ide-table-body-text': '#1f2937',
         '--ide-table-meta-text': '#6b7280',
-        '--ide-rail-icon': '#475569',
-        '--ide-rail-icon-active': '#1f2937',
-        '--ide-rail-active-bg': '#e9f2ff',
+        '--ide-rail-icon': '#f3f6ff',
+        '--ide-rail-icon-active': '#ffffff',
+        '--ide-rail-active-bg': '#243a75',
         '--ide-text': '#1f2937',
         '--ide-text-secondary': '#6b7280',
         '--ide-text-tertiary': '#94a3b8',
@@ -646,6 +649,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
   }, [isDark, isDesktop, token, topMenuBarHeight]);
 
   const createDefaultWorkspace = React.useCallback(() => {
+    const now = new Date().toISOString();
     return {
       id: generateWorkspaceId(),
       repositoryName,
@@ -691,17 +695,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
       return false;
     }
   });
-
   const [bottomPanelHeight, setBottomPanelHeight] = React.useState<number>(
-    () => {
-      try {
-        const raw = Number(localStorage.getItem('ide.bottom.height'));
-        if (Number.isFinite(raw) && raw >= 120 && raw <= 520) return raw;
-        return 320;
-      } catch {
-        return 320;
-      }
-    },
+    () => BOTTOM_PALETTE_HEIGHT,
   );
 
   const [panelDock, setPanelDock] = React.useState<PanelDock>(() => {
@@ -853,14 +848,6 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
       // Best-effort only.
     }
   }, [bottomPanelOpen]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem('ide.bottom.height', String(bottomPanelHeight));
-    } catch {
-      // Best-effort only.
-    }
-  }, [bottomPanelHeight]);
 
   React.useEffect(() => {
     try {
@@ -1379,6 +1366,23 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     openRouteTab(pathname);
   }, [openRouteTab, pathname]);
 
+  React.useEffect(() => {
+    if (!studioMode) return;
+    if (selection.selectedSource !== 'Diagram') return;
+    if (!selection.selectedElementId || !selection.selectedElementType) return;
+    setPanelDock('bottom');
+    setBottomPanelMode('inspector');
+    setBottomPanelOpen(true);
+  }, [
+    selection.selectedElementId,
+    selection.selectedElementType,
+    selection.selectedSource,
+    setBottomPanelMode,
+    setBottomPanelOpen,
+    setPanelDock,
+    studioMode,
+  ]);
+
   const [propertiesReadOnly, setPropertiesReadOnly] = React.useState(false);
 
   const openPropertiesPanel = React.useCallback(
@@ -1870,7 +1874,6 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     setActivity('explorer');
     setSidebarWidth(280);
     setBottomPanelOpen(false);
-    setBottomPanelHeight(320);
     setPanelDock('bottom');
     setRightPanelWidth(RIGHT_PANEL_DEFAULT_WIDTH);
   }, []);
@@ -2020,7 +2023,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
 
     const onMove = (ev: MouseEvent) => {
       const delta = startY - ev.clientY;
-      const next = Math.max(120, Math.min(520, startHeight + delta));
+      const next = Math.max(200, Math.min(520, startHeight + delta));
       setBottomPanelHeight(next);
     };
 
@@ -2126,36 +2129,10 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     propertiesReadOnly,
   ]);
 
-  const renderBottomPanelBody = React.useCallback(() => {
-    return (
-      <div className={styles.bottomPanelBody}>
-        <div className={styles.bottomPanelContent}>
-          <div
-            className={`${styles.bottomPanelPane} ${
-              bottomPanelMode === 'console' ? styles.bottomPanelPaneActive : ''
-            }`}
-          >
-            <EAConsolePanel />
-          </div>
-          <div
-            className={`${styles.bottomPanelPane} ${
-              bottomPanelMode === 'agent' ? styles.bottomPanelPaneActive : ''
-            }`}
-          >
-            <ArchitectureAgentPanel />
-          </div>
-          <div
-            className={`${styles.bottomPanelPane} ${
-              bottomPanelMode === 'inspector'
-                ? styles.bottomPanelPaneActive
-                : ''
-            }`}
-          >
-            <CatalogInspectorGrid />
-          </div>
-        </div>
-      </div>
-    );
+  const renderBottomPaletteContent = React.useCallback(() => {
+    if (bottomPanelMode === 'console') return <EAConsolePanel />;
+    if (bottomPanelMode === 'agent') return <ArchitectureAgentPanel />;
+    return <CatalogInspectorGrid />;
   }, [bottomPanelMode]);
 
   const renderStudioPanelBody = React.useCallback(() => {
@@ -2864,140 +2841,127 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                   )}
               </div>
 
-              {panelDock === 'bottom' &&
-                bottomPanelOpen &&
-                (!studioMode || panelMode === 'console') && (
-                  <>
-                    <hr
-                      className={styles.bottomResizer}
-                      aria-label="Resize bottom panel"
-                      aria-orientation="horizontal"
-                      aria-valuemin={120}
-                      aria-valuemax={520}
-                      aria-valuenow={bottomPanelHeight}
-                      tabIndex={0}
-                      onMouseDown={beginBottomResize}
-                      style={{ background: 'var(--ide-bg-layout)' }}
-                    />
-                    <div
-                      className={styles.bottomPanel}
-                      style={{
-                        height: bottomPanelHeight,
-                        background: 'var(--ide-bg-panel)',
-                        borderTop: '1px solid var(--ide-border)',
-                      }}
-                    >
-                      <div className={styles.bottomPanelHeader}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 2,
-                          }}
-                        >
-                          <div className={styles.panelTabs}>
-                            <button
-                              type="button"
-                              className={
-                                bottomPanelMode === 'inspector'
-                                  ? styles.panelTabActive
-                                  : styles.panelTab
-                              }
-                              onClick={() => setBottomPanelMode('inspector')}
-                            >
-                              Inspector
-                            </button>
-                            <button
-                              type="button"
-                              className={
-                                bottomPanelMode === 'console'
-                                  ? styles.panelTabActive
-                                  : styles.panelTab
-                              }
-                              onClick={() => setBottomPanelMode('console')}
-                            >
-                              EA Console
-                            </button>
-                            <button
-                              type="button"
-                              className={
-                                bottomPanelMode === 'agent'
-                                  ? styles.panelTabActive
-                                  : styles.panelTab
-                              }
-                              onClick={() => setBottomPanelMode('agent')}
-                            >
-                              AI Agent
-                            </button>
-                          </div>
-                          {bottomPanelMode === 'inspector' && (
-                            <div className={styles.panelMeta}>
-                              <span>
-                                Selected:{' '}
-                                {activeElementId
-                                  ? activeElementName || activeElementId
-                                  : 'None'}
-                              </span>
-                              <span>Type: {activeElementType || '-'}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            marginLeft: 'auto',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <Tooltip title="Dock right">
-                            <button
-                              type="button"
-                              className={styles.iconButton}
-                              aria-label="Dock panel to right"
-                              onClick={() => setPanelDock('right')}
-                              style={{ color: 'var(--ide-text-secondary)' }}
-                            >
-                              <ArrowsAltOutlined />
-                            </button>
-                          </Tooltip>
+              {panelDock === 'bottom' && bottomPanelOpen && (
+                <>
+                  <hr
+                    className={styles.bottomResizer}
+                    aria-label="Resize bottom panel"
+                    aria-orientation="horizontal"
+                    aria-valuemin={200}
+                    aria-valuemax={520}
+                    aria-valuenow={bottomPanelHeight}
+                    tabIndex={0}
+                    onMouseDown={beginBottomResize}
+                    style={{ background: 'var(--ide-bg-layout)' }}
+                  />
+                  <div
+                    className={styles.bottomPaletteContainer}
+                    style={{
+                      height: bottomPanelHeight,
+                    }}
+                  >
+                    <div className={styles.bottomPaletteHeader}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 2,
+                        }}
+                      >
+                        <div className={styles.panelTabs}>
                           <button
                             type="button"
-                            className={styles.iconButton}
-                            aria-label="Collapse panel"
-                            onClick={() => setBottomPanelOpen(false)}
-                            style={{ color: 'var(--ide-text-secondary)' }}
+                            className={
+                              bottomPanelMode === 'inspector'
+                                ? styles.panelTabActive
+                                : styles.panelTab
+                            }
+                            onClick={() => setBottomPanelMode('inspector')}
                           >
-                            <CaretDownOutlined />
+                            Inspector
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              bottomPanelMode === 'console'
+                                ? styles.panelTabActive
+                                : styles.panelTab
+                            }
+                            onClick={() => setBottomPanelMode('console')}
+                          >
+                            EA Console
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              bottomPanelMode === 'agent'
+                                ? styles.panelTabActive
+                                : styles.panelTab
+                            }
+                            onClick={() => setBottomPanelMode('agent')}
+                          >
+                            AI Agent
                           </button>
                         </div>
                       </div>
-                      {renderBottomPanelBody()}
+                      <div
+                        style={{
+                          marginLeft: 'auto',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Tooltip title="Dock right">
+                          <button
+                            type="button"
+                            className={styles.iconButton}
+                            aria-label="Dock panel to right"
+                            onClick={() => setPanelDock('right')}
+                            style={{ color: 'var(--ide-text-secondary)' }}
+                          >
+                            <ArrowsAltOutlined />
+                          </button>
+                        </Tooltip>
+                        <button
+                          type="button"
+                          className={styles.iconButton}
+                          aria-label="Collapse panel"
+                          onClick={() => setBottomPanelOpen(false)}
+                          style={{ color: 'var(--ide-text-secondary)' }}
+                        >
+                          <CaretDownOutlined />
+                        </button>
+                      </div>
                     </div>
-                  </>
-                )}
-
-              {panelDock === 'bottom' &&
-                !bottomPanelOpen &&
-                (!studioMode || panelMode === 'console') && (
-                  <div className={styles.bottomCollapsedBar}>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      aria-label={
-                        bottomPanelMode === 'inspector'
-                          ? 'Expand inspector panel'
-                          : bottomPanelMode === 'agent'
-                            ? 'Expand AI agent panel'
-                            : 'Expand EA console'
-                      }
-                      onClick={() => setBottomPanelOpen(true)}
-                      style={{ color: 'var(--ide-text-secondary)' }}
-                    >
-                      <CaretUpOutlined />
-                    </button>
+                    <div className={styles.bottomPaletteContent}>
+                      <div className={styles.bottomPaletteScroll}>
+                        {renderBottomPaletteContent()}
+                      </div>
+                    </div>
                   </div>
-                )}
+                </>
+              )}
+
+              {panelDock === 'bottom' && !bottomPanelOpen && (
+                <div className={styles.bottomCollapsedBar}>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    aria-label={
+                      bottomPanelMode === 'inspector'
+                        ? 'Expand inspector panel'
+                        : bottomPanelMode === 'agent'
+                          ? 'Expand AI agent panel'
+                          : 'Expand EA console'
+                    }
+                    onClick={() => setBottomPanelOpen(true)}
+                    style={{ color: 'var(--ide-text-secondary)' }}
+                  >
+                    <CaretUpOutlined />
+                  </button>
+                </div>
+              )}
             </Layout.Content>
           </Layout>
 
