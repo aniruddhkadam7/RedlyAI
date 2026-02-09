@@ -11,40 +11,72 @@ import {
   SafetyOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Checkbox, Descriptions, Dropdown, Form, Input, Modal, Select, Space, Tag, Tree, Typography } from 'antd';
+import { useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Descriptions,
+  Dropdown,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Tree,
+  Typography,
+} from 'antd';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 import React from 'react';
-import { useModel } from '@umijs/max';
-import { useIdeShell } from './index';
-import styles from './style.module.less';
-import { useIdeSelection } from '@/ide/IdeSelectionContext';
-import { useEaRepository } from '@/ea/EaRepositoryContext';
-import { dispatchIdeCommand } from '@/ide/ideCommands';
-import { message } from '@/ea/eaConsole';
-import type { ObjectType, RelationshipType } from '@/pages/dependency-view/utils/eaMetaModel';
-import {
-  OBJECT_TYPE_DEFINITIONS,
-  RELATIONSHIP_TYPE_DEFINITIONS,
-  isValidRelationshipType,
-} from '@/pages/dependency-view/utils/eaMetaModel';
-import { isCustomFrameworkModelingEnabled } from '@/repository/customFrameworkConfig';
-import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
-import { hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
-import { guardInitializationForModeling } from '@/repository/elementCreationPolicy';
 import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
-import { isObjectTypeEnabledForFramework } from '@/repository/customFrameworkConfig';
+import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { message } from '@/ea/eaConsole';
 import { useSeedSampleData } from '@/ea/useSeedSampleData';
-import { listBaselines, getBaselineById } from '../../../backend/baselines/BaselineStore';
+import { useIdeSelection } from '@/ide/IdeSelectionContext';
+import { dispatchIdeCommand } from '@/ide/ideCommands';
+import type {
+  ObjectType,
+  RelationshipType,
+} from '@/pages/dependency-view/utils/eaMetaModel';
+import {
+  isValidRelationshipType,
+  OBJECT_TYPE_DEFINITIONS,
+  RELATIONSHIP_TYPE_DEFINITIONS,
+} from '@/pages/dependency-view/utils/eaMetaModel';
+import {
+  hasRepositoryPermission,
+  type RepositoryRole,
+} from '@/repository/accessControl';
+import {
+  isCustomFrameworkModelingEnabled,
+  isObjectTypeEnabledForFramework,
+} from '@/repository/customFrameworkConfig';
+import { guardInitializationForModeling } from '@/repository/elementCreationPolicy';
+import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
 import type { Baseline } from '../../../backend/baselines/Baseline';
-import { listPlateaus, getPlateauById } from '../../../backend/roadmap/PlateauStore';
+import {
+  getBaselineById,
+  listBaselines,
+} from '../../../backend/baselines/BaselineStore';
 import type { Plateau } from '../../../backend/roadmap/Plateau';
-import { getRoadmapById, listRoadmaps } from '../../../backend/roadmap/RoadmapStore';
+import {
+  getPlateauById,
+  listPlateaus,
+} from '../../../backend/roadmap/PlateauStore';
 import type { Roadmap } from '../../../backend/roadmap/Roadmap';
+import {
+  getRoadmapById,
+  listRoadmaps,
+} from '../../../backend/roadmap/RoadmapStore';
+import { useIdeShell } from './index';
+import styles from './style.module.less';
 
 const ROOT_KEYS = {
+  catalog: 'explorer:catalog',
   business: 'explorer:business',
   application: 'explorer:application',
   technology: 'explorer:technology',
@@ -55,6 +87,7 @@ const ROOT_KEYS = {
 } as const;
 
 const ENTERPRISE_FULLY_EXPANDED_KEYS: readonly string[] = [
+  ROOT_KEYS.catalog,
   ROOT_KEYS.business,
   ROOT_KEYS.application,
   ROOT_KEYS.technology,
@@ -62,6 +95,12 @@ const ENTERPRISE_FULLY_EXPANDED_KEYS: readonly string[] = [
   ROOT_KEYS.governance,
   ROOT_KEYS.views,
   ROOT_KEYS.baselines,
+
+  'explorer:catalog:business',
+  'explorer:catalog:application',
+  'explorer:catalog:data',
+  'explorer:catalog:technology',
+  'explorer:catalog:implementation',
 
   'explorer:business:enterprises',
   'explorer:business:capabilities',
@@ -186,31 +225,45 @@ const getRootKeyForType = (type: ObjectType): string | null => {
   }
 };
 
-const BUSINESS_UNIT_ENTERPRISE_PLACEHOLDER_KEY = 'explorer:business:enterprises:root-placeholder';
+const BUSINESS_UNIT_ENTERPRISE_PLACEHOLDER_KEY =
+  'explorer:business:enterprises:root-placeholder';
 
 const normalizeId = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
 // GLOBAL RULE: Roadmaps describe change over time. Roadmaps never modify architecture truth. Truth is modified only in the active repository workspace.
 const PLANNING_READONLY_MESSAGE = '';
 
-const isSoftDeleted = (attributes: Record<string, unknown> | null | undefined) => {
+const isSoftDeleted = (
+  attributes: Record<string, unknown> | null | undefined,
+) => {
   if ((attributes as any)?._deleted === true) return true;
-  const modelingState = String((attributes as any)?.modelingState ?? '').trim().toUpperCase();
+  const modelingState = String((attributes as any)?.modelingState ?? '')
+    .trim()
+    .toUpperCase();
   return modelingState === 'DRAFT';
 };
 
-const nameForObject = (obj: { id: string; attributes?: Record<string, unknown> }) => {
+const nameForObject = (obj: {
+  id: string;
+  attributes?: Record<string, unknown>;
+}) => {
   const raw = (obj.attributes as any)?.name;
   const name = typeof raw === 'string' ? raw.trim() : '';
   return name || obj.id;
 };
 
-const frameworksForObject = (obj: { attributes?: Record<string, unknown> } | null | undefined): string[] => {
+const frameworksForObject = (
+  obj: { attributes?: Record<string, unknown> } | null | undefined,
+): string[] => {
   const attrs = obj?.attributes as any;
   if (!attrs) return [];
   const rawList = Array.isArray(attrs.frameworks) ? attrs.frameworks : [];
-  const rawSingle = typeof attrs.framework === 'string' ? [attrs.framework] : [];
-  const rawRef = typeof attrs.referenceFramework === 'string' ? [attrs.referenceFramework] : [];
+  const rawSingle =
+    typeof attrs.framework === 'string' ? [attrs.framework] : [];
+  const rawRef =
+    typeof attrs.referenceFramework === 'string'
+      ? [attrs.referenceFramework]
+      : [];
   const combined = [...rawList, ...rawSingle, ...rawRef]
     .map((v) => String(v).trim())
     .filter((v) => v.length > 0);
@@ -368,13 +421,22 @@ const generateElementId = (type: ObjectType): string => {
 };
 
 const objectLeaves = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   type: ObjectType;
   icon: React.ReactNode;
 }): DataNode[] => {
   const { objectsById, type, icon } = args;
-  const items = Array.from(objectsById.values()).filter((o) => o.type === type && !isSoftDeleted(o.attributes));
-  items.sort((a, b) => nameForObject(a).localeCompare(nameForObject(b)) || a.id.localeCompare(b.id));
+  const items = Array.from(objectsById.values()).filter(
+    (o) => o.type === type && !isSoftDeleted(o.attributes),
+  );
+  items.sort(
+    (a, b) =>
+      nameForObject(a).localeCompare(nameForObject(b)) ||
+      a.id.localeCompare(b.id),
+  );
   return items.map((o) => ({
     key: KEY.element(o.id),
     title: nameForObject(o),
@@ -385,14 +447,23 @@ const objectLeaves = (args: {
 };
 
 const objectLeavesForTypes = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   types: readonly ObjectType[];
   iconForType: (type: ObjectType) => React.ReactNode;
 }): DataNode[] => {
   const { objectsById, types, iconForType } = args;
   const typeSet = new Set(types);
-  const items = Array.from(objectsById.values()).filter((o) => typeSet.has(o.type) && !isSoftDeleted(o.attributes));
-  items.sort((a, b) => nameForObject(a).localeCompare(nameForObject(b)) || a.id.localeCompare(b.id));
+  const items = Array.from(objectsById.values()).filter(
+    (o) => typeSet.has(o.type) && !isSoftDeleted(o.attributes),
+  );
+  items.sort(
+    (a, b) =>
+      nameForObject(a).localeCompare(nameForObject(b)) ||
+      a.id.localeCompare(b.id),
+  );
   return items.map((o) => ({
     key: KEY.element(o.id),
     title: nameForObject(o),
@@ -402,21 +473,42 @@ const objectLeavesForTypes = (args: {
   }));
 };
 
-type RelationshipRecord = { fromId: string; toId: string; type: RelationshipType };
+type RelationshipRecord = {
+  fromId: string;
+  toId: string;
+  type: RelationshipType;
+};
 
-const HIERARCHY_RELATIONSHIP_TYPES: readonly RelationshipType[] = ['OWNS', 'HAS', 'DECOMPOSES_TO', 'COMPOSED_OF', 'SUPPORTED_BY'];
+const HIERARCHY_RELATIONSHIP_TYPES: readonly RelationshipType[] = [
+  'OWNS',
+  'HAS',
+  'DECOMPOSES_TO',
+  'COMPOSED_OF',
+  'SUPPORTED_BY',
+];
 
 const relationshipHierarchy = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   relationships: RelationshipRecord[];
   allowedTypes: readonly ObjectType[];
   allowedRelationshipTypes: readonly RelationshipType[];
   iconForType: (t: ObjectType) => React.ReactNode;
   keySuffix?: string;
 }): DataNode[] => {
-  const { objectsById, relationships, allowedTypes, allowedRelationshipTypes, iconForType, keySuffix } = args;
+  const {
+    objectsById,
+    relationships,
+    allowedTypes,
+    allowedRelationshipTypes,
+    iconForType,
+    keySuffix,
+  } = args;
 
-  const elementKey = (id: string) => (keySuffix ? `${KEY.element(id)}:${keySuffix}` : KEY.element(id));
+  const elementKey = (id: string) =>
+    keySuffix ? `${KEY.element(id)}:${keySuffix}` : KEY.element(id);
 
   const nodes = Array.from(objectsById.values()).filter(
     (o) => allowedTypes.includes(o.type) && !isSoftDeleted(o.attributes),
@@ -425,8 +517,16 @@ const relationshipHierarchy = (args: {
 
   const edges: Array<{ parent: string; child: string }> = [];
   const filteredRels = relationships
-    .filter((r) => allowedRelationshipTypes.includes(r.type as RelationshipType) && byId.has(r.fromId) && byId.has(r.toId))
-    .sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId));
+    .filter(
+      (r) =>
+        allowedRelationshipTypes.includes(r.type as RelationshipType) &&
+        byId.has(r.fromId) &&
+        byId.has(r.toId),
+    )
+    .sort(
+      (a, b) =>
+        a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId),
+    );
 
   filteredRels.forEach((r) => {
     if (r.fromId === r.toId) return;
@@ -444,7 +544,9 @@ const relationshipHierarchy = (args: {
     childrenFor.get(parentId)?.push(childId);
   };
 
-  edges.forEach((e) => { attach(e.parent, e.child); });
+  edges.forEach((e) => {
+    attach(e.parent, e.child);
+  });
 
   const dataNodes = new Map<string, DataNode>();
   nodes.forEach((n) => {
@@ -481,7 +583,10 @@ const relationshipHierarchy = (args: {
 };
 
 const capabilityHierarchy = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   relationships: RelationshipRecord[];
   icon: React.ReactNode;
 }): DataNode[] => {
@@ -497,7 +602,10 @@ const capabilityHierarchy = (args: {
 };
 
 const enterpriseHierarchy = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   relationships: RelationshipRecord[];
   enterpriseIcon: React.ReactNode;
   departmentIcon: React.ReactNode;
@@ -514,7 +622,10 @@ const enterpriseHierarchy = (args: {
 };
 
 const enterpriseCapabilityHierarchy = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   relationships: RelationshipRecord[];
   enterpriseIcon: React.ReactNode;
   capabilityIcon: React.ReactNode;
@@ -523,7 +634,12 @@ const enterpriseCapabilityHierarchy = (args: {
   return relationshipHierarchy({
     objectsById,
     relationships,
-    allowedTypes: ['Enterprise', 'Capability', 'CapabilityCategory', 'SubCapability'],
+    allowedTypes: [
+      'Enterprise',
+      'Capability',
+      'CapabilityCategory',
+      'SubCapability',
+    ],
     allowedRelationshipTypes: ['OWNS', 'DECOMPOSES_TO', 'COMPOSED_OF'],
     iconForType: (t) => (t === 'Enterprise' ? enterpriseIcon : capabilityIcon),
     keySuffix: 'enterprise-capabilities',
@@ -531,7 +647,10 @@ const enterpriseCapabilityHierarchy = (args: {
 };
 
 const programmeHierarchy = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   relationships: RelationshipRecord[];
   programmeIcon: React.ReactNode;
   projectIcon: React.ReactNode;
@@ -547,13 +666,17 @@ const programmeHierarchy = (args: {
   });
 };
 
-
 const applicationsByLifecycleGrouping = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   applicationIcon: React.ReactNode;
 }): DataNode[] => {
   const { objectsById, applicationIcon } = args;
-  const apps = Array.from(objectsById.values()).filter((o) => o.type === 'Application' && !isSoftDeleted(o.attributes));
+  const apps = Array.from(objectsById.values()).filter(
+    (o) => o.type === 'Application' && !isSoftDeleted(o.attributes),
+  );
 
   const groups = new Map<string, DataNode[]>();
   const normalize = (v: unknown) => {
@@ -561,7 +684,7 @@ const applicationsByLifecycleGrouping = (args: {
     return t || 'Unspecified';
   };
 
-  const makeAppNode = (app: typeof apps[number]): DataNode => ({
+  const makeAppNode = (app: (typeof apps)[number]): DataNode => ({
     key: KEY.element(app.id),
     title: nameForObject(app),
     icon: applicationIcon,
@@ -577,7 +700,11 @@ const applicationsByLifecycleGrouping = (args: {
 
   const nodes: DataNode[] = [];
   groups.forEach((children, lifecycle) => {
-    children.sort((a, b) => String(a.title).localeCompare(String(b.title)) || String(a.key).localeCompare(String(b.key)));
+    children.sort(
+      (a, b) =>
+        String(a.title).localeCompare(String(b.title)) ||
+        String(a.key).localeCompare(String(b.key)),
+    );
     nodes.push({
       key: `explorer:application:lifecycle:${lifecycle}`,
       title: `Lifecycle: ${lifecycle}`,
@@ -588,18 +715,29 @@ const applicationsByLifecycleGrouping = (args: {
     });
   });
 
-  nodes.sort((a, b) => String(a.title).localeCompare(String(b.title)) || String(a.key).localeCompare(String(b.key)));
+  nodes.sort(
+    (a, b) =>
+      String(a.title).localeCompare(String(b.title)) ||
+      String(a.key).localeCompare(String(b.key)),
+  );
   return nodes;
 };
 
 const technologiesByLayerGrouping = (args: {
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>;
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >;
   technologyIcon: React.ReactNode;
 }): DataNode[] => {
   const { objectsById, technologyIcon } = args;
-  const techs = Array.from(objectsById.values()).filter((o) => o.type === 'Technology' && !isSoftDeleted(o.attributes));
+  const techs = Array.from(objectsById.values()).filter(
+    (o) => o.type === 'Technology' && !isSoftDeleted(o.attributes),
+  );
 
-  const normalizeLayer = (attrs: Record<string, unknown> | undefined | null): string => {
+  const normalizeLayer = (
+    attrs: Record<string, unknown> | undefined | null,
+  ): string => {
     const raw =
       (attrs as any)?.technologyType ||
       (attrs as any)?.technologyCategory ||
@@ -616,7 +754,7 @@ const technologiesByLayerGrouping = (args: {
 
   const byLayer = new Map<string, DataNode[]>();
 
-  const makeTechNode = (t: typeof techs[number]): DataNode => ({
+  const makeTechNode = (t: (typeof techs)[number]): DataNode => ({
     key: KEY.element(t.id),
     title: nameForObject(t),
     icon: technologyIcon,
@@ -632,7 +770,11 @@ const technologiesByLayerGrouping = (args: {
 
   const nodes: DataNode[] = [];
   byLayer.forEach((children, layer) => {
-    children.sort((a, b) => String(a.title).localeCompare(String(b.title)) || String(a.key).localeCompare(String(b.key)));
+    children.sort(
+      (a, b) =>
+        String(a.title).localeCompare(String(b.title)) ||
+        String(a.key).localeCompare(String(b.key)),
+    );
     nodes.push({
       key: `explorer:technology:layer:${layer}`,
       title: `Layer: ${layer}`,
@@ -643,12 +785,19 @@ const technologiesByLayerGrouping = (args: {
     });
   });
 
-  nodes.sort((a, b) => String(a.title).localeCompare(String(b.title)) || String(a.key).localeCompare(String(b.key)));
+  nodes.sort(
+    (a, b) =>
+      String(a.title).localeCompare(String(b.title)) ||
+      String(a.key).localeCompare(String(b.key)),
+  );
   return nodes;
 };
 
 const countLiveObjectsByType = (
-  objectsById: Map<string, { id: string; type: ObjectType; attributes: Record<string, unknown> }>,
+  objectsById: Map<
+    string,
+    { id: string; type: ObjectType; attributes: Record<string, unknown> }
+  >,
   type: ObjectType,
 ): number => {
   let count = 0;
@@ -660,7 +809,9 @@ const countLiveObjectsByType = (
   return count;
 };
 
-const categorizeViewByViewpoint = (view: ViewInstance): 'business' | 'application' | 'technology' => {
+const categorizeViewByViewpoint = (
+  view: ViewInstance,
+): 'business' | 'application' | 'technology' => {
   const viewpoint = ViewpointRegistry.get(view.viewpointId);
   if (!viewpoint) return 'business';
 
@@ -702,8 +853,10 @@ const categorizeViewByViewpoint = (view: ViewInstance): 'business' | 'applicatio
     if (technologyTypes.has(t)) technologyScore += 1;
   });
 
-  if (applicationScore >= businessScore && applicationScore >= technologyScore) return 'application';
-  if (technologyScore >= businessScore && technologyScore >= applicationScore) return 'technology';
+  if (applicationScore >= businessScore && applicationScore >= technologyScore)
+    return 'application';
+  if (technologyScore >= businessScore && technologyScore >= applicationScore)
+    return 'technology';
   return 'business';
 };
 
@@ -719,7 +872,8 @@ const groupSavedViews = (views: ViewInstance[]) => {
     else business.push(view);
   });
 
-  const sorter = (a: ViewInstance, b: ViewInstance) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  const sorter = (a: ViewInstance, b: ViewInstance) =>
+    a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   business.sort(sorter);
   application.sort(sorter);
   technology.sort(sorter);
@@ -727,42 +881,73 @@ const groupSavedViews = (views: ViewInstance[]) => {
   return { business, application, technology };
 };
 
-const inferHierarchyRelationshipType = (parentType: ObjectType | undefined, childType: ObjectType | undefined): RelationshipType | null => {
+const inferHierarchyRelationshipType = (
+  parentType: ObjectType | undefined,
+  childType: ObjectType | undefined,
+): RelationshipType | null => {
   if (!parentType || !childType) return null;
   for (const relType of HIERARCHY_RELATIONSHIP_TYPES) {
     const def = RELATIONSHIP_TYPE_DEFINITIONS[relType];
     if (!def) continue;
     const pairs = def.allowedEndpointPairs;
     if (pairs && pairs.length > 0) {
-      if (pairs.some((p) => p.from === parentType && p.to === childType)) return relType;
+      if (pairs.some((p) => p.from === parentType && p.to === childType))
+        return relType;
       continue;
     }
-    if (def.fromTypes.includes(parentType) && def.toTypes.includes(childType)) return relType;
+    if (def.fromTypes.includes(parentType) && def.toTypes.includes(childType))
+      return relType;
   }
   return null;
 };
 
 const ExplorerTree: React.FC = () => {
   const { initialState } = useModel('@@initialState');
-  const { selection, setSelection, setSelectedElement, setActiveElement } = useIdeSelection();
-  const { openRouteTab, openWorkspaceTab, openPropertiesPanel, hierarchyEditingEnabled } = useIdeShell();
-  const { eaRepository, setEaRepository, trySetEaRepository, metadata, initializationState } = useEaRepository();
+  const { selection, setSelection, setSelectedElement, setActiveElement } =
+    useIdeSelection();
+  const {
+    openRouteTab,
+    openWorkspaceTab,
+    openPropertiesPanel,
+    hierarchyEditingEnabled,
+  } = useIdeShell();
+  const {
+    eaRepository,
+    setEaRepository,
+    trySetEaRepository,
+    metadata,
+    initializationState,
+  } = useEaRepository();
   // Force full platform access in local mode.
   const userRole: RepositoryRole = 'Owner';
   const canEditView = hasRepositoryPermission(userRole, 'editView');
 
-  const [relationshipModalOpen, setRelationshipModalOpen] = React.useState(false);
-  const [relationshipSource, setRelationshipSource] = React.useState<{ id: string; type: ObjectType; name: string } | null>(null);
-  const [selectedRelationshipType, setSelectedRelationshipType] = React.useState<RelationshipType | ''>('');
+  const [relationshipModalOpen, setRelationshipModalOpen] =
+    React.useState(false);
+  const [relationshipSource, setRelationshipSource] = React.useState<{
+    id: string;
+    type: ObjectType;
+    name: string;
+  } | null>(null);
+  const [selectedRelationshipType, setSelectedRelationshipType] =
+    React.useState<RelationshipType | ''>('');
   const [selectedTargetId, setSelectedTargetId] = React.useState<string>('');
   const createModalOpenRef = React.useRef(false);
-  const [baselinePreview, setBaselinePreview] = React.useState<Baseline | null>(null);
+  const [baselinePreview, setBaselinePreview] = React.useState<Baseline | null>(
+    null,
+  );
   const [baselinePreviewOpen, setBaselinePreviewOpen] = React.useState(false);
   const [addToViewModalOpen, setAddToViewModalOpen] = React.useState(false);
-  const [addToViewTarget, setAddToViewTarget] = React.useState<{ id: string; name: string; type: ObjectType } | null>(null);
+  const [addToViewTarget, setAddToViewTarget] = React.useState<{
+    id: string;
+    name: string;
+    type: ObjectType;
+  } | null>(null);
   const [addToViewViewId, setAddToViewViewId] = React.useState<string>('');
   const [viewsRefreshToken, setViewsRefreshToken] = React.useState(0);
-  const [applicationGrouping, setApplicationGrouping] = React.useState<'flat' | 'lifecycle'>(() => {
+  const [applicationGrouping, setApplicationGrouping] = React.useState<
+    'flat' | 'lifecycle'
+  >(() => {
     try {
       const stored = localStorage.getItem('ea.applicationGrouping');
       if (stored === 'lifecycle') return stored;
@@ -772,21 +957,33 @@ const ExplorerTree: React.FC = () => {
     return 'flat';
   });
 
-  const actor = initialState?.currentUser?.name || initialState?.currentUser?.userid || 'ui';
+  const actor =
+    initialState?.currentUser?.name ||
+    initialState?.currentUser?.userid ||
+    'ui';
 
-  const savedViews = React.useMemo(() => ViewStore.list().filter((v) => v.status === 'SAVED'), [viewsRefreshToken]);
+  const savedViews = React.useMemo(
+    () => ViewStore.list().filter((v) => v.status === 'SAVED'),
+    [viewsRefreshToken],
+  );
 
   const customFrameworkActive =
-    (metadata?.enabledFrameworks?.includes('Custom') ?? false) || metadata?.referenceFramework === 'Custom';
+    (metadata?.enabledFrameworks?.includes('Custom') ?? false) ||
+    metadata?.referenceFramework === 'Custom';
   const customModelingEnabled = customFrameworkActive
-    ? isCustomFrameworkModelingEnabled('Custom', metadata?.frameworkConfig ?? undefined)
+    ? isCustomFrameworkModelingEnabled(
+        'Custom',
+        metadata?.frameworkConfig ?? undefined,
+      )
     : true;
 
   const enabledFrameworks = React.useMemo(
     () =>
-      (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
+      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
         ? metadata.enabledFrameworks
-        : (metadata?.referenceFramework ? [metadata.referenceFramework] : []),
+        : metadata?.referenceFramework
+          ? [metadata.referenceFramework]
+          : [],
     [metadata?.enabledFrameworks, metadata?.referenceFramework],
   );
 
@@ -796,7 +993,11 @@ const ExplorerTree: React.FC = () => {
       return enabledFrameworks.some((framework) => {
         if (framework === 'Custom') {
           if (!customModelingEnabled) return false;
-          return isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, type);
+          return isObjectTypeEnabledForFramework(
+            'Custom',
+            metadata?.frameworkConfig ?? undefined,
+            type,
+          );
         }
         return isObjectTypeAllowedForReferenceFramework(framework, type);
       });
@@ -808,10 +1009,21 @@ const ExplorerTree: React.FC = () => {
     (type: ObjectType): boolean => {
       const scope = metadata?.architectureScope ?? null;
       if (scope === 'Programme') {
-        return new Set<ObjectType>(['Programme', 'Project', 'Capability', 'Application']).has(type);
+        return new Set<ObjectType>([
+          'Programme',
+          'Project',
+          'Capability',
+          'Application',
+        ]).has(type);
       }
       if (scope === 'Domain') {
-        return new Set<ObjectType>(['Capability', 'BusinessService', 'Application', 'ApplicationService', 'Interface']).has(type);
+        return new Set<ObjectType>([
+          'Capability',
+          'BusinessService',
+          'Application',
+          'ApplicationService',
+          'Interface',
+        ]).has(type);
       }
       return true;
     },
@@ -820,72 +1032,95 @@ const ExplorerTree: React.FC = () => {
 
   const creatableTypeOptions = React.useMemo(() => {
     const types = Object.keys(OBJECT_TYPE_DEFINITIONS) as ObjectType[];
-    const filtered = types.filter((t) => isTypeEnabledByFramework(t) && isTypeAllowedByScope(t));
-    filtered.sort((a, b) => titleForObjectType(a).localeCompare(titleForObjectType(b)));
+    const filtered = types.filter(
+      (t) => isTypeEnabledByFramework(t) && isTypeAllowedByScope(t),
+    );
+    filtered.sort((a, b) =>
+      titleForObjectType(a).localeCompare(titleForObjectType(b)),
+    );
     return filtered.map((t) => ({ value: t, label: titleForObjectType(t) }));
   }, [isTypeAllowedByScope, isTypeEnabledByFramework]);
 
-  const openCreateTypePicker = React.useCallback((allowedTypes?: readonly ObjectType[]) => {
-    message.info('Create new elements from the EA Toolbox. Explorer is for browsing and reuse.');
-    return;
-    if (isReadOnlyMode) {
-      message.warning('Read-only mode: creation is disabled.');
+  const openCreateTypePicker = React.useCallback(
+    (allowedTypes?: readonly ObjectType[]) => {
+      message.info(
+        'Create new elements from the EA Toolbox. Explorer is for browsing and reuse.',
+      );
       return;
-    }
-    if (!eaRepository) {
-      message.warning('No repository loaded. Create a repository first.');
-      return;
-    }
-    const allowedSet = allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null;
-    const options = allowedSet
-      ? creatableTypeOptions.filter((opt) => allowedSet.has(opt.value as ObjectType))
-      : creatableTypeOptions;
-    if (options.length === 0) {
-      message.warning('No element types are enabled for creation in the current framework/scope.');
-      return;
-    }
-    let selectedType: ObjectType | '' = '';
-    Modal.confirm({
-      title: 'Create element',
-      okText: 'Next',
-      cancelText: 'Cancel',
-      content: (
-        <Form layout="vertical">
-          <Form.Item label="Element Type" required>
-            <Select
-              placeholder="Select element type"
-              options={options}
-              onChange={(v) => {
-                selectedType = v as ObjectType;
-              }}
-            />
-          </Form.Item>
-        </Form>
-      ),
-      onOk: () => {
-        if (!selectedType) {
-          message.error('Select an element type.');
-          return Promise.reject();
-        }
-        return new Promise<void>((resolve) => {
-          setTimeout(() => {
-            createObject(selectedType);
-            resolve();
-          }, 0);
-        });
-      },
-    });
-  }, [createObject, creatableTypeOptions, eaRepository, isReadOnlyMode, permissionGuard]);
+      if (isReadOnlyMode) {
+        message.warning('Read-only mode: creation is disabled.');
+        return;
+      }
+      if (!eaRepository) {
+        message.warning('No repository loaded. Create a repository first.');
+        return;
+      }
+      const allowedSet =
+        allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null;
+      const options = allowedSet
+        ? creatableTypeOptions.filter((opt) =>
+            allowedSet.has(opt.value as ObjectType),
+          )
+        : creatableTypeOptions;
+      if (options.length === 0) {
+        message.warning(
+          'No element types are enabled for creation in the current framework/scope.',
+        );
+        return;
+      }
+      let selectedType: ObjectType | '' = '';
+      Modal.confirm({
+        title: 'Create element',
+        okText: 'Next',
+        cancelText: 'Cancel',
+        content: (
+          <Form layout="vertical">
+            <Form.Item label="Element Type" required>
+              <Select
+                placeholder="Select element type"
+                options={options}
+                onChange={(v) => {
+                  selectedType = v as ObjectType;
+                }}
+              />
+            </Form.Item>
+          </Form>
+        ),
+        onOk: () => {
+          if (!selectedType) {
+            message.error('Select an element type.');
+            return Promise.reject();
+          }
+          return new Promise<void>((resolve) => {
+            setTimeout(() => {
+              createObject(selectedType);
+              resolve();
+            }, 0);
+          });
+        },
+      });
+    },
+    [
+      createObject,
+      creatableTypeOptions,
+      eaRepository,
+      isReadOnlyMode,
+      permissionGuard,
+    ],
+  );
 
   const [refreshToken, setRefreshToken] = React.useState(0);
-  const { openSeedSampleDataModal, isRepoEmpty, hasRepository } = useSeedSampleData();
-  const [seedBannerDismissed, setSeedBannerDismissed] = React.useState<boolean>(() => {
-    try {
-      return localStorage.getItem('ea.seed.banner.dismissed') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const { openSeedSampleDataModal, isRepoEmpty, hasRepository } =
+    useSeedSampleData();
+  const [seedBannerDismissed, setSeedBannerDismissed] = React.useState<boolean>(
+    () => {
+      try {
+        return localStorage.getItem('ea.seed.banner.dismissed') === 'true';
+      } catch {
+        return false;
+      }
+    },
+  );
 
   const dismissSeedBanner = React.useCallback(() => {
     setSeedBannerDismissed(true);
@@ -921,18 +1156,24 @@ const ExplorerTree: React.FC = () => {
     }
   }, [applicationGrouping]);
 
-  const [showTechnologyInProgrammeScope, setShowTechnologyInProgrammeScope] = React.useState<boolean>(() => {
-    try {
-      return localStorage.getItem('ea.programmeScope.showTechnology') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [showTechnologyInProgrammeScope, setShowTechnologyInProgrammeScope] =
+    React.useState<boolean>(() => {
+      try {
+        return (
+          localStorage.getItem('ea.programmeScope.showTechnology') === 'true'
+        );
+      } catch {
+        return false;
+      }
+    });
 
   const setShowTechnologyFlag = React.useCallback((next: boolean) => {
     setShowTechnologyInProgrammeScope(next);
     try {
-      localStorage.setItem('ea.programmeScope.showTechnology', next ? 'true' : 'false');
+      localStorage.setItem(
+        'ea.programmeScope.showTechnology',
+        next ? 'true' : 'false',
+      );
     } catch {
       // Best-effort.
     }
@@ -951,14 +1192,17 @@ const ExplorerTree: React.FC = () => {
 
     const viewpoint = ViewpointRegistry.get(view.viewpointId);
     if (viewpoint) {
-      const allowed = new Set(viewpoint.allowedElementTypes.map((t) => t.toLowerCase()));
+      const allowed = new Set(
+        viewpoint.allowedElementTypes.map((t) => t.toLowerCase()),
+      );
       if (!allowed.has(addToViewTarget.type.toLowerCase())) {
         message.warning('Element type is not allowed by the view viewpoint.');
         return;
       }
     }
 
-    const existingIds = view.scope.kind === 'ManualSelection' ? [...view.scope.elementIds] : [];
+    const existingIds =
+      view.scope.kind === 'ManualSelection' ? [...view.scope.elementIds] : [];
     const nextIds = Array.from(new Set([...existingIds, addToViewTarget.id]));
     const nextView: ViewInstance = {
       ...view,
@@ -995,7 +1239,10 @@ const ExplorerTree: React.FC = () => {
       return;
     }
 
-    const liveEnterprises = countLiveObjectsByType(eaRepository.objects, 'Enterprise');
+    const liveEnterprises = countLiveObjectsByType(
+      eaRepository.objects,
+      'Enterprise',
+    );
     if (liveEnterprises > 0) {
       message.info('Enterprise already initialized.');
       return;
@@ -1010,8 +1257,14 @@ const ExplorerTree: React.FC = () => {
     let lifecycleState = '';
     let admPhase = '';
     const isStrictGovernance = metadata?.governanceMode === 'Strict';
-    const lifecycleOptions = lifecycleOptionsForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
-    const lifecyclePlaceholder = defaultLifecycleStateForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
+    const lifecycleOptions = lifecycleOptionsForFramework(
+      metadata?.referenceFramework,
+      metadata?.lifecycleCoverage,
+    );
+    const lifecyclePlaceholder = defaultLifecycleStateForFramework(
+      metadata?.referenceFramework,
+      metadata?.lifecycleCoverage,
+    );
 
     Modal.confirm({
       title: 'Initialize Enterprise Architecture',
@@ -1025,14 +1278,24 @@ const ExplorerTree: React.FC = () => {
             </div>
             <input
               defaultValue={name}
-              placeholder={suggestedName ? `e.g., ${suggestedName}` : 'Enter enterprise name'}
+              placeholder={
+                suggestedName
+                  ? `e.g., ${suggestedName}`
+                  : 'Enter enterprise name'
+              }
               onChange={(e) => {
                 name = e.target.value;
               }}
-              style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 6 }}
+              style={{
+                width: '100%',
+                padding: 8,
+                border: '1px solid #d9d9d9',
+                borderRadius: 6,
+              }}
             />
             <Typography.Text type="secondary">
-              Enterprise nodes represent legal/organizational entities. The name is user-defined and will not sync from other elements.
+              Enterprise nodes represent legal/organizational entities. The name
+              is user-defined and will not sync from other elements.
             </Typography.Text>
           </div>
           <div>
@@ -1043,7 +1306,14 @@ const ExplorerTree: React.FC = () => {
               onChange={(e) => {
                 description = e.target.value;
               }}
-              style={{ width: '100%', padding: 8, border: '1px solid #d9d9d9', borderRadius: 6, minHeight: 100, resize: 'vertical' }}
+              style={{
+                width: '100%',
+                padding: 8,
+                border: '1px solid #d9d9d9',
+                borderRadius: 6,
+                minHeight: 100,
+                resize: 'vertical',
+              }}
             />
           </div>
           <div>
@@ -1085,7 +1355,8 @@ const ExplorerTree: React.FC = () => {
                 }}
               />
               <Typography.Text type="secondary">
-                Strict mode requires an explicit owner. Enterprise roots may only own themselves.
+                Strict mode requires an explicit owner. Enterprise roots may
+                only own themselves.
               </Typography.Text>
             </div>
           ) : null}
@@ -1117,7 +1388,10 @@ const ExplorerTree: React.FC = () => {
         }
 
         const next = eaRepository.clone();
-        const existingEnterpriseCount = countLiveObjectsByType(next.objects, 'Enterprise');
+        const existingEnterpriseCount = countLiveObjectsByType(
+          next.objects,
+          'Enterprise',
+        );
         if (existingEnterpriseCount > 0) {
           message.info('Enterprise already initialized.');
           return Promise.reject();
@@ -1135,7 +1409,9 @@ const ExplorerTree: React.FC = () => {
             lastModifiedAt: createdAt,
             lastModifiedBy: actor,
             lifecycleState: finalLifecycle,
-            ...(metadata?.referenceFramework === 'TOGAF' ? { admPhase: admPhase.trim() } : {}),
+            ...(metadata?.referenceFramework === 'TOGAF'
+              ? { admPhase: admPhase.trim() }
+              : {}),
             ...(isStrictGovernance
               ? {
                   ownerId: finalOwnerId,
@@ -1163,22 +1439,41 @@ const ExplorerTree: React.FC = () => {
         return Promise.resolve();
       },
     });
-  }, [actor, eaRepository, initializationState?.status, metadata?.organizationName, permissionGuard, setExpandedKeys, trySetEaRepository]);
+  }, [
+    actor,
+    eaRepository,
+    initializationState?.status,
+    metadata?.organizationName,
+    permissionGuard,
+    setExpandedKeys,
+    trySetEaRepository,
+  ]);
 
-  const normalizeDomainId = React.useCallback((value: unknown): string | null => {
-    const raw = typeof value === 'string' ? value.trim() : '';
-    if (!raw) return null;
-    return raw.toLowerCase();
-  }, []);
+  const normalizeDomainId = React.useCallback(
+    (value: unknown): string | null => {
+      const raw = typeof value === 'string' ? value.trim() : '';
+      if (!raw) return null;
+      return raw.toLowerCase();
+    },
+    [],
+  );
 
   const computeTargetOptions = React.useCallback(
-    (relationshipType: RelationshipType, source: { id: string; type: ObjectType }) => {
-      if (!eaRepository) return [] as Array<{ value: string; label: string; type: string }>;
+    (
+      relationshipType: RelationshipType,
+      source: { id: string; type: ObjectType },
+    ) => {
+      if (!eaRepository)
+        return [] as Array<{ value: string; label: string; type: string }>;
       const relDef = RELATIONSHIP_TYPE_DEFINITIONS[relationshipType];
-      if (!relDef) return [] as Array<{ value: string; label: string; type: string }>;
+      if (!relDef)
+        return [] as Array<{ value: string; label: string; type: string }>;
 
       const currentDomainId = normalizeDomainId(metadata?.repositoryName);
-      const sourceDomain = normalizeDomainId((eaRepository.objects.get(source.id)?.attributes as any)?.domainId) ?? currentDomainId;
+      const sourceDomain =
+        normalizeDomainId(
+          (eaRepository.objects.get(source.id)?.attributes as any)?.domainId,
+        ) ?? currentDomainId;
 
       const pairs = relDef.allowedEndpointPairs;
 
@@ -1187,28 +1482,46 @@ const ExplorerTree: React.FC = () => {
         .filter((o) => (o.attributes as any)?._deleted !== true)
         .filter((o) => {
           const toType = o.type as ObjectType;
-          if (pairs && pairs.length > 0) return pairs.some((p) => p.from === (source.type as ObjectType) && p.to === toType);
+          if (pairs && pairs.length > 0)
+            return pairs.some(
+              (p) => p.from === (source.type as ObjectType) && p.to === toType,
+            );
           return relDef.toTypes.includes(toType);
         })
         .filter((o) => {
           const scope = metadata?.architectureScope ?? null;
           if (scope === 'Domain') {
-            const targetDomain = normalizeDomainId((o.attributes as any)?.domainId) ?? currentDomainId;
-            if (sourceDomain && targetDomain && sourceDomain !== targetDomain) return false;
+            const targetDomain =
+              normalizeDomainId((o.attributes as any)?.domainId) ??
+              currentDomainId;
+            if (sourceDomain && targetDomain && sourceDomain !== targetDomain)
+              return false;
           }
           if (scope === 'Business Unit' && relationshipType === 'OWNS') {
-            if (source.type === 'Enterprise' && o.type === 'Enterprise') return false;
+            if (source.type === 'Enterprise' && o.type === 'Enterprise')
+              return false;
           }
           return true;
         })
         .map((o) => {
           const displayName =
-            typeof o.attributes?.name === 'string' && o.attributes.name.trim() ? String(o.attributes.name) : o.id;
-          return { value: o.id, label: `${displayName} · ${o.type} · ${o.id}`, type: o.type };
+            typeof o.attributes?.name === 'string' && o.attributes.name.trim()
+              ? String(o.attributes.name)
+              : o.id;
+          return {
+            value: o.id,
+            label: `${displayName} · ${o.type} · ${o.id}`,
+            type: o.type,
+          };
         })
         .sort((a, b) => a.label.localeCompare(b.label));
     },
-    [eaRepository, metadata?.architectureScope, metadata?.repositoryName, normalizeDomainId],
+    [
+      eaRepository,
+      metadata?.architectureScope,
+      metadata?.repositoryName,
+      normalizeDomainId,
+    ],
   );
 
   const storedExpansionRef = React.useRef(false);
@@ -1225,27 +1538,57 @@ const ExplorerTree: React.FC = () => {
     } catch {
       // ignore storage failures
     }
-    const enabledFrameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-      ? metadata.enabledFrameworks
-      : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
-    if (enabledFrameworks.length === 1 && enabledFrameworks[0] === 'Custom' && !customModelingEnabled) {
+    const enabledFrameworks =
+      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+        ? metadata.enabledFrameworks
+        : metadata?.referenceFramework
+          ? [metadata.referenceFramework]
+          : [];
+    if (
+      enabledFrameworks.length === 1 &&
+      enabledFrameworks[0] === 'Custom' &&
+      !customModelingEnabled
+    ) {
       return [ROOT_KEYS.views];
     }
     const scope = metadata?.architectureScope ?? null;
     if (scope === 'Enterprise') return [...ENTERPRISE_FULLY_EXPANDED_KEYS];
-    if (scope === 'Business Unit') return [ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology];
+    if (scope === 'Business Unit')
+      return [ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology];
     if (scope === 'Domain') return [ROOT_KEYS.business, ROOT_KEYS.application];
-    if (scope === 'Programme') return [ROOT_KEYS.implMig, 'explorer:implmig:programmes', 'explorer:implmig:plateaus', ROOT_KEYS.views, 'explorer:views:roadmaps'];
-    return [ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology, ROOT_KEYS.implMig, 'explorer:implmig:plateaus', ROOT_KEYS.governance, ROOT_KEYS.views];
+    if (scope === 'Programme')
+      return [
+        ROOT_KEYS.implMig,
+        'explorer:implmig:programmes',
+        'explorer:implmig:plateaus',
+        ROOT_KEYS.views,
+        'explorer:views:roadmaps',
+      ];
+    return [
+      ROOT_KEYS.business,
+      ROOT_KEYS.application,
+      ROOT_KEYS.technology,
+      ROOT_KEYS.implMig,
+      'explorer:implmig:plateaus',
+      ROOT_KEYS.governance,
+      ROOT_KEYS.views,
+    ];
   });
 
   React.useEffect(() => {
     // Recompute default expansion when creating/loading a repository.
     if (storedExpansionRef.current) return;
-    const enabledFrameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-      ? metadata.enabledFrameworks
-      : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
-    if (enabledFrameworks.length === 1 && enabledFrameworks[0] === 'Custom' && !customModelingEnabled) {
+    const enabledFrameworks =
+      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+        ? metadata.enabledFrameworks
+        : metadata?.referenceFramework
+          ? [metadata.referenceFramework]
+          : [];
+    if (
+      enabledFrameworks.length === 1 &&
+      enabledFrameworks[0] === 'Custom' &&
+      !customModelingEnabled
+    ) {
       setExpandedKeys([ROOT_KEYS.views]);
       return;
     }
@@ -1253,19 +1596,45 @@ const ExplorerTree: React.FC = () => {
     if (scope === 'Enterprise') {
       setExpandedKeys([...ENTERPRISE_FULLY_EXPANDED_KEYS]);
     } else if (scope === 'Business Unit') {
-      setExpandedKeys([ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology]);
+      setExpandedKeys([
+        ROOT_KEYS.business,
+        ROOT_KEYS.application,
+        ROOT_KEYS.technology,
+      ]);
     } else if (scope === 'Domain') {
       setExpandedKeys([ROOT_KEYS.business, ROOT_KEYS.application]);
     } else if (scope === 'Programme') {
-      setExpandedKeys([ROOT_KEYS.implMig, 'explorer:implmig:programmes', 'explorer:implmig:plateaus', ROOT_KEYS.views, 'explorer:views:roadmaps']);
+      setExpandedKeys([
+        ROOT_KEYS.implMig,
+        'explorer:implmig:programmes',
+        'explorer:implmig:plateaus',
+        ROOT_KEYS.views,
+        'explorer:views:roadmaps',
+      ]);
     } else {
-      setExpandedKeys([ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology, ROOT_KEYS.implMig, 'explorer:implmig:plateaus', ROOT_KEYS.governance, ROOT_KEYS.views]);
+      setExpandedKeys([
+        ROOT_KEYS.business,
+        ROOT_KEYS.application,
+        ROOT_KEYS.technology,
+        ROOT_KEYS.implMig,
+        'explorer:implmig:plateaus',
+        ROOT_KEYS.governance,
+        ROOT_KEYS.views,
+      ]);
     }
-  }, [customModelingEnabled, metadata?.architectureScope, metadata?.enabledFrameworks, metadata?.referenceFramework]);
+  }, [
+    customModelingEnabled,
+    metadata?.architectureScope,
+    metadata?.enabledFrameworks,
+    metadata?.referenceFramework,
+  ]);
 
   React.useEffect(() => {
     try {
-      localStorage.setItem('ea.explorer.expandedKeys', JSON.stringify(expandedKeys));
+      localStorage.setItem(
+        'ea.explorer.expandedKeys',
+        JSON.stringify(expandedKeys),
+      );
     } catch {
       // ignore storage failures
     }
@@ -1323,22 +1692,34 @@ const ExplorerTree: React.FC = () => {
     const objectsById = eaRepository?.objects ?? new Map();
     const viewCats = groupSavedViews(views.filter((v) => v.status === 'SAVED'));
     const scope = metadata?.architectureScope ?? null;
-    const enabledFrameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-      ? metadata.enabledFrameworks
-      : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
+    const enabledFrameworks =
+      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+        ? metadata.enabledFrameworks
+        : metadata?.referenceFramework
+          ? [metadata.referenceFramework]
+          : [];
     const isCustomBlankCanvas =
-      enabledFrameworks.length === 1 && enabledFrameworks[0] === 'Custom' && !customModelingEnabled;
+      enabledFrameworks.length === 1 &&
+      enabledFrameworks[0] === 'Custom' &&
+      !customModelingEnabled;
     const baselines = listBaselines();
     const plateaus = listPlateaus();
     const roadmaps = listRoadmaps();
     const isObjectTypeVisible = (type: ObjectType): boolean => {
-      const frameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-        ? metadata.enabledFrameworks
-        : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
+      const frameworks =
+        metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+          ? metadata.enabledFrameworks
+          : metadata?.referenceFramework
+            ? [metadata.referenceFramework]
+            : [];
       if (frameworks.length === 0) return true;
       return frameworks.some((framework) => {
         if (framework === 'Custom') {
-          return isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, type);
+          return isObjectTypeEnabledForFramework(
+            'Custom',
+            metadata?.frameworkConfig ?? undefined,
+            type,
+          );
         }
         return isObjectTypeAllowedForReferenceFramework(framework, type);
       });
@@ -1395,15 +1776,24 @@ const ExplorerTree: React.FC = () => {
       data: { roadmapId: r.id },
     });
 
-    const enterpriseLeaves = objectLeaves({ objectsById, type: 'Enterprise', icon: <ApartmentOutlined /> });
+    const enterpriseLeaves = objectLeaves({
+      objectsById,
+      type: 'Enterprise',
+      icon: <ApartmentOutlined />,
+    });
 
-    const initializeDisabled = !hasRepositoryPermission(userRole, 'initializeEnterprise');
+    const initializeDisabled = !hasRepositoryPermission(
+      userRole,
+      'initializeEnterprise',
+    );
 
     const enterpriseInitializationCta: DataNode = {
       key: 'explorer:business:enterprises:init-cta',
       title: (
         <div className={styles.explorerTreeCta}>
-          <Typography.Text strong style={{ margin: 0 }}>No Enterprise defined.</Typography.Text>
+          <Typography.Text strong style={{ margin: 0 }}>
+            No Enterprise defined.
+          </Typography.Text>
           <Typography.Text type="secondary" style={{ margin: 0 }}>
             Initialize the Enterprise Architecture to begin modeling.
           </Typography.Text>
@@ -1412,7 +1802,9 @@ const ExplorerTree: React.FC = () => {
             size="small"
             onClick={initializeEnterprise}
             disabled={initializeDisabled}
-            title={initializeDisabled ? 'You have read-only access.' : undefined}
+            title={
+              initializeDisabled ? 'You have read-only access.' : undefined
+            }
           >
             Initialize Enterprise
           </Button>
@@ -1464,7 +1856,11 @@ const ExplorerTree: React.FC = () => {
                   icon: <ApartmentOutlined />,
                   children: objectLeavesForTypes({
                     objectsById,
-                    types: ['Capability', 'CapabilityCategory', 'SubCapability'],
+                    types: [
+                      'Capability',
+                      'CapabilityCategory',
+                      'SubCapability',
+                    ],
                     iconForType: () => <ApartmentOutlined />,
                   }),
                 }),
@@ -1476,7 +1872,11 @@ const ExplorerTree: React.FC = () => {
                   key: 'explorer:business:business-services',
                   title: 'Business Services',
                   icon: <ForkOutlined />,
-                  children: objectLeaves({ objectsById, type: 'BusinessService', icon: <ForkOutlined /> }),
+                  children: objectLeaves({
+                    objectsById,
+                    type: 'BusinessService',
+                    icon: <ForkOutlined />,
+                  }),
                 }),
               ]
             : []),
@@ -1507,7 +1907,10 @@ const ExplorerTree: React.FC = () => {
                 key: 'explorer:business:enterprises',
                 title: 'Enterprises',
                 icon: <ApartmentOutlined />,
-                children: scope === 'Business Unit' ? businessUnitEnterpriseChildren : enterpriseChildren,
+                children:
+                  scope === 'Business Unit'
+                    ? businessUnitEnterpriseChildren
+                    : enterpriseChildren,
               }),
             ]
           : []),
@@ -1531,7 +1934,11 @@ const ExplorerTree: React.FC = () => {
                 key: 'explorer:business:business-services',
                 title: 'Business Services',
                 icon: <ForkOutlined />,
-                children: objectLeaves({ objectsById, type: 'BusinessService', icon: <ForkOutlined /> }),
+                children: objectLeaves({
+                  objectsById,
+                  type: 'BusinessService',
+                  icon: <ForkOutlined />,
+                }),
               }),
             ]
           : []),
@@ -1541,7 +1948,11 @@ const ExplorerTree: React.FC = () => {
                 key: 'explorer:business:processes',
                 title: 'Business Processes',
                 icon: <ForkOutlined />,
-                children: objectLeaves({ objectsById, type: 'BusinessProcess', icon: <ForkOutlined /> }),
+                children: objectLeaves({
+                  objectsById,
+                  type: 'BusinessProcess',
+                  icon: <ForkOutlined />,
+                }),
               }),
             ]
           : []),
@@ -1551,7 +1962,11 @@ const ExplorerTree: React.FC = () => {
                 key: 'explorer:business:departments',
                 title: 'Departments',
                 icon: <TeamOutlined />,
-                  children: objectLeaves({ objectsById, type: 'Department', icon: <TeamOutlined /> }),
+                children: objectLeaves({
+                  objectsById,
+                  type: 'Department',
+                  icon: <TeamOutlined />,
+                }),
               }),
             ]
           : []),
@@ -1565,10 +1980,55 @@ const ExplorerTree: React.FC = () => {
       children: businessChildren,
     };
 
+    const catalogRoot: DataNode = {
+      key: ROOT_KEYS.catalog,
+      title: 'Catalog',
+      icon: <DatabaseOutlined />,
+      children: [
+        {
+          key: 'explorer:catalog:business',
+          title: 'Business',
+          icon: <ApartmentOutlined />,
+          isLeaf: true,
+        },
+        {
+          key: 'explorer:catalog:application',
+          title: 'Application',
+          icon: <AppstoreOutlined />,
+          isLeaf: true,
+        },
+        {
+          key: 'explorer:catalog:data',
+          title: 'Data',
+          icon: <DatabaseOutlined />,
+          isLeaf: true,
+        },
+        {
+          key: 'explorer:catalog:technology',
+          title: 'Technology',
+          icon: <CloudOutlined />,
+          isLeaf: true,
+        },
+        {
+          key: 'explorer:catalog:implementation',
+          title: 'Implementation',
+          icon: <ProjectOutlined />,
+          isLeaf: true,
+        },
+      ],
+    };
+
     const applicationCollectionChildren =
       applicationGrouping === 'lifecycle'
-        ? applicationsByLifecycleGrouping({ objectsById, applicationIcon: <AppstoreOutlined /> })
-        : objectLeaves({ objectsById, type: 'Application', icon: <AppstoreOutlined /> });
+        ? applicationsByLifecycleGrouping({
+            objectsById,
+            applicationIcon: <AppstoreOutlined />,
+          })
+        : objectLeaves({
+            objectsById,
+            type: 'Application',
+            icon: <AppstoreOutlined />,
+          });
 
     const applicationChildren: DataNode[] = [
       ...(isObjectTypeVisible('Application')
@@ -1581,24 +2041,32 @@ const ExplorerTree: React.FC = () => {
             }),
           ]
         : []),
-      ...((scope === 'Programme') || !isObjectTypeVisible('ApplicationService')
+      ...(scope === 'Programme' || !isObjectTypeVisible('ApplicationService')
         ? []
         : [
             collectionNode({
               key: 'explorer:application:application-services',
               title: 'Application Services',
               icon: <AppstoreOutlined />,
-              children: objectLeaves({ objectsById, type: 'ApplicationService', icon: <AppstoreOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'ApplicationService',
+                icon: <AppstoreOutlined />,
+              }),
             }),
           ]),
-      ...((scope === 'Programme') || !isObjectTypeVisible('Interface')
+      ...(scope === 'Programme' || !isObjectTypeVisible('Interface')
         ? []
         : [
             collectionNode({
               key: 'explorer:application:interfaces',
               title: 'Interfaces',
               icon: <AppstoreOutlined />,
-              children: objectLeaves({ objectsById, type: 'Interface', icon: <AppstoreOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Interface',
+                icon: <AppstoreOutlined />,
+              }),
             }),
           ]),
     ];
@@ -1617,7 +2085,11 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:technology:nodes',
               title: 'Nodes',
               icon: <CloudOutlined />,
-              children: objectLeaves({ objectsById, type: 'Node', icon: <CloudOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Node',
+                icon: <CloudOutlined />,
+              }),
             }),
           ]
         : []),
@@ -1627,7 +2099,11 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:technology:compute',
               title: 'Compute',
               icon: <CloudOutlined />,
-              children: objectLeaves({ objectsById, type: 'Compute', icon: <CloudOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Compute',
+                icon: <CloudOutlined />,
+              }),
             }),
           ]
         : []),
@@ -1637,7 +2113,11 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:technology:runtime',
               title: 'Runtime',
               icon: <CloudOutlined />,
-              children: objectLeaves({ objectsById, type: 'Runtime', icon: <CloudOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Runtime',
+                icon: <CloudOutlined />,
+              }),
             }),
           ]
         : []),
@@ -1647,7 +2127,11 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:technology:database',
               title: 'Database',
               icon: <CloudOutlined />,
-              children: objectLeaves({ objectsById, type: 'Database', icon: <CloudOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Database',
+                icon: <CloudOutlined />,
+              }),
             }),
           ]
         : []),
@@ -1664,7 +2148,14 @@ const ExplorerTree: React.FC = () => {
               icon: <CloudOutlined />,
               children: objectLeavesForTypes({
                 objectsById,
-                types: ['Technology', 'Storage', 'API', 'MessageBroker', 'IntegrationPlatform', 'CloudService'],
+                types: [
+                  'Technology',
+                  'Storage',
+                  'API',
+                  'MessageBroker',
+                  'IntegrationPlatform',
+                  'CloudService',
+                ],
                 iconForType: () => <CloudOutlined />,
               }),
             }),
@@ -1688,26 +2179,37 @@ const ExplorerTree: React.FC = () => {
     });
 
     const savedViewsGroups: DataNode[] =
-      viewCats.business.length === 0 && viewCats.application.length === 0 && viewCats.technology.length === 0
+      viewCats.business.length === 0 &&
+      viewCats.application.length === 0 &&
+      viewCats.technology.length === 0
         ? [makeSavedViewsEmpty('all')]
         : [
             {
               key: 'explorer:views:saved:business',
               title: 'Business Views',
               icon: <ApartmentOutlined />,
-              children: viewCats.business.length > 0 ? viewCats.business.map(viewLeaf) : [makeSavedViewsEmpty('business')],
+              children:
+                viewCats.business.length > 0
+                  ? viewCats.business.map(viewLeaf)
+                  : [makeSavedViewsEmpty('business')],
             },
             {
               key: 'explorer:views:saved:application',
               title: 'Application Views',
               icon: <ApartmentOutlined />,
-              children: viewCats.application.length > 0 ? viewCats.application.map(viewLeaf) : [makeSavedViewsEmpty('application')],
+              children:
+                viewCats.application.length > 0
+                  ? viewCats.application.map(viewLeaf)
+                  : [makeSavedViewsEmpty('application')],
             },
             {
               key: 'explorer:views:saved:technology',
               title: 'Technology Views',
               icon: <ApartmentOutlined />,
-              children: viewCats.technology.length > 0 ? viewCats.technology.map(viewLeaf) : [makeSavedViewsEmpty('technology')],
+              children:
+                viewCats.technology.length > 0
+                  ? viewCats.technology.map(viewLeaf)
+                  : [makeSavedViewsEmpty('technology')],
             },
           ];
 
@@ -1734,30 +2236,39 @@ const ExplorerTree: React.FC = () => {
     const tree: DataNode[] = (() => {
       if (isCustomBlankCanvas) {
         return [
-        {
-          key: 'explorer:blank-canvas',
-          title: 'Blank canvas (Custom)',
-          icon: <DatabaseOutlined />,
-          selectable: true,
-          children: [
-            {
-              key: 'explorer:blank-canvas:hint',
-              title: 'Define at least one element type in Metamodel to enable modeling',
-              icon: <ProjectOutlined />,
-              isLeaf: true,
-            },
-          ],
-        },
-        viewsRoot,
+          {
+            key: 'explorer:blank-canvas',
+            title: 'Blank canvas (Custom)',
+            icon: <DatabaseOutlined />,
+            selectable: true,
+            children: [
+              {
+                key: 'explorer:blank-canvas:hint',
+                title:
+                  'Define at least one element type in Metamodel to enable modeling',
+                icon: <ProjectOutlined />,
+                isLeaf: true,
+              },
+            ],
+          },
+          catalogRoot,
+          viewsRoot,
         ];
       }
 
       if (scope === 'Business Unit') {
-        return [businessRoot, applicationRoot, technologyRoot].filter((n) => n.children.length > 0);
+        return [
+          catalogRoot,
+          businessRoot,
+          applicationRoot,
+          technologyRoot,
+        ].filter((n) => n.children.length > 0);
       }
 
       if (scope === 'Domain') {
-        return [businessRoot, applicationRoot].filter((n) => n.children.length > 0);
+        return [catalogRoot, businessRoot, applicationRoot].filter(
+          (n) => n.children.length > 0,
+        );
       }
 
       if (scope === 'Programme') {
@@ -1770,13 +2281,21 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:implmig:programmes',
               title: 'Programmes',
               icon: <ProjectOutlined />,
-              children: objectLeaves({ objectsById, type: 'Programme', icon: <ProjectOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Programme',
+                icon: <ProjectOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:implmig:projects',
               title: 'Projects',
               icon: <FundProjectionScreenOutlined />,
-              children: objectLeaves({ objectsById, type: 'Project', icon: <FundProjectionScreenOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Project',
+                icon: <FundProjectionScreenOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:implmig:plateaus',
@@ -1808,16 +2327,22 @@ const ExplorerTree: React.FC = () => {
         };
 
         return [
+          catalogRoot,
           implMigRoot,
           programmeViewsRoot,
-          ...[applicationRoot, businessRoot, ...(showTechnologyInProgrammeScope ? [technologyRoot] : [])].filter(
-            (n) => n.children.length > 0,
-          ),
+          ...[
+            applicationRoot,
+            businessRoot,
+            ...(showTechnologyInProgrammeScope ? [technologyRoot] : []),
+          ].filter((n) => n.children.length > 0),
         ];
       }
 
       return [
-        ...[businessRoot, applicationRoot, technologyRoot].filter((n) => n.children.length > 0),
+        catalogRoot,
+        ...[businessRoot, applicationRoot, technologyRoot].filter(
+          (n) => n.children.length > 0,
+        ),
         {
           key: ROOT_KEYS.implMig,
           title: 'Implementation & Migration',
@@ -1827,13 +2352,21 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:implmig:programmes',
               title: 'Programmes',
               icon: <ProjectOutlined />,
-              children: objectLeaves({ objectsById, type: 'Programme', icon: <ProjectOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Programme',
+                icon: <ProjectOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:implmig:projects',
               title: 'Projects',
               icon: <FundProjectionScreenOutlined />,
-              children: objectLeaves({ objectsById, type: 'Project', icon: <FundProjectionScreenOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Project',
+                icon: <FundProjectionScreenOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:implmig:plateaus',
@@ -1852,19 +2385,31 @@ const ExplorerTree: React.FC = () => {
               key: 'explorer:governance:principles',
               title: 'Principles',
               icon: <SafetyOutlined />,
-              children: objectLeaves({ objectsById, type: 'Principle', icon: <SafetyOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Principle',
+                icon: <SafetyOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:governance:requirements',
               title: 'Requirements',
               icon: <FileTextOutlined />,
-              children: objectLeaves({ objectsById, type: 'Requirement', icon: <FileTextOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Requirement',
+                icon: <FileTextOutlined />,
+              }),
             }),
             collectionNode({
               key: 'explorer:governance:standards',
               title: 'Standards',
               icon: <FileTextOutlined />,
-              children: objectLeaves({ objectsById, type: 'Standard', icon: <FileTextOutlined /> }),
+              children: objectLeaves({
+                objectsById,
+                type: 'Standard',
+                icon: <FileTextOutlined />,
+              }),
             }),
           ],
         },
@@ -1893,7 +2438,11 @@ const ExplorerTree: React.FC = () => {
     const walk = (nodes: DataNode[]) => {
       nodes.forEach((node) => {
         const data = (node as any)?.data as { elementId?: string } | undefined;
-        if (data?.elementId && typeof node.key === 'string' && !index.has(data.elementId)) {
+        if (
+          data?.elementId &&
+          typeof node.key === 'string' &&
+          !index.has(data.elementId)
+        ) {
           index.set(data.elementId, node.key);
         }
         if (node.children) walk(node.children);
@@ -1902,7 +2451,19 @@ const ExplorerTree: React.FC = () => {
     walk(tree);
 
     return { treeData: tree, elementKeyIndex: index } as const;
-  }, [applicationGrouping, customModelingEnabled, eaRepository, initializationState?.status, initializeEnterprise, metadata?.architectureScope, metadata?.referenceFramework, refreshToken, showTechnologyInProgrammeScope, userRole, views]);
+  }, [
+    applicationGrouping,
+    customModelingEnabled,
+    eaRepository,
+    initializationState?.status,
+    initializeEnterprise,
+    metadata?.architectureScope,
+    metadata?.referenceFramework,
+    refreshToken,
+    showTechnologyInProgrammeScope,
+    userRole,
+    views,
+  ]);
 
   const selectedKeysFromContext = React.useMemo(() => {
     const key = selection?.keys?.[0];
@@ -1922,13 +2483,24 @@ const ExplorerTree: React.FC = () => {
   }, [elementKeyIndex, normalizeElementKey, selection?.keys]);
 
   const nodeMetaByKey = React.useMemo(() => {
-    const map = new Map<string, { parent: string | null; hasChildren: boolean; data?: { elementId?: string; elementType?: string } }>();
+    const map = new Map<
+      string,
+      {
+        parent: string | null;
+        hasChildren: boolean;
+        data?: { elementId?: string; elementType?: string };
+      }
+    >();
 
     const walk = (nodes: DataNode[], parent: string | null) => {
       nodes.forEach((node) => {
         if (typeof node.key === 'string') {
-          const data = (node as any)?.data as { elementId?: string; elementType?: string } | undefined;
-          const hasChildren = Boolean(node.children && node.children.length > 0);
+          const data = (node as any)?.data as
+            | { elementId?: string; elementType?: string }
+            | undefined;
+          const hasChildren = Boolean(
+            node.children && node.children.length > 0,
+          );
           map.set(node.key, { parent, hasChildren, data });
           if (node.children) walk(node.children, node.key);
         }
@@ -1941,7 +2513,9 @@ const ExplorerTree: React.FC = () => {
 
   const parentByKey = React.useMemo(() => {
     const map = new Map<string, string | null>();
-    nodeMetaByKey.forEach((meta, key) => { map.set(key, meta.parent); });
+    nodeMetaByKey.forEach((meta, key) => {
+      map.set(key, meta.parent);
+    });
     return map;
   }, [nodeMetaByKey]);
 
@@ -1961,16 +2535,19 @@ const ExplorerTree: React.FC = () => {
     return ancestors;
   }, [parentByKey, selectedKeysFromContext]);
 
-  const toggleExpandedKey = React.useCallback((key: string, force?: 'expand' | 'collapse') => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      const isExpanded = next.has(key);
-      const shouldExpand = force ? force === 'expand' : !isExpanded;
-      if (shouldExpand) next.add(key);
-      else next.delete(key);
-      return Array.from(next);
-    });
-  }, []);
+  const toggleExpandedKey = React.useCallback(
+    (key: string, force?: 'expand' | 'collapse') => {
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        const isExpanded = next.has(key);
+        const shouldExpand = force ? force === 'expand' : !isExpanded;
+        if (shouldExpand) next.add(key);
+        else next.delete(key);
+        return Array.from(next);
+      });
+    },
+    [],
+  );
 
   const handleTreeKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2003,7 +2580,15 @@ const ExplorerTree: React.FC = () => {
         event.preventDefault();
       }
     },
-    [expandedKeys, nodeMetaByKey, openForKey, parentByKey, selectedKeysFromContext, setSelection, toggleExpandedKey],
+    [
+      expandedKeys,
+      nodeMetaByKey,
+      openForKey,
+      parentByKey,
+      selectedKeysFromContext,
+      setSelection,
+      toggleExpandedKey,
+    ],
   );
 
   const handleDrop: TreeProps['onDrop'] = React.useCallback(
@@ -2013,8 +2598,13 @@ const ExplorerTree: React.FC = () => {
       if (info.dropToGap) return;
 
       const targetKey = typeof info.node?.key === 'string' ? info.node.key : '';
-      const dragKey = typeof info.dragNode?.key === 'string' ? info.dragNode.key : '';
-      if (!targetKey.startsWith('explorer:element:') || !dragKey.startsWith('explorer:element:')) return;
+      const dragKey =
+        typeof info.dragNode?.key === 'string' ? info.dragNode.key : '';
+      if (
+        !targetKey.startsWith('explorer:element:') ||
+        !dragKey.startsWith('explorer:element:')
+      )
+        return;
 
       // Prevent cycles: do not allow dropping into a descendant of the dragged node.
       let cursor: string | null = targetKey;
@@ -2023,19 +2613,32 @@ const ExplorerTree: React.FC = () => {
         cursor = parentByKey.get(cursor) ?? null;
       }
 
-      const parentData = (info.node as any)?.data as { elementId?: string; elementType?: ObjectType };
-      const childData = (info.dragNode as any)?.data as { elementId?: string; elementType?: ObjectType };
+      const parentData = (info.node as any)?.data as {
+        elementId?: string;
+        elementType?: ObjectType;
+      };
+      const childData = (info.dragNode as any)?.data as {
+        elementId?: string;
+        elementType?: ObjectType;
+      };
       if (!parentData?.elementId || !parentData?.elementType) return;
       if (!childData?.elementId || !childData?.elementType) return;
       if (parentData.elementId === childData.elementId) return;
 
-      const relationshipType = inferHierarchyRelationshipType(parentData.elementType, childData.elementType);
+      const relationshipType = inferHierarchyRelationshipType(
+        parentData.elementType,
+        childData.elementType,
+      );
       if (!relationshipType) return; // Invalid endpoint pair for hierarchy changes → silent no-op.
 
-      const existingHierarchyRels = eaRepository.relationships.filter((r) => r.toId === childData.elementId);
+      const existingHierarchyRels = eaRepository.relationships.filter(
+        (r) => r.toId === childData.elementId,
+      );
       const alreadyLinked = existingHierarchyRels.some(
         (r) =>
-          (HIERARCHY_RELATIONSHIP_TYPES as readonly RelationshipType[]).includes(r.type as RelationshipType) &&
+          (
+            HIERARCHY_RELATIONSHIP_TYPES as readonly RelationshipType[]
+          ).includes(r.type as RelationshipType) &&
           r.fromId === parentData.elementId &&
           r.type === relationshipType,
       );
@@ -2045,8 +2648,12 @@ const ExplorerTree: React.FC = () => {
 
       const parentObj = eaRepository.objects.get(parentData.elementId);
       const childObj = eaRepository.objects.get(childData.elementId);
-      const parentLabel = parentObj ? nameForObject(parentObj) : parentData.elementId;
-      const childLabel = childObj ? nameForObject(childObj) : childData.elementId;
+      const parentLabel = parentObj
+        ? nameForObject(parentObj)
+        : parentData.elementId;
+      const childLabel = childObj
+        ? nameForObject(childObj)
+        : childData.elementId;
 
       Modal.confirm({
         title: 'Change hierarchy?',
@@ -2055,7 +2662,8 @@ const ExplorerTree: React.FC = () => {
         content: (
           <div style={{ display: 'grid', gap: 4 }}>
             <span>
-              Create {relationshipType} from <strong>{parentLabel}</strong> to <strong>{childLabel}</strong>.
+              Create {relationshipType} from <strong>{parentLabel}</strong> to{' '}
+              <strong>{childLabel}</strong>.
             </span>
             <Typography.Text type="secondary">
               Existing hierarchy links to {childLabel} will be removed first.
@@ -2067,7 +2675,12 @@ const ExplorerTree: React.FC = () => {
 
           next.relationships = next.relationships.filter((r) => {
             const relType = r.type as RelationshipType;
-            if (!(HIERARCHY_RELATIONSHIP_TYPES as readonly RelationshipType[]).includes(relType)) return true;
+            if (
+              !(
+                HIERARCHY_RELATIONSHIP_TYPES as readonly RelationshipType[]
+              ).includes(relType)
+            )
+              return true;
             return r.toId !== childData.elementId;
           });
 
@@ -2101,7 +2714,9 @@ const ExplorerTree: React.FC = () => {
 
   const createObject = React.useCallback(
     (type: ObjectType) => {
-      message.info('Create new elements from the EA Toolbox. Explorer is for browsing and reuse.');
+      message.info(
+        'Create new elements from the EA Toolbox. Explorer is for browsing and reuse.',
+      );
       return;
       if (isReadOnlyMode) {
         message.warning('Read-only mode: creation is disabled.');
@@ -2113,32 +2728,54 @@ const ExplorerTree: React.FC = () => {
         return;
       }
 
-      const enabledFrameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-        ? metadata.enabledFrameworks
-        : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
-      const allowedByFramework = enabledFrameworks.length === 0
-        ? true
-        : enabledFrameworks.some((framework) => {
-            if (framework === 'Custom') {
-              if (!customModelingEnabled) return false;
-              return isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, type);
-            }
-            return isObjectTypeAllowedForReferenceFramework(framework, type);
-          });
+      const enabledFrameworks =
+        metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+          ? metadata.enabledFrameworks
+          : metadata?.referenceFramework
+            ? [metadata.referenceFramework]
+            : [];
+      const allowedByFramework =
+        enabledFrameworks.length === 0
+          ? true
+          : enabledFrameworks.some((framework) => {
+              if (framework === 'Custom') {
+                if (!customModelingEnabled) return false;
+                return isObjectTypeEnabledForFramework(
+                  'Custom',
+                  metadata?.frameworkConfig ?? undefined,
+                  type,
+                );
+              }
+              return isObjectTypeAllowedForReferenceFramework(framework, type);
+            });
       if (!allowedByFramework) {
-        message.warning('Element type is not enabled for the selected framework(s).');
+        message.warning(
+          'Element type is not enabled for the selected framework(s).',
+        );
         return;
       }
 
       if (metadata?.architectureScope === 'Programme') {
-        const programmeCount = countLiveObjectsByType(eaRepository.objects, 'Programme');
+        const programmeCount = countLiveObjectsByType(
+          eaRepository.objects,
+          'Programme',
+        );
         if (programmeCount < 1 && type !== 'Programme') {
-          message.warning('Create at least one Programme before creating other elements.');
+          message.warning(
+            'Create at least one Programme before creating other elements.',
+          );
           return;
         }
-        const allowed: ReadonlySet<ObjectType> = new Set(['Programme', 'Project', 'Capability', 'Application']);
+        const allowed: ReadonlySet<ObjectType> = new Set([
+          'Programme',
+          'Project',
+          'Capability',
+          'Application',
+        ]);
         if (!allowed.has(type)) {
-          message.warning('Programme scope is focused: only Programmes, Projects, Capabilities, and Applications can be created.');
+          message.warning(
+            'Programme scope is focused: only Programmes, Projects, Capabilities, and Applications can be created.',
+          );
           return;
         }
       }
@@ -2158,10 +2795,18 @@ const ExplorerTree: React.FC = () => {
         }
       }
 
-      if (metadata?.architectureScope === 'Business Unit' && type === 'Enterprise') {
-        const liveEnterprises = countLiveObjectsByType(eaRepository.objects, 'Enterprise');
+      if (
+        metadata?.architectureScope === 'Business Unit' &&
+        type === 'Enterprise'
+      ) {
+        const liveEnterprises = countLiveObjectsByType(
+          eaRepository.objects,
+          'Enterprise',
+        );
         if (liveEnterprises >= 1) {
-          message.warning('Business Unit scope allows exactly one Enterprise root.');
+          message.warning(
+            'Business Unit scope allows exactly one Enterprise root.',
+          );
           return;
         }
       }
@@ -2179,15 +2824,31 @@ const ExplorerTree: React.FC = () => {
       const isStrictGovernance = metadata?.governanceMode === 'Strict';
 
       const ownerCandidates = Array.from(eaRepository.objects.values())
-        .filter((o) => !isSoftDeleted(o.attributes) && (o.type === 'Enterprise' || o.type === 'Department'))
+        .filter(
+          (o) =>
+            !isSoftDeleted(o.attributes) &&
+            (o.type === 'Enterprise' || o.type === 'Department'),
+        )
         .map((o) => ({ id: o.id, type: o.type, title: nameForObject(o) }))
-        .sort((a, b) => (a.type + a.title + a.id).localeCompare(b.type + b.title + b.id));
+        .sort((a, b) =>
+          (a.type + a.title + a.id).localeCompare(b.type + b.title + b.id),
+        );
 
-      const lifecycleOptions = lifecycleOptionsForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
-      const lifecyclePlaceholder = defaultLifecycleStateForFramework(metadata?.referenceFramework, metadata?.lifecycleCoverage);
+      const lifecycleOptions = lifecycleOptionsForFramework(
+        metadata?.referenceFramework,
+        metadata?.lifecycleCoverage,
+      );
+      const lifecyclePlaceholder = defaultLifecycleStateForFramework(
+        metadata?.referenceFramework,
+        metadata?.lifecycleCoverage,
+      );
 
-      const ownerOptions: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [
-        ...(isStrictGovernance && (type === 'Enterprise' || type === 'Department')
+      const ownerOptions: Array<{
+        label: string;
+        options: Array<{ value: string; label: string }>;
+      }> = [
+        ...(isStrictGovernance &&
+        (type === 'Enterprise' || type === 'Department')
           ? [
               {
                 label: 'Self',
@@ -2216,7 +2877,10 @@ const ExplorerTree: React.FC = () => {
         title: `Create ${titleForObjectType(type)}`,
         okText: 'Create',
         cancelText: 'Cancel',
-        maskStyle: { backdropFilter: 'none', backgroundColor: 'rgba(0, 0, 0, 0.45)' },
+        maskStyle: {
+          backdropFilter: 'none',
+          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        },
         afterClose: () => {
           createModalOpenRef.current = false;
         },
@@ -2262,7 +2926,8 @@ const ExplorerTree: React.FC = () => {
             ) : null}
             {type === 'Enterprise' ? (
               <Typography.Text type="secondary">
-                Enterprise nodes are created explicitly and never inherit names from Capabilities, Applications, or Technologies.
+                Enterprise nodes are created explicitly and never inherit names
+                from Capabilities, Applications, or Technologies.
               </Typography.Text>
             ) : null}
             {isStrictGovernance ? (
@@ -2294,10 +2959,19 @@ const ExplorerTree: React.FC = () => {
               message.error('Owner is required in Strict mode.');
               return Promise.reject();
             }
-            if ((type !== 'Enterprise' && type !== 'Department') || finalOwnerId !== elementId) {
+            if (
+              (type !== 'Enterprise' && type !== 'Department') ||
+              finalOwnerId !== elementId
+            ) {
               const owner = eaRepository.objects.get(finalOwnerId);
-              if (!owner || isSoftDeleted(owner.attributes) || (owner.type !== 'Enterprise' && owner.type !== 'Department')) {
-                message.error('Owner must reference an existing Enterprise or Department.');
+              if (
+                !owner ||
+                isSoftDeleted(owner.attributes) ||
+                (owner.type !== 'Enterprise' && owner.type !== 'Department')
+              ) {
+                message.error(
+                  'Owner must reference an existing Enterprise or Department.',
+                );
                 return Promise.reject();
               }
             }
@@ -2329,18 +3003,24 @@ const ExplorerTree: React.FC = () => {
               lastModifiedAt: createdAt,
               lastModifiedBy: actor,
               lifecycleState: finalLifecycle,
-              ...(metadata?.referenceFramework === 'TOGAF' ? { admPhase: admPhase.trim() } : {}),
+              ...(metadata?.referenceFramework === 'TOGAF'
+                ? { admPhase: admPhase.trim() }
+                : {}),
               ...(isStrictGovernance
                 ? {
                     ownerId: finalOwnerId,
                     ownerType:
                       finalOwnerId === elementId
                         ? type
-                        : (eaRepository.objects.get(finalOwnerId)?.type ?? undefined),
+                        : (eaRepository.objects.get(finalOwnerId)?.type ??
+                          undefined),
                   }
                 : {}),
               ...(metadata?.architectureScope === 'Domain'
-                ? { domainId: (metadata?.repositoryName ?? '').trim() || 'domain' }
+                ? {
+                    domainId:
+                      (metadata?.repositoryName ?? '').trim() || 'domain',
+                  }
                 : {}),
             },
           });
@@ -2403,25 +3083,43 @@ const ExplorerTree: React.FC = () => {
       const src = eaRepository.objects.get(id);
       if (!src) return;
 
-      const enabledFrameworks = (metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0)
-        ? metadata.enabledFrameworks
-        : (metadata?.referenceFramework ? [metadata.referenceFramework] : []);
-      const allowedByFramework = enabledFrameworks.length === 0
-        ? true
-        : enabledFrameworks.some((framework) => {
-            if (framework === 'Custom') {
-              if (!customModelingEnabled) return false;
-              return isObjectTypeEnabledForFramework('Custom', metadata?.frameworkConfig ?? undefined, src.type as any);
-            }
-            return isObjectTypeAllowedForReferenceFramework(framework, src.type as any);
-          });
+      const enabledFrameworks =
+        metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+          ? metadata.enabledFrameworks
+          : metadata?.referenceFramework
+            ? [metadata.referenceFramework]
+            : [];
+      const allowedByFramework =
+        enabledFrameworks.length === 0
+          ? true
+          : enabledFrameworks.some((framework) => {
+              if (framework === 'Custom') {
+                if (!customModelingEnabled) return false;
+                return isObjectTypeEnabledForFramework(
+                  'Custom',
+                  metadata?.frameworkConfig ?? undefined,
+                  src.type as any,
+                );
+              }
+              return isObjectTypeAllowedForReferenceFramework(
+                framework,
+                src.type as any,
+              );
+            });
       if (!allowedByFramework) {
-        message.warning('Element type is not enabled for the selected framework(s).');
+        message.warning(
+          'Element type is not enabled for the selected framework(s).',
+        );
         return;
       }
 
-      if (metadata?.architectureScope === 'Business Unit' && src.type === 'Enterprise') {
-        message.warning('Business Unit scope allows exactly one Enterprise root.');
+      if (
+        metadata?.architectureScope === 'Business Unit' &&
+        src.type === 'Enterprise'
+      ) {
+        message.warning(
+          'Business Unit scope allows exactly one Enterprise root.',
+        );
         return;
       }
 
@@ -2439,7 +3137,10 @@ const ExplorerTree: React.FC = () => {
           createdAt,
           lastModifiedAt: createdAt,
           lastModifiedBy: actor,
-          lifecycleState: (src.attributes as any)?.lifecycleState === 'To-Be' ? 'To-Be' : 'As-Is',
+          lifecycleState:
+            (src.attributes as any)?.lifecycleState === 'To-Be'
+              ? 'To-Be'
+              : 'As-Is',
         },
       });
       if (!res.ok) {
@@ -2478,12 +3179,19 @@ const ExplorerTree: React.FC = () => {
       const obj = eaRepository.objects.get(id);
       if (!obj) return;
 
-      if (metadata?.architectureScope === 'Business Unit' && obj.type === 'Enterprise') {
-        message.warning('Business Unit scope requires exactly one Enterprise root; it cannot be deleted.');
+      if (
+        metadata?.architectureScope === 'Business Unit' &&
+        obj.type === 'Enterprise'
+      ) {
+        message.warning(
+          'Business Unit scope requires exactly one Enterprise root; it cannot be deleted.',
+        );
         return;
       }
 
-      const impacted = eaRepository.relationships.filter((r) => r.fromId === id || r.toId === id);
+      const impacted = eaRepository.relationships.filter(
+        (r) => r.fromId === id || r.toId === id,
+      );
       const impactedCount = impacted.length;
       const impactedPreview = impacted.slice(0, 10).map((r) => {
         const source = eaRepository.objects.get(r.fromId);
@@ -2499,10 +3207,13 @@ const ExplorerTree: React.FC = () => {
         content: (
           <div style={{ display: 'grid', gap: 8 }}>
             <Typography.Text>
-              Deletes "{nameForObject(obj)}" from the repository. Relationships are kept unless explicitly removed.
+              Deletes "{nameForObject(obj)}" from the repository. Relationships
+              are kept unless explicitly removed.
             </Typography.Text>
             <div>
-              <Typography.Text type="secondary">Impacted relationships ({impactedCount})</Typography.Text>
+              <Typography.Text type="secondary">
+                Impacted relationships ({impactedCount})
+              </Typography.Text>
               {impactedCount === 0 ? (
                 <Typography.Text type="secondary" style={{ display: 'block' }}>
                   None
@@ -2534,10 +3245,16 @@ const ExplorerTree: React.FC = () => {
           if (!eaRepository) return;
           const next = eaRepository.clone();
           if (removeRelationships) {
-            next.relationships = next.relationships.filter((r) => r.fromId !== id && r.toId !== id);
+            next.relationships = next.relationships.filter(
+              (r) => r.fromId !== id && r.toId !== id,
+            );
           }
           // Best-effort: mark as deleted (hard delete is implemented in EaRepository next iteration).
-          const res = next.updateObjectAttributes(id, { _deleted: true }, 'merge');
+          const res = next.updateObjectAttributes(
+            id,
+            { _deleted: true },
+            'merge',
+          );
           if (!res.ok) {
             message.error(res.error);
             return;
@@ -2551,36 +3268,50 @@ const ExplorerTree: React.FC = () => {
         },
       });
     },
-    [eaRepository, metadata?.architectureScope, permissionGuard, trySetEaRepository],
+    [
+      eaRepository,
+      metadata?.architectureScope,
+      permissionGuard,
+      trySetEaRepository,
+    ],
   );
 
-  const deleteView = React.useCallback((viewId: string) => {
-    if (permissionGuard('editView')) return;
-    const view = ViewStore.get(viewId);
-    const isOwner = userRole === 'Owner';
-    const isCreator = view?.createdBy === actor;
-    if (!isOwner && !isCreator) {
-      message.warning('Only the view creator or repository owner can delete this view.');
-      return;
-    }
-    Modal.confirm({
-      title: 'Delete view?',
-      content: 'Deleting a diagram does not delete architecture data. Only the view definition is removed.',
-      okText: 'Delete',
-      okButtonProps: { danger: true },
-      cancelText: 'Cancel',
-      onOk: () => {
-        const removed = ViewStore.remove(viewId);
-        if (!removed) {
-          message.error('Failed to delete view.');
-          return;
-        }
-        dispatchIdeCommand({ type: 'workspace.closeMatchingTabs', prefix: `studio:view:${viewId}` });
-        setRefreshToken((x) => x + 1);
-        message.success('View deleted.');
-      },
-    });
-  }, [actor, permissionGuard, userRole]);
+  const deleteView = React.useCallback(
+    (viewId: string) => {
+      if (permissionGuard('editView')) return;
+      const view = ViewStore.get(viewId);
+      const isOwner = userRole === 'Owner';
+      const isCreator = view?.createdBy === actor;
+      if (!isOwner && !isCreator) {
+        message.warning(
+          'Only the view creator or repository owner can delete this view.',
+        );
+        return;
+      }
+      Modal.confirm({
+        title: 'Delete view?',
+        content:
+          'Deleting a diagram does not delete architecture data. Only the view definition is removed.',
+        okText: 'Delete',
+        okButtonProps: { danger: true },
+        cancelText: 'Cancel',
+        onOk: () => {
+          const removed = ViewStore.remove(viewId);
+          if (!removed) {
+            message.error('Failed to delete view.');
+            return;
+          }
+          dispatchIdeCommand({
+            type: 'workspace.closeMatchingTabs',
+            prefix: `studio:view:${viewId}`,
+          });
+          setRefreshToken((x) => x + 1);
+          message.success('View deleted.');
+        },
+      });
+    },
+    [actor, permissionGuard, userRole],
+  );
 
   const renameView = React.useCallback(
     (viewId: string) => {
@@ -2658,24 +3389,58 @@ const ExplorerTree: React.FC = () => {
     [actor, openRouteTab, permissionGuard],
   );
 
-  const exportView = React.useCallback((viewId: string, format: 'png' | 'json') => {
-    try {
-      window.dispatchEvent(new CustomEvent('ea:studio.view.export', { detail: { viewId, format } }));
-    } catch {
-      // Best-effort only.
-    }
-  }, []);
+  const exportView = React.useCallback(
+    (viewId: string, format: 'png' | 'json') => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('ea:studio.view.export', {
+            detail: { viewId, format },
+          }),
+        );
+      } catch {
+        // Best-effort only.
+      }
+    },
+    [],
+  );
 
   const openForKey = React.useCallback(
     (key: string, opts?: { openMode?: 'new' | 'replace' }) => {
       const scope = metadata?.architectureScope ?? null;
+      if (key === ROOT_KEYS.catalog) {
+        openRouteTab('/catalog/business');
+        return;
+      }
+      if (key === 'explorer:catalog:business') {
+        openRouteTab('/catalog/business');
+        return;
+      }
+      if (key === 'explorer:catalog:application') {
+        openRouteTab('/catalog/application');
+        return;
+      }
+      if (key === 'explorer:catalog:data') {
+        openRouteTab('/catalog/data');
+        return;
+      }
+      if (key === 'explorer:catalog:technology') {
+        openRouteTab('/catalog/technology');
+        return;
+      }
+      if (key === 'explorer:catalog:implementation') {
+        openRouteTab('/catalog/implementation');
+        return;
+      }
       // Root nodes open the most common catalog / view for that domain.
       if (key === ROOT_KEYS.business) {
         if (scope === 'Programme') {
           openWorkspaceTab({ type: 'catalog', catalog: 'capabilities' });
           return;
         }
-        openWorkspaceTab({ type: 'catalog', catalog: scope === 'Domain' ? 'capabilities' : 'enterprises' });
+        openWorkspaceTab({
+          type: 'catalog',
+          catalog: scope === 'Domain' ? 'capabilities' : 'enterprises',
+        });
         return;
       }
       if (key === ROOT_KEYS.application) {
@@ -2683,7 +3448,10 @@ const ExplorerTree: React.FC = () => {
         return;
       }
       if (key === ROOT_KEYS.technology) {
-        openWorkspaceTab({ type: 'catalog', catalog: 'infrastructureServices' });
+        openWorkspaceTab({
+          type: 'catalog',
+          catalog: 'infrastructureServices',
+        });
         return;
       }
       if (key === ROOT_KEYS.implMig) {
@@ -2758,7 +3526,10 @@ const ExplorerTree: React.FC = () => {
         return;
       }
       if (key === 'explorer:technology:infrastructure-services') {
-        openWorkspaceTab({ type: 'catalog', catalog: 'infrastructureServices' });
+        openWorkspaceTab({
+          type: 'catalog',
+          catalog: 'infrastructureServices',
+        });
         return;
       }
       if (key === 'explorer:implmig:programmes') {
@@ -2841,7 +3612,12 @@ const ExplorerTree: React.FC = () => {
         const id = normalizeElementKey(key);
         const obj = eaRepository?.objects.get(id);
         if (!obj) return;
-        openPropertiesPanel({ elementId: obj.id, elementType: obj.type, dock: 'right', readOnly: true });
+        openPropertiesPanel({
+          elementId: obj.id,
+          elementType: obj.type,
+          dock: 'right',
+          readOnly: true,
+        });
         return;
       }
 
@@ -2870,8 +3646,10 @@ const ExplorerTree: React.FC = () => {
             const typedItem = item as any;
             const itemKey = typedItem?.key;
             const handler = typedItem?.onClick as (() => void) | undefined;
-            if (itemKey !== undefined && handler) actionMap.set(String(itemKey), handler);
-            if (typedItem?.children) walk(typedItem.children as MenuProps['items']);
+            if (itemKey !== undefined && handler)
+              actionMap.set(String(itemKey), handler);
+            if (typedItem?.children)
+              walk(typedItem.children as MenuProps['items']);
           });
         };
         walk(items);
@@ -2885,44 +3663,56 @@ const ExplorerTree: React.FC = () => {
         } as MenuProps;
       };
 
-      if (metadata?.architectureScope === 'Programme' && key === ROOT_KEYS.implMig) {
+      if (
+        metadata?.architectureScope === 'Programme' &&
+        key === ROOT_KEYS.implMig
+      ) {
         const show = showTechnologyInProgrammeScope;
 
         return withMenuOnClick([
-            {
-              key: 'openProgrammes',
-              label: 'Open Programmes Catalog',
-              onClick: () => openWorkspaceTab({ type: 'catalog', catalog: 'programmes' }),
+          {
+            key: 'openProgrammes',
+            label: 'Open Programmes Catalog',
+            onClick: () =>
+              openWorkspaceTab({ type: 'catalog', catalog: 'programmes' }),
+          },
+          {
+            key: 'toggleTechnology',
+            label: show ? 'Hide Technology Layer' : 'Show Technology Layer',
+            onClick: () => {
+              setShowTechnologyFlag(!show);
             },
-            {
-              key: 'toggleTechnology',
-              label: show ? 'Hide Technology Layer' : 'Show Technology Layer',
-              onClick: () => {
-                setShowTechnologyFlag(!show);
-              },
-            },
-            {
-              key: 'refresh',
-              label: 'Refresh',
-              onClick: () => setRefreshToken((x) => x + 1),
-            },
-          ]);
+          },
+          {
+            key: 'refresh',
+            label: 'Refresh',
+            onClick: () => setRefreshToken((x) => x + 1),
+          },
+        ]);
       }
 
       if (key === BUSINESS_UNIT_ENTERPRISE_PLACEHOLDER_KEY) {
         return withMenuOnClick([
-            {
-              key: 'open',
-              label: 'Open Enterprises Catalog',
-              onClick: () => openWorkspaceTab({ type: 'catalog', catalog: 'enterprises' }),
-            },
-          ]);
+          {
+            key: 'open',
+            label: 'Open Enterprises Catalog',
+            onClick: () =>
+              openWorkspaceTab({ type: 'catalog', catalog: 'enterprises' }),
+          },
+        ]);
       }
 
       // Collections: Create / Import / Bulk Edit / Refresh
-      const collectionToCreateTypes: Record<string, readonly ObjectType[] | undefined> = {
+      const collectionToCreateTypes: Record<
+        string,
+        readonly ObjectType[] | undefined
+      > = {
         'explorer:business:enterprises': ['Enterprise'],
-        'explorer:business:capabilities': ['Capability', 'CapabilityCategory', 'SubCapability'],
+        'explorer:business:capabilities': [
+          'Capability',
+          'CapabilityCategory',
+          'SubCapability',
+        ],
         'explorer:business:business-services': ['BusinessService'],
         'explorer:business:processes': ['BusinessProcess'],
         'explorer:business:departments': ['Department'],
@@ -2933,7 +3723,14 @@ const ExplorerTree: React.FC = () => {
         'explorer:technology:compute': ['Compute'],
         'explorer:technology:runtime': ['Runtime'],
         'explorer:technology:database': ['Database'],
-        'explorer:technology:infrastructure-services': ['Technology', 'Storage', 'API', 'MessageBroker', 'IntegrationPlatform', 'CloudService'],
+        'explorer:technology:infrastructure-services': [
+          'Technology',
+          'Storage',
+          'API',
+          'MessageBroker',
+          'IntegrationPlatform',
+          'CloudService',
+        ],
         'explorer:implmig:programmes': ['Programme'],
         'explorer:implmig:projects': ['Project'],
         'explorer:governance:principles': ['Principle'],
@@ -2980,123 +3777,135 @@ const ExplorerTree: React.FC = () => {
         const id = normalizeElementKey(key);
         const obj = eaRepository?.objects.get(id);
         return withMenuOnClick([
-            {
-              key: 'open',
-              label: 'Open Properties',
-              onClick: () => {
-                if (!obj) return;
-                openPropertiesPanel({ elementId: obj.id, elementType: obj.type, dock: 'right', readOnly: true });
-              },
+          {
+            key: 'open',
+            label: 'Open Properties',
+            onClick: () => {
+              if (!obj) return;
+              openPropertiesPanel({
+                elementId: obj.id,
+                elementType: obj.type,
+                dock: 'right',
+                readOnly: true,
+              });
             },
-            {
-              key: 'impact',
-              label: 'Impact Analysis',
-              onClick: () => {
-                if (!obj) return;
-                const name = nameForObject(obj);
-                openWorkspaceTab({ type: 'impact-element', elementId: obj.id, elementName: name, elementType: obj.type });
-              },
+          },
+          {
+            key: 'impact',
+            label: 'Impact Analysis',
+            onClick: () => {
+              if (!obj) return;
+              const name = nameForObject(obj);
+              openWorkspaceTab({
+                type: 'impact-element',
+                elementId: obj.id,
+                elementName: name,
+                elementType: obj.type,
+              });
             },
-          ]);
+          },
+        ]);
       }
 
       // View: Open / Export
       if (key.startsWith('explorer:view:')) {
         const viewId = key.replace('explorer:view:', '').trim();
-        return withMenuOnClick(
-          [
-            {
-              key: 'open',
-              label: 'Open View (Runtime)',
-              onClick: () => openRouteTab(`/views/${viewId}`),
-            },
-            ...(canEditView
-              ? [
-                  {
-                    key: 'open-studio',
-                    label: 'Edit in Studio',
-                    onClick: () =>
-                      window.dispatchEvent(
-                        new CustomEvent('ea:studio.view.open', { detail: { viewId, openMode: 'replace' } }),
-                      ),
-                  },
-                  {
-                    key: 'open-studio-new',
-                    label: 'Open in Studio (new tab)',
-                    onClick: () =>
-                      window.dispatchEvent(
-                        new CustomEvent('ea:studio.view.open', { detail: { viewId, openMode: 'new' } }),
-                      ),
-                  },
-                ]
-              : []),
-            {
-              key: 'export-png',
-              label: 'Export PNG',
-              onClick: () => exportView(viewId, 'png'),
-            },
-            {
-              key: 'export-json',
-              label: 'Export JSON',
-              onClick: () => exportView(viewId, 'json'),
-            },
-          ],
-        );
+        return withMenuOnClick([
+          {
+            key: 'open',
+            label: 'Open View (Runtime)',
+            onClick: () => openRouteTab(`/views/${viewId}`),
+          },
+          ...(canEditView
+            ? [
+                {
+                  key: 'open-studio',
+                  label: 'Edit in Studio',
+                  onClick: () =>
+                    window.dispatchEvent(
+                      new CustomEvent('ea:studio.view.open', {
+                        detail: { viewId, openMode: 'replace' },
+                      }),
+                    ),
+                },
+                {
+                  key: 'open-studio-new',
+                  label: 'Open in Studio (new tab)',
+                  onClick: () =>
+                    window.dispatchEvent(
+                      new CustomEvent('ea:studio.view.open', {
+                        detail: { viewId, openMode: 'new' },
+                      }),
+                    ),
+                },
+              ]
+            : []),
+          {
+            key: 'export-png',
+            label: 'Export PNG',
+            onClick: () => exportView(viewId, 'png'),
+          },
+          {
+            key: 'export-json',
+            label: 'Export JSON',
+            onClick: () => exportView(viewId, 'json'),
+          },
+        ]);
       }
 
       if (key.startsWith('explorer:roadmap:')) {
         const roadmapId = key.replace('explorer:roadmap:', '').trim();
         return withMenuOnClick([
-            {
-              key: 'open',
-              label: 'Open Roadmap (read-only)',
-              onClick: () => openWorkspaceTab({ type: 'roadmap', roadmapId }),
-            },
-          ]);
+          {
+            key: 'open',
+            label: 'Open Roadmap (read-only)',
+            onClick: () => openWorkspaceTab({ type: 'roadmap', roadmapId }),
+          },
+        ]);
       }
 
       if (key.startsWith('explorer:plateau:')) {
         const plateauId = key.replace('explorer:plateau:', '').trim();
         return withMenuOnClick([
-            {
-              key: 'open',
-              label: 'Open Plateau (read-only)',
-              onClick: () => openWorkspaceTab({ type: 'plateau', plateauId }),
-            },
-          ]);
+          {
+            key: 'open',
+            label: 'Open Plateau (read-only)',
+            onClick: () => openWorkspaceTab({ type: 'plateau', plateauId }),
+          },
+        ]);
       }
 
       if (key.startsWith('explorer:baseline:')) {
         const baselineId = key.replace('explorer:baseline:', '').trim();
         return withMenuOnClick([
-            {
-              key: 'open',
-              label: 'Open Baseline (read-only)',
-              onClick: () => openWorkspaceTab({ type: 'baseline', baselineId }),
+          {
+            key: 'open',
+            label: 'Open Baseline (read-only)',
+            onClick: () => openWorkspaceTab({ type: 'baseline', baselineId }),
+          },
+          {
+            key: 'preview',
+            label: 'Preview baseline metadata',
+            onClick: () => {
+              const baseline = getBaselineById(baselineId);
+              if (!baseline) {
+                message.error('Baseline not found.');
+                return;
+              }
+              setBaselinePreview(baseline);
+              setBaselinePreviewOpen(true);
             },
-            {
-              key: 'preview',
-              label: 'Preview baseline metadata',
-              onClick: () => {
-                const baseline = getBaselineById(baselineId);
-                if (!baseline) {
-                  message.error('Baseline not found.');
-                  return;
-                }
-                setBaselinePreview(baseline);
-                setBaselinePreviewOpen(true);
-              },
-            },
-          ]);
+          },
+        ]);
       }
 
       return withMenuOnClick([
-          {
-            key: 'refresh',
-            label: 'Refresh',
-            onClick: () => setRefreshToken((x) => x + 1),
-          },
-        ]);
+        {
+          key: 'refresh',
+          label: 'Refresh',
+          onClick: () => setRefreshToken((x) => x + 1),
+        },
+      ]);
     },
     [
       computeTargetOptions,
@@ -3137,8 +3946,14 @@ const ExplorerTree: React.FC = () => {
           message="Repository is empty"
           description={
             <Space direction="vertical" size={4} style={{ width: '100%' }}>
-              <Typography.Text>Seed sample architecture data to avoid blank diagrams.</Typography.Text>
-              <Button size="small" type="primary" onClick={openSeedSampleDataModal}>
+              <Typography.Text>
+                Seed sample architecture data to avoid blank diagrams.
+              </Typography.Text>
+              <Button
+                size="small"
+                type="primary"
+                onClick={openSeedSampleDataModal}
+              >
                 Seed sample architecture
               </Button>
             </Space>
@@ -3162,26 +3977,45 @@ const ExplorerTree: React.FC = () => {
         selectedKeys={selectedKeysFromContext}
         treeData={treeData}
         motion={null}
-        switcherIcon={({ expanded, isLeaf }) => (
-          isLeaf
-            ? <span className={styles.explorerTreeSpacer} />
-            : <span className={styles.explorerTreeToggle}>{expanded ? '-' : '+'}</span>
-        )}
+        switcherIcon={({ expanded, isLeaf }) =>
+          isLeaf ? (
+            <span className={styles.explorerTreeSpacer} />
+          ) : (
+            <span className={styles.explorerTreeToggle}>
+              {expanded ? '-' : '+'}
+            </span>
+          )
+        }
         onKeyDown={handleTreeKeyDown}
         titleRender={(node) => {
           const k = typeof node.key === 'string' ? node.key : '';
-          const isPathAncestor = typeof node.key === 'string' && activePathAncestors.has(node.key);
-          const data = (node as any)?.data as { elementId?: string; elementType?: string } | undefined;
-          const obj = data?.elementId ? eaRepository?.objects.get(data.elementId) : undefined;
+          const isPathAncestor =
+            typeof node.key === 'string' && activePathAncestors.has(node.key);
+          const data = (node as any)?.data as
+            | { elementId?: string; elementType?: string }
+            | undefined;
+          const obj = data?.elementId
+            ? eaRepository?.objects.get(data.elementId)
+            : undefined;
           const frameworkTags = frameworksForObject(obj);
-          const canDrag = Boolean((node as any)?.data?.elementId && (node as any)?.data?.elementType);
+          const canDrag = Boolean(
+            (node as any)?.data?.elementId && (node as any)?.data?.elementType,
+          );
           const handleDragStart = (event: React.DragEvent<HTMLSpanElement>) => {
             if (!canDrag) return;
-            const dragData = (node as any)?.data as { elementId?: string; elementType?: string } | undefined;
+            const dragData = (node as any)?.data as
+              | { elementId?: string; elementType?: string }
+              | undefined;
             if (!dragData?.elementId || !dragData?.elementType) return;
             event.stopPropagation();
-            event.dataTransfer.setData('application/x-ea-element-id', dragData.elementId);
-            event.dataTransfer.setData('application/x-ea-element-type', dragData.elementType);
+            event.dataTransfer.setData(
+              'application/x-ea-element-id',
+              dragData.elementId,
+            );
+            event.dataTransfer.setData(
+              'application/x-ea-element-type',
+              dragData.elementType,
+            );
             event.dataTransfer.setData('text/plain', dragData.elementId);
             event.dataTransfer.effectAllowed = 'copy';
             event.dataTransfer.dropEffect = 'copy';
@@ -3199,11 +4033,15 @@ const ExplorerTree: React.FC = () => {
                   event.stopPropagation();
                   toggleExpandedKey(k);
                 }}
-                title={canDrag ? 'Drag to canvas to reuse this element' : undefined}
+                title={
+                  canDrag ? 'Drag to canvas to reuse this element' : undefined
+                }
               >
                 {frameworkTags.length > 0 ? (
                   <Space size={6}>
-                    <span className={styles.explorerTreeLabel}>{node.title as any}</span>
+                    <span className={styles.explorerTreeLabel}>
+                      {node.title as any}
+                    </span>
                     {frameworkTags.map((tag) => (
                       <Tag key={tag} color="blue">
                         {tag}
@@ -3211,7 +4049,9 @@ const ExplorerTree: React.FC = () => {
                     ))}
                   </Space>
                 ) : (
-                  <span className={styles.explorerTreeLabel}>{node.title as any}</span>
+                  <span className={styles.explorerTreeLabel}>
+                    {node.title as any}
+                  </span>
                 )}
               </span>
             </Dropdown>
@@ -3222,19 +4062,34 @@ const ExplorerTree: React.FC = () => {
           if (typeof key !== 'string') return;
 
           // Explorer rule: caret/switcher click should ONLY expand/collapse.
-          const target = (info?.nativeEvent?.target as HTMLElement | null) ?? null;
+          const target =
+            (info?.nativeEvent?.target as HTMLElement | null) ?? null;
           if (target?.closest?.('.ant-tree-switcher')) return;
 
-          const data = (info?.node as any)?.data as { elementId?: string; elementType?: string };
-          const effectiveKey = data?.elementId ? KEY.element(data.elementId) : key;
-          const native = info?.nativeEvent as MouseEvent | KeyboardEvent | undefined;
-          const modifier = Boolean(native && (native.metaKey || native.ctrlKey || native.shiftKey));
+          const data = (info?.node as any)?.data as {
+            elementId?: string;
+            elementType?: string;
+          };
+          const effectiveKey = data?.elementId
+            ? KEY.element(data.elementId)
+            : key;
+          const native = info?.nativeEvent as
+            | MouseEvent
+            | KeyboardEvent
+            | undefined;
+          const modifier = Boolean(
+            native && (native.metaKey || native.ctrlKey || native.shiftKey),
+          );
           const openMode = modifier ? 'new' : 'replace';
 
           setSelection({ kind: 'repository', keys: [effectiveKey] });
           if (effectiveKey.startsWith('explorer:element:')) {
             if (data?.elementId && data?.elementType) {
-              setSelectedElement({ id: data.elementId, type: data.elementType, source: 'Explorer' });
+              setSelectedElement({
+                id: data.elementId,
+                type: data.elementType,
+                source: 'Explorer',
+              });
             } else {
               const id = normalizeElementKey(effectiveKey);
               setSelectedElement({ id, type: 'Unknown', source: 'Explorer' });
@@ -3243,11 +4098,21 @@ const ExplorerTree: React.FC = () => {
           openForKey(effectiveKey, { openMode });
         }}
         onRightClick={(info) => {
-          const key = typeof info?.node?.key === 'string' ? (info.node.key as string) : '';
+          const key =
+            typeof info?.node?.key === 'string'
+              ? (info.node.key as string)
+              : '';
           if (key.startsWith('explorer:element:')) {
-            const data = (info?.node as any)?.data as { elementId?: string; elementType?: string };
+            const data = (info?.node as any)?.data as {
+              elementId?: string;
+              elementType?: string;
+            };
             if (data?.elementId && data?.elementType) {
-              setSelectedElement({ id: data.elementId, type: data.elementType, source: 'Explorer' });
+              setSelectedElement({
+                id: data.elementId,
+                type: data.elementType,
+                source: 'Explorer',
+              });
             } else {
               const id = normalizeElementKey(key);
               setSelectedElement({ id, type: 'Unknown', source: 'Explorer' });
@@ -3276,23 +4141,38 @@ const ExplorerTree: React.FC = () => {
             </div>
 
             <div>
-              <Typography.Text type="secondary">Relationship Type</Typography.Text>
+              <Typography.Text type="secondary">
+                Relationship Type
+              </Typography.Text>
               <Select
                 value={selectedRelationshipType || undefined}
                 options={(() => {
                   if (!relationshipSource) return [] as any[];
-                  const def = OBJECT_TYPE_DEFINITIONS[relationshipSource.type as ObjectType];
-                  const allowed = (def?.allowedOutgoingRelationships ?? []).filter((t) => {
+                  const def =
+                    OBJECT_TYPE_DEFINITIONS[
+                      relationshipSource.type as ObjectType
+                    ];
+                  const allowed = (
+                    def?.allowedOutgoingRelationships ?? []
+                  ).filter((t) => {
                     if (!isValidRelationshipType(t)) return false;
                     const relDef = RELATIONSHIP_TYPE_DEFINITIONS[t];
-                    return Boolean(relDef && relDef.fromTypes.includes(relationshipSource.type as ObjectType));
+                    return Boolean(
+                      relDef &&
+                        relDef.fromTypes.includes(
+                          relationshipSource.type as ObjectType,
+                        ),
+                    );
                   }) as RelationshipType[];
                   return allowed.map((t) => ({ value: t, label: t }));
                 })()}
                 onChange={(val) => {
                   const nextType = val as RelationshipType;
                   setSelectedRelationshipType(nextType);
-                  const nextTargets = computeTargetOptions(nextType, relationshipSource);
+                  const nextTargets = computeTargetOptions(
+                    nextType,
+                    relationshipSource,
+                  );
                   setSelectedTargetId(nextTargets[0]?.value ?? '');
                 }}
                 placeholder="Select relationship type"
@@ -3306,7 +4186,14 @@ const ExplorerTree: React.FC = () => {
                 showSearch
                 optionFilterProp="label"
                 value={selectedTargetId || undefined}
-                options={selectedRelationshipType && relationshipSource ? computeTargetOptions(selectedRelationshipType, relationshipSource) : []}
+                options={
+                  selectedRelationshipType && relationshipSource
+                    ? computeTargetOptions(
+                        selectedRelationshipType,
+                        relationshipSource,
+                      )
+                    : []
+                }
                 onChange={(val) => setSelectedTargetId(String(val))}
                 placeholder="Select target"
                 style={{ width: '100%', marginTop: 4 }}
@@ -3315,7 +4202,9 @@ const ExplorerTree: React.FC = () => {
             </div>
           </div>
         ) : (
-          <Typography.Text type="secondary">No source element selected.</Typography.Text>
+          <Typography.Text type="secondary">
+            No source element selected.
+          </Typography.Text>
         )}
       </Modal>
 
@@ -3345,10 +4234,13 @@ const ExplorerTree: React.FC = () => {
 
           {addToViewTarget ? (
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Adds {addToViewTarget.name} ({addToViewTarget.type}) to the view scope. No elements or relationships are created.
+              Adds {addToViewTarget.name} ({addToViewTarget.type}) to the view
+              scope. No elements or relationships are created.
             </Typography.Paragraph>
           ) : (
-            <Typography.Text type="secondary">Select an element first, then choose Add to View.</Typography.Text>
+            <Typography.Text type="secondary">
+              Select an element first, then choose Add to View.
+            </Typography.Text>
           )}
         </Space>
       </Modal>
@@ -3366,15 +4258,28 @@ const ExplorerTree: React.FC = () => {
         {baselinePreview ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Typography.Text type="secondary">
-              Read-only snapshot. Editing or deleting baselines is not allowed from Explorer.
+              Read-only snapshot. Editing or deleting baselines is not allowed
+              from Explorer.
             </Typography.Text>
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="Baseline id">{baselinePreview.id}</Descriptions.Item>
-              <Descriptions.Item label="Created at">{baselinePreview.createdAt}</Descriptions.Item>
-              <Descriptions.Item label="Created by">{baselinePreview.createdBy ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Description">{baselinePreview.description ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Elements captured">{baselinePreview.elements.length}</Descriptions.Item>
-              <Descriptions.Item label="Relationships captured">{baselinePreview.relationships.length}</Descriptions.Item>
+              <Descriptions.Item label="Baseline id">
+                {baselinePreview.id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Created at">
+                {baselinePreview.createdAt}
+              </Descriptions.Item>
+              <Descriptions.Item label="Created by">
+                {baselinePreview.createdBy ?? '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Description">
+                {baselinePreview.description ?? '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Elements captured">
+                {baselinePreview.elements.length}
+              </Descriptions.Item>
+              <Descriptions.Item label="Relationships captured">
+                {baselinePreview.relationships.length}
+              </Descriptions.Item>
               <Descriptions.Item label="Source revisions">{`${baselinePreview.source.elementsRevision} | ${baselinePreview.source.relationshipsRevision}`}</Descriptions.Item>
             </Descriptions>
           </Space>

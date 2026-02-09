@@ -1,9 +1,14 @@
 import 'dotenv/config';
-import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 
 import { initNeo4jGraphFromEnv } from './graph/Neo4jBootstrap';
+import { createCatalogRouter } from './modules/catalog/catalog.routes';
 
 type Handler = (req: Request, res: Response, next?: NextFunction) => unknown;
 
@@ -13,7 +18,9 @@ type MockModuleShape = {
 
 const PORT = Number(process.env.API_PORT ?? 3001);
 const REQUEST_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS ?? 15000);
-const NEO4J_CONNECT_TIMEOUT_MS = Number(process.env.NEO4J_CONNECT_TIMEOUT_MS ?? 5000);
+const NEO4J_CONNECT_TIMEOUT_MS = Number(
+  process.env.NEO4J_CONNECT_TIMEOUT_MS ?? 5000,
+);
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -79,7 +86,10 @@ const loadMockFile = (filePath: string) => {
 const mocksDir = path.resolve(__dirname, '..', 'mock');
 const mockFiles = fs
   .readdirSync(mocksDir)
-  .filter((name) => (name.endsWith('.ts') || name.endsWith('.js')) && !name.endsWith('.d.ts'))
+  .filter(
+    (name) =>
+      (name.endsWith('.ts') || name.endsWith('.js')) && !name.endsWith('.d.ts'),
+  )
   .map((name) => path.join(mocksDir, name));
 
 const bootstrap = async () => {
@@ -99,6 +109,8 @@ const bootstrap = async () => {
     loadMockFile(file);
   }
 
+  app.use('/api', createCatalogRouter());
+
   // Fallback 404 for any unhandled /api route.
   app.use('/api', (_req, res) => {
     res.status(404).json({ success: false, errorMessage: 'Not Found' });
@@ -109,7 +121,9 @@ const bootstrap = async () => {
     // Avoid noisy logs in normal dev flow.
     // eslint-disable-next-line no-console
     console.error('[api] error', err);
-    res.status(500).json({ success: false, errorMessage: 'Internal Server Error' });
+    res
+      .status(500)
+      .json({ success: false, errorMessage: 'Internal Server Error' });
   });
 
   app.listen(PORT, () => {

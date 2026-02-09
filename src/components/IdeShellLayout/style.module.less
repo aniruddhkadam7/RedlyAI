@@ -29,6 +29,11 @@
   color: #f3f6ff;
 }
 
+:global([data-theme="light"]) .topHeader {
+  background: #1b2a55 !important;
+  color: #f3f6ff;
+}
+
 .titleBar {
   -webkit-app-region: drag;
   user-select: none;
@@ -1485,7 +1490,7 @@
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-header-bg);
+  background: var(--ide-bg-container);
 }
 
 .panelTabs {
@@ -1501,13 +1506,13 @@
   padding: 2px 8px;
   font-size: 12px;
   background: transparent;
-  color: var(--ide-tree-line);
+  color: var(--ide-text-primary);
   cursor: pointer;
 }
 
 .panelTabActive {
   border-color: var(--ide-border);
-  color: var(--ide-tree-hover-bg);
+  color: var(--ide-text-primary);
   background: rgba(148, 163, 184, 0.15);
 }
 
@@ -1520,7 +1525,16 @@
 .bottomPanelBody {
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
+}
+
+.bottomPanelScrollable {
+  height: 100%;
   overflow: auto;
+}
+
+.bottomPanelBodyStatic {
+  overflow: hidden;
 }
 
 .bottomCollapsedBar {

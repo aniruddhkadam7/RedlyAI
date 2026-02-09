@@ -1,8 +1,11 @@
-import { getRepository } from './RepositoryStore';
-import { createRelationshipRepository, type RelationshipRepository } from './RelationshipRepository';
-import type { BaseArchitectureRelationship } from './BaseArchitectureRelationship';
-import { strictValidationEngine } from '../validation/StrictValidationEngine';
 import { getGovernanceEnforcementMode } from '../governance/GovernanceEnforcementConfig';
+import { strictValidationEngine } from '../validation/StrictValidationEngine';
+import type { BaseArchitectureRelationship } from './BaseArchitectureRelationship';
+import {
+  createRelationshipRepository,
+  type RelationshipRepository,
+} from './RelationshipRepository';
+import { getRepository } from './RepositoryStore';
 
 let relationshipRepository: RelationshipRepository | null = null;
 let relationshipsRevision = 0;
@@ -67,10 +70,20 @@ export function addRelationship(relationship: BaseArchitectureRelationship) {
   if (validation.warnings?.length) {
     // Surface advisory warnings; console to avoid UI coupling here.
     // eslint-disable-next-line no-console
-    console.warn('[governance] advisory relationship warnings:', validation.warnings);
+    console.warn(
+      '[governance] advisory relationship warnings:',
+      validation.warnings,
+    );
   }
 
   const result = relationships.addRelationship(relationship);
   if (result.ok) notifyRelationshipsChanged();
   return result;
+}
+
+export function removeRelationshipsForElement(elementId: string) {
+  const relationships = getRelationshipRepository();
+  const removed = relationships.removeRelationshipsForElement(elementId);
+  if (removed.length > 0) notifyRelationshipsChanged();
+  return removed;
 }

@@ -1,0 +1,268 @@
+.registryPage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ide-bg-layout);
+  min-height: 0;
+}
+
+.registryHeader {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  background: var(--ide-bg-layout);
+  border-bottom: 1px solid var(--ide-border);
+}
+
+.registryTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.registryToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.filterButtonActive {
+  background: rgba(24, 144, 255, 0.12);
+  border-color: rgba(24, 144, 255, 0.4);
+  color: var(--ide-text-primary);
+}
+
+.filterPanelOpen,
+.filterPanelClosed {
+  overflow: hidden;
+  transition: max-height 200ms ease, opacity 200ms ease;
+  background: var(--ide-bg-layout);
+  border-bottom: 1px solid var(--ide-border);
+}
+
+.filterPanelOpen {
+  max-height: 140px;
+  opacity: 1;
+}
+
+.filterPanelClosed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.filterPanelInner {
+  padding: 6px 16px 8px;
+}
+
+.searchInput {
+  width: min(380px, 100%);
+}
+
+.registryBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  padding: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.registryBodyFull {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.registryGrid {
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.registryInspector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ide-border);
+  border-radius: 10px;
+  background: var(--ide-bg-container);
+  height: fit-content;
+  align-self: start;
+}
+
+.inspectorHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.inspectorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inspectorList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inspectorRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ide-border);
+}
+
+.columnMenu {
+  display: grid;
+  gap: 8px;
+  padding: 8px 4px;
+}
+
+.columnToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.catalogTableWrap {
+  min-width: 0;
+}
+
+.catalogTable {
+  font-size: 12.5px;
+}
+
+.catalogTable :global(.ant-table-thead > tr > th),
+.catalogTable :global(.ant-table-tbody > tr > td) {
+  padding: 6px 10px;
+}
+
+.catalogTable :global(.ant-table-selection-column) {
+  width: 32px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.catalogTable :global(.ant-table-selection-column .ant-checkbox-wrapper) {
+  margin-inline-start: 2px;
+}
+
+.catalogTable :global(.ant-table-thead > tr > th) {
+  font-size: 12px;
+}
+
+.catalogTable :global(.ant-btn-link),
+.catalogTable :global(.ant-btn-text) {
+  padding: 0;
+  height: auto;
+}
+
+.catalogTable :global(.ant-tag) {
+  margin: 0;
+}
+
+.catalogTable :global(.ant-table) {
+  background: transparent;
+}
+
+.highlightRow :global(td) {
+  background: rgba(255, 223, 128, 0.35);
+}
+
+.catalogFilters {
+  padding: 6px 8px;
+  border: 1px solid var(--ide-border);
+  background: var(--ide-bg-layout);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(90px, 1fr));
+  gap: 6px;
+  align-items: end;
+  overflow: hidden;
+}
+
+.filterBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.filterAction {
+  justify-content: flex-end;
+}
+
+.filterLabel {
+  font-size: 11px;
+  color: var(--ide-text-secondary);
+}
+
+.filterControl {
+  min-width: 0;
+}
+
+.catalogFilters :global(.ant-input),
+.catalogFilters :global(.ant-input-affix-wrapper),
+.catalogFilters :global(.ant-select-selector),
+.catalogFilters :global(.ant-input-number) {
+  min-height: 30px;
+  height: 30px;
+}
+
+.catalogFilters :global(.ant-input),
+.catalogFilters :global(.ant-input-affix-wrapper),
+.catalogFilters :global(.ant-select),
+.catalogFilters :global(.ant-input-number) {
+  width: 100%;
+}
+
+.catalogFilters :global(.ant-input-affix-wrapper) {
+  padding-block: 0;
+}
+
+.ownerCell {
+  display: flex;
+  flex-direction: column;
+}
+
+.ownerRole {
+  font-size: 12px;
+}
+
+.resizeHandle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+@media (max-width: 1200px) {
+  .registryBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

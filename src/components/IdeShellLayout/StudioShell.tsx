@@ -1,42 +1,68 @@
-import React from 'react';
-import { Alert, Button, Collapse, Descriptions, Dropdown, Empty, Form, Input, InputNumber, Modal, Radio, Select, Space, Switch, Tabs, Tag, Tooltip, Typography, theme } from 'antd';
-import { AppstoreOutlined, ArrowsAltOutlined, CloudOutlined, CloseOutlined, DeleteOutlined, DragOutlined, EditOutlined, EllipsisOutlined, InfoCircleOutlined, LinkOutlined, LogoutOutlined, NodeIndexOutlined, PlusSquareOutlined, SelectOutlined, ShrinkOutlined } from '@ant-design/icons';
-import { useModel } from '@umijs/max';
-import cytoscape, { type Core } from 'cytoscape';
-
-import styles from './style.module.less';
-import { EA_CONNECTOR_REGISTRY, EA_SHAPE_REGISTRY, hasRegisteredEaShape } from '@/ea/archimateShapeRegistry';
-import { EA_LAYERS, OBJECT_TYPE_DEFINITIONS, RELATIONSHIP_TYPE_DEFINITIONS, type EaLayer, type EaObjectTypeDefinition, type ObjectType, type RelationshipType } from '@/pages/dependency-view/utils/eaMetaModel';
 import {
-  resolveConnection,
-  resolveConnectionsForSource,
-  getConnectionFeedback,
-  clearConnectionFeedbackClasses,
-  CONNECTION_FEEDBACK_CLASSES,
-  getConnectionFeedbackStyles,
-  InlineConnectionPalette,
-  ConnectionEditor,
-  type ConnectionResolution,
-  type ConnectionPaletteSelection,
-  type ConnectionEditAction,
-  type CreatedConnection,
-} from '@/ea/connectionResolution';
-import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
-import { canCreateObjectTypeForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
-import { isCustomFrameworkModelingEnabled, isObjectTypeEnabledForFramework } from '@/repository/customFrameworkConfig';
-import { useEaRepository } from '@/ea/EaRepositoryContext';
-import { useIdeShell } from './index';
-import { useIdeSelection } from '@/ide/IdeSelectionContext';
-import { ENABLE_RBAC, hasRepositoryPermission, type RepositoryRole } from '@/repository/accessControl';
-import { TRACEABILITY_CHECK_IDS, buildGovernanceDebt } from '@/ea/governanceValidation';
-import { recordAuditEvent } from '@/repository/auditLog';
-import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
+  AppstoreOutlined,
+  ArrowsAltOutlined,
+  CloseOutlined,
+  CloudOutlined,
+  DeleteOutlined,
+  DragOutlined,
+  EditOutlined,
+  EllipsisOutlined,
+  InfoCircleOutlined,
+  LinkOutlined,
+  LogoutOutlined,
+  NodeIndexOutlined,
+  PlusSquareOutlined,
+  SelectOutlined,
+  ShrinkOutlined,
+} from '@ant-design/icons';
+import { useModel } from '@umijs/max';
+import {
+  Alert,
+  Button,
+  Collapse,
+  Descriptions,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Switch,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd';
+import cytoscape, { type Core } from 'cytoscape';
+import React from 'react';
 import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
-import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
+import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import { resolveViewScope } from '@/diagram-studio/viewpoints/resolveViewScope';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
-import type { EaRepository } from '@/pages/dependency-view/utils/eaRepository';
-import { eaConsole, message } from '@/ea/eaConsole';
+import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
+import {
+  EA_CONNECTOR_REGISTRY,
+  EA_SHAPE_REGISTRY,
+  hasRegisteredEaShape,
+} from '@/ea/archimateShapeRegistry';
+import {
+  CONNECTION_FEEDBACK_CLASSES,
+  type ConnectionEditAction,
+  ConnectionEditor,
+  type ConnectionPaletteSelection,
+  type ConnectionResolution,
+  type CreatedConnection,
+  clearConnectionFeedbackClasses,
+  getConnectionFeedback,
+  getConnectionFeedbackStyles,
+  InlineConnectionPalette,
+  resolveConnection,
+  resolveConnectionsForSource,
+} from '@/ea/connectionResolution';
 import type {
   DesignWorkspace,
   DesignWorkspaceLayout,
@@ -47,6 +73,37 @@ import type {
   DesignWorkspaceStagedRelationship,
   DesignWorkspaceStatus,
 } from '@/ea/DesignWorkspaceStore';
+import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { eaConsole, message } from '@/ea/eaConsole';
+import {
+  buildGovernanceDebt,
+  TRACEABILITY_CHECK_IDS,
+} from '@/ea/governanceValidation';
+import { useIdeSelection } from '@/ide/IdeSelectionContext';
+import {
+  EA_LAYERS,
+  type EaLayer,
+  type EaObjectTypeDefinition,
+  OBJECT_TYPE_DEFINITIONS,
+  type ObjectType,
+  RELATIONSHIP_TYPE_DEFINITIONS,
+  type RelationshipType,
+} from '@/pages/dependency-view/utils/eaMetaModel';
+import type { EaRepository } from '@/pages/dependency-view/utils/eaRepository';
+import {
+  ENABLE_RBAC,
+  hasRepositoryPermission,
+  type RepositoryRole,
+} from '@/repository/accessControl';
+import { recordAuditEvent } from '@/repository/auditLog';
+import {
+  isCustomFrameworkModelingEnabled,
+  isObjectTypeEnabledForFramework,
+} from '@/repository/customFrameworkConfig';
+import { canCreateObjectTypeForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
+import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
+import { useIdeShell } from './index';
+import styles from './style.module.less';
 
 type StudioShellProps = {
   propertiesPanel: React.ReactNode;
@@ -87,14 +144,28 @@ type BulkEditForm = {
   description?: string;
 };
 
-type StudioToolMode = 'SELECT' | 'CREATE_ELEMENT' | 'CREATE_RELATIONSHIP' | 'CREATE_FREE_CONNECTOR' | 'PAN';
+type StudioToolMode =
+  | 'SELECT'
+  | 'CREATE_ELEMENT'
+  | 'CREATE_RELATIONSHIP'
+  | 'CREATE_FREE_CONNECTOR'
+  | 'PAN';
 
 type AutoLayoutMode = 'layer' | 'flow';
 
-type CanvasModelingSource = 'toolbox' | 'canvas' | 'explorer' | 'workspace' | 'unknown';
+type CanvasModelingSource =
+  | 'toolbox'
+  | 'canvas'
+  | 'explorer'
+  | 'workspace'
+  | 'unknown';
 
 type CanvasModelingDeclaration = {
-  action: 'create-element' | 'reuse-element' | 'create-relationship' | 'reuse-relationship';
+  action:
+    | 'create-element'
+    | 'reuse-element'
+    | 'create-relationship'
+    | 'reuse-relationship';
   createsElement: boolean;
   reusesElement: boolean;
   createsRelationship: boolean;
@@ -170,13 +241,11 @@ type ViewTabState = {
   selection?: { nodes: string[]; edges: string[] };
 };
 
-
 enum RightPanelMode {
   STUDIO = 'STUDIO',
   SELECTION = 'SELECTION',
   VIEW_SWITCH = 'VIEW_SWITCH',
 }
-
 
 const defaultIdPrefixForType = (type: ObjectType): string => {
   switch (type) {
@@ -260,7 +329,10 @@ const findTechnicalTerm = (text: string): string | null => {
   const normalized = String(text ?? '').toLowerCase();
   if (!normalized.trim()) return null;
   for (const term of TECHNICAL_TERMS) {
-    const pattern = new RegExp(`\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`, 'i');
+    const pattern = new RegExp(
+      `\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`,
+      'i',
+    );
     if (pattern.test(normalized)) return term;
   }
   return null;
@@ -270,7 +342,10 @@ const findPhysicalTerm = (text: string): string | null => {
   const normalized = String(text ?? '').toLowerCase();
   if (!normalized.trim()) return null;
   for (const term of PHYSICAL_TERMS) {
-    const pattern = new RegExp(`\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`, 'i');
+    const pattern = new RegExp(
+      `\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`,
+      'i',
+    );
     if (pattern.test(normalized)) return term;
   }
   return null;
@@ -312,12 +387,15 @@ const isVerbBasedProcessName = (name: string): boolean => {
   const trimmed = String(name ?? '').trim();
   if (!trimmed) return false;
   const first = trimmed.split(/\s+/)[0];
-  return PROCESS_VERBS.some((verb) => verb.toLowerCase() === first.toLowerCase());
+  return PROCESS_VERBS.some(
+    (verb) => verb.toLowerCase() === first.toLowerCase(),
+  );
 };
 
 const generateUUID = (): string => {
   try {
-    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    if (typeof globalThis.crypto?.randomUUID === 'function')
+      return globalThis.crypto.randomUUID();
   } catch {
     // fall through
   }
@@ -341,22 +419,31 @@ const createWorkingViewId = () => `working-view-${generateUUID()}`;
 const STUDIO_RIGHT_PANEL_MIN_WIDTH = 280;
 const STUDIO_RIGHT_PANEL_MAX_WIDTH = 520;
 const STUDIO_RIGHT_PANEL_WIDTH_KEY = 'ea.studio.right.width';
-const buildStudioRightPanelWidthKey = (userId: string) => `${STUDIO_RIGHT_PANEL_WIDTH_KEY}:${encodeURIComponent(userId)}`;
+const buildStudioRightPanelWidthKey = (userId: string) =>
+  `${STUDIO_RIGHT_PANEL_WIDTH_KEY}:${encodeURIComponent(userId)}`;
 const getStudioRightPanelMaxWidth = () => {
   if (typeof window === 'undefined') return STUDIO_RIGHT_PANEL_MAX_WIDTH;
-  if (window.innerWidth < 1200) return Math.min(STUDIO_RIGHT_PANEL_MAX_WIDTH, Math.floor(window.innerWidth * 0.4));
+  if (window.innerWidth < 1200)
+    return Math.min(
+      STUDIO_RIGHT_PANEL_MAX_WIDTH,
+      Math.floor(window.innerWidth * 0.4),
+    );
   return STUDIO_RIGHT_PANEL_MAX_WIDTH;
 };
 
-
-const layoutPositionsForView = (view: ViewInstance): Record<string, { x: number; y: number }> => {
+const layoutPositionsForView = (
+  view: ViewInstance,
+): Record<string, { x: number; y: number }> => {
   const fromMetadata = (view.layoutMetadata as any)?.positions;
-  if (fromMetadata && typeof fromMetadata === 'object') return fromMetadata as Record<string, { x: number; y: number }>;
+  if (fromMetadata && typeof fromMetadata === 'object')
+    return fromMetadata as Record<string, { x: number; y: number }>;
   return ViewLayoutStore.get(view.id);
 };
 
 const downloadJson = (filename: string, data: unknown) => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -372,11 +459,15 @@ const downloadDataUrl = (filename: string, dataUrl: string) => {
   link.click();
 };
 
-const isMarkedForRemoval = (attributes?: Record<string, unknown> | null): boolean => {
+const isMarkedForRemoval = (
+  attributes?: Record<string, unknown> | null,
+): boolean => {
   return Boolean((attributes as any)?._deleted === true);
 };
 
-const normalizeAttributesForCompare = (attributes?: Record<string, unknown> | null) => {
+const normalizeAttributesForCompare = (
+  attributes?: Record<string, unknown> | null,
+) => {
   const raw = { ...(attributes ?? {}) } as Record<string, unknown>;
   delete (raw as any).lastModifiedAt;
   delete (raw as any).lastModifiedBy;
@@ -385,34 +476,53 @@ const normalizeAttributesForCompare = (attributes?: Record<string, unknown> | nu
 
 const stableStringify = (value: unknown): string => {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(',')}]`;
+  if (Array.isArray(value))
+    return `[${value.map((v) => stableStringify(v)).join(',')}]`;
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => a.localeCompare(b));
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`;
 };
 
-const nameForObject = (obj: { id: string; attributes?: Record<string, unknown> }) => {
+const nameForObject = (obj: {
+  id: string;
+  attributes?: Record<string, unknown>;
+}) => {
   const raw = (obj.attributes as any)?.name;
   const name = typeof raw === 'string' ? raw.trim() : '';
   return name || obj.id;
 };
 
-const areAttributesEqual = (a?: Record<string, unknown> | null, b?: Record<string, unknown> | null) => {
+const areAttributesEqual = (
+  a?: Record<string, unknown> | null,
+  b?: Record<string, unknown> | null,
+) => {
   const left = normalizeAttributesForCompare(a);
   const right = normalizeAttributesForCompare(b);
   return stableStringify(left) === stableStringify(right);
 };
 
-const buildSvgIcon = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+const buildSvgIcon = (svg: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 
 const resolveEaShapeForObjectType = (
   type: ObjectType | string,
-): 'round-rectangle' | 'rectangle' | 'ellipse' | 'diamond' | 'hexagon' | null => {
+):
+  | 'round-rectangle'
+  | 'rectangle'
+  | 'ellipse'
+  | 'diamond'
+  | 'hexagon'
+  | null => {
   return EA_DEFAULT_VISUAL_BY_TYPE.get(type as ObjectType)?.shape ?? null;
 };
 
-type EaVisualShape = 'round-rectangle' | 'rectangle' | 'ellipse' | 'diamond' | 'hexagon';
+type EaVisualShape =
+  | 'round-rectangle'
+  | 'rectangle'
+  | 'ellipse'
+  | 'diamond'
+  | 'hexagon';
 
 const FALLBACK_ICON_BY_SHAPE: Record<EaVisualShape, string> = {
   rectangle: buildSvgIcon(
@@ -432,7 +542,8 @@ const FALLBACK_ICON_BY_SHAPE: Record<EaVisualShape, string> = {
   ),
 };
 
-const fallbackIconForShape = (shape: EaVisualShape) => FALLBACK_ICON_BY_SHAPE[shape] ?? FALLBACK_ICON_BY_SHAPE.rectangle;
+const fallbackIconForShape = (shape: EaVisualShape) =>
+  FALLBACK_ICON_BY_SHAPE[shape] ?? FALLBACK_ICON_BY_SHAPE.rectangle;
 type EaVisualKind = string;
 type EaVisual = {
   kind: EaVisualKind;
@@ -465,13 +576,13 @@ const EA_DEFAULT_VISUAL_BY_TYPE = (() => {
   return map;
 })();
 
-
 const resolveEaVisualForElement = (args: {
   type: ObjectType;
   attributes?: Record<string, unknown> | null;
   visualKindOverride?: string | null;
 }): EaVisual | null => {
-  const rawKind = args.visualKindOverride ?? (args.attributes as any)?.eaVisualKind;
+  const rawKind =
+    args.visualKindOverride ?? (args.attributes as any)?.eaVisualKind;
   const kind = typeof rawKind === 'string' ? rawKind.trim() : '';
   if (kind && EA_VISUAL_BY_KIND.has(kind)) {
     const visual = EA_VISUAL_BY_KIND.get(kind)!;
@@ -495,7 +606,8 @@ const buildEaVisualData = (args: {
       eaVisualKind: undefined,
     } as const;
   }
-  const icon = typeof visual.icon === 'string' ? encodeURI(visual.icon) : visual.icon;
+  const icon =
+    typeof visual.icon === 'string' ? encodeURI(visual.icon) : visual.icon;
   return {
     eaShape: visual.shape,
     eaIcon: icon,
@@ -615,7 +727,11 @@ const FREE_SHAPE_DEFINITIONS: Array<{
   },
 ];
 
-const FREE_CONNECTOR_DEFINITIONS: Array<{ kind: FreeConnectorKind; label: string; icon: string }> = [
+const FREE_CONNECTOR_DEFINITIONS: Array<{
+  kind: FreeConnectorKind;
+  label: string;
+  icon: string;
+}> = [
   {
     kind: 'arrow',
     label: 'Arrow',
@@ -645,14 +761,30 @@ const StudioShell: React.FC<StudioShellProps> = ({
 }) => {
   const { token } = theme.useToken();
   const { initialState } = useModel('@@initialState');
-  const { openPropertiesPanel } = useIdeShell();
+  const { openPropertiesPanel, openRouteTab } = useIdeShell();
   const { selection } = useIdeSelection();
-  const { eaRepository, metadata, trySetEaRepository, undo, redo, canUndo, canRedo } = useEaRepository();
-  const resolveToolboxIcon = React.useCallback((item: EaVisual) => item.icon, []);
+  const {
+    eaRepository,
+    metadata,
+    trySetEaRepository,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useEaRepository();
+  const resolveToolboxIcon = React.useCallback(
+    (item: EaVisual) => item.icon,
+    [],
+  );
   const actor =
-    initialState?.currentUser?.name || initialState?.currentUser?.userid || 'studio';
+    initialState?.currentUser?.name ||
+    initialState?.currentUser?.userid ||
+    'studio';
   const rightPanelStorageKey = React.useMemo(() => {
-    const rawId = initialState?.currentUser?.userid || initialState?.currentUser?.name || 'anonymous';
+    const rawId =
+      initialState?.currentUser?.userid ||
+      initialState?.currentUser?.name ||
+      'anonymous';
     return buildStudioRightPanelWidthKey(rawId);
   }, [initialState?.currentUser?.name, initialState?.currentUser?.userid]);
   const userRole: RepositoryRole = React.useMemo(() => {
@@ -662,7 +794,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (access === 'architect' || access === 'user') return 'Architect';
     return 'Viewer';
   }, [initialState?.currentUser?.access]);
-  const canEditView = React.useMemo(() => hasRepositoryPermission(userRole, 'editView'), [userRole]);
+  const canEditView = React.useMemo(
+    () => hasRepositoryPermission(userRole, 'editView'),
+    [userRole],
+  );
   const allowAnyRelationship = false;
   const hasModelingAccess =
     hasRepositoryPermission(userRole, 'createElement') ||
@@ -671,24 +806,37 @@ const StudioShell: React.FC<StudioShellProps> = ({
     hasRepositoryPermission(userRole, 'editRelationship');
   const commitContextLocked = React.useMemo(() => {
     const key = selection?.activeDocument?.key ?? '';
-    return key.startsWith('baseline:') || key.startsWith('plateau:') || key.startsWith('roadmap:');
+    return (
+      key.startsWith('baseline:') ||
+      key.startsWith('plateau:') ||
+      key.startsWith('roadmap:')
+    );
   }, [selection?.activeDocument?.key]);
-  const [stagedElements, setStagedElements] = React.useState<DesignWorkspaceStagedElement[]>(
-    () => designWorkspace?.stagedElements ?? [],
-  );
-  const [stagedRelationships, setStagedRelationships] = React.useState<DesignWorkspaceStagedRelationship[]>(
-    () => designWorkspace?.stagedRelationships ?? [],
-  );
+  const [stagedElements, setStagedElements] = React.useState<
+    DesignWorkspaceStagedElement[]
+  >(() => designWorkspace?.stagedElements ?? []);
+  const [stagedRelationships, setStagedRelationships] = React.useState<
+    DesignWorkspaceStagedRelationship[]
+  >(() => designWorkspace?.stagedRelationships ?? []);
   const stagedSyncSignatureRef = React.useRef<string | null>(null);
   const resolveElementVisualLabel = React.useCallback(
     (type: ObjectType, visualKind?: string | null) => {
-      const visual = resolveEaVisualForElement({ type, visualKindOverride: visualKind ?? undefined });
+      const visual = resolveEaVisualForElement({
+        type,
+        visualKindOverride: visualKind ?? undefined,
+      });
       return visual?.label ?? type;
     },
     [],
   );
   const pendingElementLabel = React.useMemo(
-    () => (pendingElementType ? resolveElementVisualLabel(pendingElementType, pendingElementVisualKind) : null),
+    () =>
+      pendingElementType
+        ? resolveElementVisualLabel(
+            pendingElementType,
+            pendingElementVisualKind,
+          )
+        : null,
     [pendingElementType, pendingElementVisualKind, resolveElementVisualLabel],
   );
   const createElementHelperText = React.useMemo(() => {
@@ -700,12 +848,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return `Naming: ${pendingElementLabel ?? pendingElementType}`;
   }, [pendingElementLabel, pendingElementType, toolMode]);
 
-  const hasStagedChanges = stagedElements.length > 0 || stagedRelationships.length > 0;
-  const commitDisabled = !hasStagedChanges || !hasModelingAccess || commitContextLocked || !eaRepository;
+  const hasStagedChanges =
+    stagedElements.length > 0 || stagedRelationships.length > 0;
+  const commitDisabled =
+    !hasStagedChanges ||
+    !hasModelingAccess ||
+    commitContextLocked ||
+    !eaRepository;
   const iterativeModeling = designWorkspace.mode === 'ITERATIVE';
   const modeBadge = React.useMemo(() => {
-    if (!hasModelingAccess) return { label: 'Read-only', color: 'default' as const };
-    if (designWorkspace.status === 'DRAFT') return { label: 'Draft', color: 'gold' as const };
+    if (!hasModelingAccess)
+      return { label: 'Read-only', color: 'default' as const };
+    if (designWorkspace.status === 'DRAFT')
+      return { label: 'Draft', color: 'gold' as const };
     return { label: 'Studio', color: 'blue' as const };
   }, [designWorkspace.status, hasModelingAccess]);
   const cyRef = React.useRef<Core | null>(null);
@@ -725,7 +880,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const [freeShapeForm] = Form.useForm<{ label: string }>();
   const [workspaceForm] = Form.useForm<DesignWorkspaceForm>();
   const [viewSummaryForm] = Form.useForm<ViewSummaryForm>();
-  const [saveViewForm] = Form.useForm<{ name: string; viewpointId?: string; description?: string }>();
+  const [saveViewForm] = Form.useForm<{
+    name: string;
+    viewpointId?: string;
+    description?: string;
+  }>();
   const [quickCreateForm] = Form.useForm<QuickCreateForm>();
   const [bulkEditForm] = Form.useForm<BulkEditForm>();
   const [repoEndpointForm] = Form.useForm<{ repositoryElementId: string }>();
@@ -743,17 +902,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const raw = localStorage.getItem(guidanceIgnoreStorageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw) as string[];
-      return Array.isArray(parsed) ? parsed.filter((m) => typeof m === 'string') : [];
+      return Array.isArray(parsed)
+        ? parsed.filter((m) => typeof m === 'string')
+        : [];
     } catch {
       return [];
     }
   });
-  const [ignoredDesignPrompts, setIgnoredDesignPrompts] = React.useState<string[]>(() => {
+  const [ignoredDesignPrompts, setIgnoredDesignPrompts] = React.useState<
+    string[]
+  >(() => {
     try {
       const raw = localStorage.getItem(designPromptIgnoreStorageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw) as string[];
-      return Array.isArray(parsed) ? parsed.filter((m) => typeof m === 'string') : [];
+      return Array.isArray(parsed)
+        ? parsed.filter((m) => typeof m === 'string')
+        : [];
     } catch {
       return [];
     }
@@ -766,7 +931,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const raw = localStorage.getItem(rightPanelStorageKey);
       const parsed = raw ? Number(raw) : NaN;
       const maxWidth = getStudioRightPanelMaxWidth();
-      if (Number.isFinite(parsed)) return Math.min(maxWidth, Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, parsed));
+      if (Number.isFinite(parsed))
+        return Math.min(
+          maxWidth,
+          Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, parsed),
+        );
     } catch {
       // Best-effort only.
     }
@@ -789,7 +958,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!initialViewTabRef.current) return [];
     return [initialViewTabRef.current];
   });
-  const [viewTabStateById, setViewTabStateById] = React.useState<Record<string, ViewTabState>>(() => {
+  const [viewTabStateById, setViewTabStateById] = React.useState<
+    Record<string, ViewTabState>
+  >(() => {
     if (!initialViewTabRef.current) return {};
     const view = ViewStore.get(initialViewTabRef.current.viewId) ?? null;
     const positions = (view?.layoutMetadata as any)?.positions ?? {};
@@ -800,32 +971,49 @@ const StudioShell: React.FC<StudioShellProps> = ({
         viewId: initialViewTabRef.current.viewId,
         view,
         saveStatus: 'saved',
-        lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
+        lastSavedSignature: stableStringify({
+          positions,
+          freeShapes,
+          freeConnectors,
+          viewport: (view?.layoutMetadata as any)?.viewport ?? null,
+        }),
       },
     };
   });
-  const [activeTabKey, setActiveTabKey] = React.useState<string>(() =>
-    initialViewTabRef.current?.key ?? WORKSPACE_TAB_KEY,
+  const [activeTabKey, setActiveTabKey] = React.useState<string>(
+    () => initialViewTabRef.current?.key ?? WORKSPACE_TAB_KEY,
   );
   const [restoredTabs, setRestoredTabs] = React.useState(false);
   const tabsStorageKey = React.useMemo(
-    () => `ea.studio.tabs:${encodeURIComponent(designWorkspace.repositoryName)}`,
+    () =>
+      `ea.studio.tabs:${encodeURIComponent(designWorkspace.repositoryName)}`,
     [designWorkspace.repositoryName],
   );
   const pendingTabRestoreRef = React.useRef<{
     activeViewId?: string | null;
   } | null>(null);
-  const [pendingExport, setPendingExport] = React.useState<{ viewId: string; format: 'png' | 'json' } | null>(null);
+  const [pendingExport, setPendingExport] = React.useState<{
+    viewId: string;
+    format: 'png' | 'json';
+  } | null>(null);
   const activeViewTab = React.useMemo(
-    () => (activeTabKey === WORKSPACE_TAB_KEY ? null : viewTabs.find((tab) => tab.key === activeTabKey) ?? null),
+    () =>
+      activeTabKey === WORKSPACE_TAB_KEY
+        ? null
+        : (viewTabs.find((tab) => tab.key === activeTabKey) ?? null),
     [activeTabKey, viewTabs],
   );
   const activeViewId = activeViewTab?.viewId ?? null;
   // Ref to make activeViewId accessible in Cytoscape event handlers without stale closures
   const activeViewIdRef = React.useRef<string | null>(activeViewId);
-  React.useEffect(() => { activeViewIdRef.current = activeViewId; }, [activeViewId]);
+  React.useEffect(() => {
+    activeViewIdRef.current = activeViewId;
+  }, [activeViewId]);
   const activeViewState = React.useMemo(
-    () => (activeTabKey && activeTabKey !== WORKSPACE_TAB_KEY ? viewTabStateById[activeTabKey] ?? null : null),
+    () =>
+      activeTabKey && activeTabKey !== WORKSPACE_TAB_KEY
+        ? (viewTabStateById[activeTabKey] ?? null)
+        : null,
     [activeTabKey, viewTabStateById],
   );
   const viewTabStateByIdRef = React.useRef(viewTabStateById);
@@ -841,14 +1029,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (raw) {
         const parsed = JSON.parse(raw) as {
           activeViewId?: string | null;
-          tabs?: Array<{ viewId: string; readOnly?: boolean; isWorking?: boolean; view?: ViewInstance | null }>;
-          viewStates?: Record<string, { viewport?: { zoom: number; pan: { x: number; y: number } }; selection?: { nodes: string[]; edges: string[] } }>;
+          tabs?: Array<{
+            viewId: string;
+            readOnly?: boolean;
+            isWorking?: boolean;
+            view?: ViewInstance | null;
+          }>;
+          viewStates?: Record<
+            string,
+            {
+              viewport?: { zoom: number; pan: { x: number; y: number } };
+              selection?: { nodes: string[]; edges: string[] };
+            }
+          >;
         };
         if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0) {
           const nextTabs: StudioViewTab[] = [];
           const nextState: Record<string, ViewTabState> = {};
           parsed.tabs.forEach((entry) => {
-            const view = entry.isWorking ? (entry.view ?? null) : (ViewStore.get(entry.viewId) ?? null);
+            const view = entry.isWorking
+              ? (entry.view ?? null)
+              : (ViewStore.get(entry.viewId) ?? null);
             const tabKey = createViewTabKey(entry.viewId);
             nextTabs.push({
               key: tabKey,
@@ -859,22 +1060,32 @@ const StudioShell: React.FC<StudioShellProps> = ({
             });
             const positions = (view?.layoutMetadata as any)?.positions ?? {};
             const freeShapes = (view?.layoutMetadata as any)?.freeShapes ?? [];
-            const freeConnectors = (view?.layoutMetadata as any)?.freeConnectors ?? [];
+            const freeConnectors =
+              (view?.layoutMetadata as any)?.freeConnectors ?? [];
             const stateEntry: ViewTabState = {
               viewId: entry.viewId,
               view,
               saveStatus: entry.isWorking ? 'dirty' : 'saved',
-              lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
+              lastSavedSignature: stableStringify({
+                positions,
+                freeShapes,
+                freeConnectors,
+                viewport: (view?.layoutMetadata as any)?.viewport ?? null,
+              }),
               isWorking: entry.isWorking,
             };
             const restoredViewState = parsed.viewStates?.[entry.viewId];
-            if (restoredViewState?.viewport) stateEntry.viewport = restoredViewState.viewport;
-            if (restoredViewState?.selection) stateEntry.selection = restoredViewState.selection;
+            if (restoredViewState?.viewport)
+              stateEntry.viewport = restoredViewState.viewport;
+            if (restoredViewState?.selection)
+              stateEntry.selection = restoredViewState.selection;
             nextState[tabKey] = stateEntry;
           });
           setViewTabs(nextTabs);
           setViewTabStateById(nextState);
-          pendingTabRestoreRef.current = { activeViewId: parsed.activeViewId ?? null };
+          pendingTabRestoreRef.current = {
+            activeViewId: parsed.activeViewId ?? null,
+          };
           didRestore = true;
         }
       }
@@ -890,7 +1101,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!pending || viewTabs.length === 0) return;
     const targetId = pending.activeViewId ?? viewTabs[0]?.viewId;
     if (targetId) {
-      const targetTab = viewTabs.find((tab) => tab.viewId === targetId) ?? viewTabs[0];
+      const targetTab =
+        viewTabs.find((tab) => tab.viewId === targetId) ?? viewTabs[0];
       if (targetTab) setActiveTabKey(targetTab.key);
     }
     pendingTabRestoreRef.current = null;
@@ -902,7 +1114,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [activeViewIsWorking]);
   const viewSaveStatus = activeViewState?.saveStatus ?? 'saved';
   const activeViewName = React.useMemo(
-    () => (activeView?.name ?? (activeViewId ? activeViewId : null)),
+    () => activeView?.name ?? (activeViewId ? activeViewId : null),
     [activeView, activeViewId],
   );
   const activeViewTitle = React.useMemo(() => {
@@ -912,8 +1124,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const activeViewDisplayLabel = activeViewTitle;
   const governanceMode = metadata?.governanceMode ?? 'Advisory';
   const viewEditLocked = governanceMode === 'Strict' && !canEditView;
-  const viewReadOnly = Boolean(activeViewTab?.readOnly ?? viewContext?.readOnly) || viewEditLocked;
-  const [studioModeLevel, setStudioModeLevel] = React.useState<StudioMode>('Model');
+  const viewReadOnly =
+    Boolean(activeViewTab?.readOnly ?? viewContext?.readOnly) || viewEditLocked;
+  const [studioModeLevel, setStudioModeLevel] =
+    React.useState<StudioMode>('Model');
   const [presentationView, setPresentationView] = React.useState(false);
   React.useEffect(() => {
     if (activeTabKey === WORKSPACE_TAB_KEY) {
@@ -925,7 +1139,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
   }, [activeTabKey, activeViewId]);
   const canAnalyzeMode = studioModeLevel !== 'Explore' && !presentationView;
-  const canDiagramMode = (studioModeLevel === 'Design' || studioModeLevel === 'Model') && !presentationView;
+  const canDiagramMode =
+    (studioModeLevel === 'Design' || studioModeLevel === 'Model') &&
+    !presentationView;
   const canModelMode = studioModeLevel === 'Model' && !presentationView;
   const presentationReadOnly = viewReadOnly || presentationView;
   const showToolbox = canDiagramMode;
@@ -935,7 +1151,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const toolboxPrevWidthRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
-    const summary = (activeView?.layoutMetadata as any)?.summary as ViewSummaryForm | undefined;
+    const summary = (activeView?.layoutMetadata as any)?.summary as
+      | ViewSummaryForm
+      | undefined;
     viewSummaryForm.setFieldsValue({
       purpose: summary?.purpose ?? '',
       scope: summary?.scope ?? '',
@@ -978,7 +1196,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const viewBoundName = React.useMemo(() => {
     if (!isViewBoundWorkspace) return null;
     const view = viewContext?.viewId ? ViewStore.get(viewContext.viewId) : null;
-    return (view?.name ?? activeViewName ?? viewContext?.viewId ?? '').trim() || null;
+    return (
+      (view?.name ?? activeViewName ?? viewContext?.viewId ?? '').trim() || null
+    );
   }, [activeViewName, isViewBoundWorkspace, viewContext?.viewId]);
   const toggleToolboxExpanded = React.useCallback(() => {
     const maxWidth = getStudioRightPanelMaxWidth();
@@ -989,7 +1209,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
         return true;
       }
       const fallback = toolboxPrevWidthRef.current ?? 360;
-      const next = Math.min(maxWidth, Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, fallback));
+      const next = Math.min(
+        maxWidth,
+        Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, fallback),
+      );
       setStudioRightWidth(next);
       toolboxPrevWidthRef.current = null;
       return false;
@@ -1001,28 +1224,50 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return 'Untitled View';
   }, [activeViewTitle, viewBoundName]);
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
-  const [quickCreatePlacement, setQuickCreatePlacement] = React.useState<{ x: number; y: number } | null>(null);
-  const [quickCreateType, setQuickCreateType] = React.useState<ObjectType | null>(null);
+  const [quickCreatePlacement, setQuickCreatePlacement] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [quickCreateType, setQuickCreateType] =
+    React.useState<ObjectType | null>(null);
   const [bulkEditOpen, setBulkEditOpen] = React.useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<string[]>([]);
-  const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null);
-  const [selectedFreeShapeId, setSelectedFreeShapeId] = React.useState<string | null>(null);
-  const [selectedFreeConnectorId, setSelectedFreeConnectorId] = React.useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(
+    null,
+  );
+  const [selectedFreeShapeId, setSelectedFreeShapeId] = React.useState<
+    string | null
+  >(null);
+  const [selectedFreeConnectorId, setSelectedFreeConnectorId] = React.useState<
+    string | null
+  >(null);
   const [freeShapes, setFreeShapes] = React.useState<FreeShape[]>([]);
-  const [freeConnectors, setFreeConnectors] = React.useState<FreeConnector[]>([]);
-  const [pendingFreeConnectorKind, setPendingFreeConnectorKind] = React.useState<FreeConnectorKind | null>(null);
-  const [freeConnectorSourceId, setFreeConnectorSourceId] = React.useState<string | null>(null);
-  const [nodeContextMenu, setNodeContextMenu] = React.useState<
-    { x: number; y: number; nodeId: string } | null
+  const [freeConnectors, setFreeConnectors] = React.useState<FreeConnector[]>(
+    [],
+  );
+  const [pendingFreeConnectorKind, setPendingFreeConnectorKind] =
+    React.useState<FreeConnectorKind | null>(null);
+  const [freeConnectorSourceId, setFreeConnectorSourceId] = React.useState<
+    string | null
   >(null);
-  const [pendingChildCreation, setPendingChildCreation] = React.useState<
-    { parentId: string; relationshipType: RelationshipType } | null
-  >(null);
+  const [nodeContextMenu, setNodeContextMenu] = React.useState<{
+    x: number;
+    y: number;
+    nodeId: string;
+  } | null>(null);
+  const [pendingChildCreation, setPendingChildCreation] = React.useState<{
+    parentId: string;
+    relationshipType: RelationshipType;
+  } | null>(null);
   const [validationGateOpen, setValidationGateOpen] = React.useState(false);
-  const [validationMode, setValidationMode] = React.useState<'soft' | 'hard'>('soft');
+  const [validationMode, setValidationMode] = React.useState<'soft' | 'hard'>(
+    'soft',
+  );
   const validationConsoleIdsRef = React.useRef<string[]>([]);
   const stagedInitRef = React.useRef(false);
-  const relationshipLabelOverrides = React.useMemo<Partial<Record<RelationshipType, string>>>(
+  const relationshipLabelOverrides = React.useMemo<
+    Partial<Record<RelationshipType, string>>
+  >(
     () => ({
       SERVED_BY: 'Serves',
       USES: 'Uses',
@@ -1049,11 +1294,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [],
   );
   const resolveRelationshipLabel = React.useCallback(
-    (type: RelationshipType) => relationshipLabelOverrides[type] || type.replace(/_/g, ' '),
+    (type: RelationshipType) =>
+      relationshipLabelOverrides[type] || type.replace(/_/g, ' '),
     [relationshipLabelOverrides],
   );
   type RelationshipStyle = 'directed' | 'dependency' | 'association' | 'flow';
-  const RELATIONSHIP_STYLE_BY_TYPE: Partial<Record<RelationshipType, RelationshipStyle>> = {
+  const RELATIONSHIP_STYLE_BY_TYPE: Partial<
+    Record<RelationshipType, RelationshipStyle>
+  > = {
     DEPENDS_ON: 'dependency',
     USES: 'dependency',
     INTEGRATES_WITH: 'association',
@@ -1077,7 +1325,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     IMPACTS: 'flow',
   };
   const relationshipStyleForType = React.useCallback(
-    (type: RelationshipType): RelationshipStyle => RELATIONSHIP_STYLE_BY_TYPE[type] ?? 'directed',
+    (type: RelationshipType): RelationshipStyle =>
+      RELATIONSHIP_STYLE_BY_TYPE[type] ?? 'directed',
     [],
   );
   const RELATIONSHIP_SHORT_LABELS: Partial<Record<RelationshipType, string>> = {
@@ -1104,9 +1353,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
     IMPACTS: 'IA',
   };
   const buildRelationshipIcon = React.useCallback(
-    (label: string, style: RelationshipStyle, variant: 'tool' | 'connector') => {
-      const strokeDash = style === 'dependency' ? '4 2' : style === 'flow' ? '1 2' : '0';
-      const arrow = style === 'association' ? '' : '<polygon points="12,4 15,8 12,12" fill="#434343"/>';
+    (
+      label: string,
+      style: RelationshipStyle,
+      variant: 'tool' | 'connector',
+    ) => {
+      const strokeDash =
+        style === 'dependency' ? '4 2' : style === 'flow' ? '1 2' : '0';
+      const arrow =
+        style === 'association'
+          ? ''
+          : '<polygon points="12,4 15,8 12,12" fill="#434343"/>';
       const textSize = label.length > 2 ? 5 : 6.5;
       return buildSvgIcon(
         `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><line x1="2" y1="8" x2="12" y2="8" stroke="#434343" stroke-width="1.2" stroke-dasharray="${strokeDash}"/>${arrow}<text x="2" y="6" font-size="${textSize}" fill="#434343" font-family="Arial" font-weight="700">${label}</text>${variant === 'connector' ? '<circle cx="2" cy="8" r="1" fill="#434343"/>' : ''}</svg>`,
@@ -1122,33 +1379,60 @@ const StudioShell: React.FC<StudioShellProps> = ({
     },
     [buildRelationshipIcon, relationshipStyleForType],
   );
-  const ensureToolboxElementType = React.useCallback((type: ObjectType, label?: string, visualKind?: string | null) => {
-    const visual = resolveEaVisualForElement({ type, visualKindOverride: visualKind ?? undefined });
-    if (!visual || !visual.icon || !visual.shape) {
-      message.error(
-        `Toolbox item "${label ?? type}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`,
-      );
-      return null;
-    }
-    return visual;
-  }, []);
-  const ensureToolboxRelationshipType = React.useCallback((type: RelationshipType, label?: string) => {
-    if (!RELATIONSHIP_TYPE_DEFINITIONS[type]) {
-      message.error(`Toolbox item "${label ?? type}" is not yet wired to the canvas (missing relationship mapping).`);
-      return false;
-    }
-    return true;
-  }, []);
+  const ensureToolboxElementType = React.useCallback(
+    (type: ObjectType, label?: string, visualKind?: string | null) => {
+      const visual = resolveEaVisualForElement({
+        type,
+        visualKindOverride: visualKind ?? undefined,
+      });
+      if (!visual || !visual.icon || !visual.shape) {
+        message.error(
+          `Toolbox item "${label ?? type}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`,
+        );
+        return null;
+      }
+      return visual;
+    },
+    [],
+  );
+  const ensureToolboxRelationshipType = React.useCallback(
+    (type: RelationshipType, label?: string) => {
+      if (!RELATIONSHIP_TYPE_DEFINITIONS[type]) {
+        message.error(
+          `Toolbox item "${label ?? type}" is not yet wired to the canvas (missing relationship mapping).`,
+        );
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
   const studioHeaderRef = React.useRef<HTMLDivElement | null>(null);
   const studioLeftRef = React.useRef<HTMLDivElement | null>(null);
   const studioRightRef = React.useRef<HTMLDivElement | null>(null);
   const [placementModeActive, setPlacementModeActive] = React.useState(false);
-  const [placementGuide, setPlacementGuide] = React.useState<{ x: number; y: number } | null>(null);
-  const [createHintPos, setCreateHintPos] = React.useState<{ x: number; y: number } | null>(null);
-  const [elementDragAnchor, setElementDragAnchor] = React.useState<{ x: number; y: number } | null>(null);
-  const [elementDragGhost, setElementDragGhost] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [placementGuide, setPlacementGuide] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [createHintPos, setCreateHintPos] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [elementDragAnchor, setElementDragAnchor] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [elementDragGhost, setElementDragGhost] = React.useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [elementDragActive, setElementDragActive] = React.useState(false);
-  const beginStudioRightResize: React.MouseEventHandler<HTMLDivElement> = (e) => {
+  const beginStudioRightResize: React.MouseEventHandler<HTMLDivElement> = (
+    e,
+  ) => {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = studioRightWidth;
@@ -1156,7 +1440,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX;
       const maxWidth = getStudioRightPanelMaxWidth();
-      const next = Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, Math.min(maxWidth, startWidth + delta));
+      const next = Math.max(
+        STUDIO_RIGHT_PANEL_MIN_WIDTH,
+        Math.min(maxWidth, startWidth + delta),
+      );
       studioRightPendingRef.current = next;
       if (studioRightRafRef.current !== null) return;
       studioRightRafRef.current = window.requestAnimationFrame(() => {
@@ -1202,7 +1489,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const resolved = view ?? ViewStore.get(viewId) ?? null;
         const positions = (resolved?.layoutMetadata as any)?.positions ?? {};
         const freeShapes = (resolved?.layoutMetadata as any)?.freeShapes ?? [];
-        const freeConnectors = (resolved?.layoutMetadata as any)?.freeConnectors ?? [];
+        const freeConnectors =
+          (resolved?.layoutMetadata as any)?.freeConnectors ?? [];
         const isWorking = Boolean(opts?.isWorking);
         const saveStatus = isWorking ? 'dirty' : 'saved';
         return {
@@ -1211,7 +1499,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewId,
             view: resolved,
             saveStatus,
-            lastSavedSignature: stableStringify({ positions, freeShapes, freeConnectors, viewport: (resolved?.layoutMetadata as any)?.viewport ?? null }),
+            lastSavedSignature: stableStringify({
+              positions,
+              freeShapes,
+              freeConnectors,
+              viewport: (resolved?.layoutMetadata as any)?.viewport ?? null,
+            }),
             isWorking,
           },
         };
@@ -1223,7 +1516,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const ensureViewTab = React.useCallback(
     (
       viewId: string,
-      opts?: { readOnly?: boolean; mode?: 'new' | 'replace' | 'existing'; view?: ViewInstance | null; isWorking?: boolean },
+      opts?: {
+        readOnly?: boolean;
+        mode?: 'new' | 'replace' | 'existing';
+        view?: ViewInstance | null;
+        isWorking?: boolean;
+      },
     ) => {
       if (!viewId) return;
       if (activeTabKey && activeTabKey !== WORKSPACE_TAB_KEY) {
@@ -1241,19 +1539,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
         setViewTabs((prev) =>
           prev.map((tab) =>
             tab.key === alreadyOpen.key
-              ? { ...tab, name, readOnly: opts?.readOnly, isWorking: tab.isWorking ?? isWorking }
+              ? {
+                  ...tab,
+                  name,
+                  readOnly: opts?.readOnly,
+                  isWorking: tab.isWorking ?? isWorking,
+                }
               : tab,
           ),
         );
-        ensureViewTabState(alreadyOpen.key, viewId, resolved, { isWorking: alreadyOpen.isWorking ?? isWorking });
+        ensureViewTabState(alreadyOpen.key, viewId, resolved, {
+          isWorking: alreadyOpen.isWorking ?? isWorking,
+        });
         setActiveTabKey(alreadyOpen.key);
         return;
       }
 
       if (mode === 'replace' && activeTabKey !== WORKSPACE_TAB_KEY) {
         const activeState = viewTabStateById[activeTabKey];
-        if (activeState?.saveStatus === 'dirty' || activeState?.saveStatus === 'saving') {
-          message.warning('Current tab has unsaved changes. Opened a new tab instead.');
+        if (
+          activeState?.saveStatus === 'dirty' ||
+          activeState?.saveStatus === 'saving'
+        ) {
+          message.warning(
+            'Current tab has unsaved changes. Opened a new tab instead.',
+          );
           effectiveMode = 'new';
         }
       }
@@ -1264,11 +1574,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
           setViewTabs((prev) =>
             prev.map((tab) =>
               tab.key === existing.key
-                ? { ...tab, name, readOnly: opts?.readOnly, isWorking: tab.isWorking ?? isWorking }
+                ? {
+                    ...tab,
+                    name,
+                    readOnly: opts?.readOnly,
+                    isWorking: tab.isWorking ?? isWorking,
+                  }
                 : tab,
             ),
           );
-          ensureViewTabState(existing.key, viewId, resolved, { isWorking: existing.isWorking ?? isWorking });
+          ensureViewTabState(existing.key, viewId, resolved, {
+            isWorking: existing.isWorking ?? isWorking,
+          });
           setActiveTabKey(existing.key);
           return;
         }
@@ -1283,17 +1600,30 @@ const StudioShell: React.FC<StudioShellProps> = ({
               : tab,
           ),
         );
-        ensureViewTabState(targetKey, viewId, resolved, { force: true, isWorking });
+        ensureViewTabState(targetKey, viewId, resolved, {
+          force: true,
+          isWorking,
+        });
         setActiveTabKey(targetKey);
         return;
       }
 
       const tabKey = createViewTabKey(viewId);
-      setViewTabs((prev) => [...prev, { key: tabKey, viewId, name, readOnly: opts?.readOnly, isWorking }]);
+      setViewTabs((prev) => [
+        ...prev,
+        { key: tabKey, viewId, name, readOnly: opts?.readOnly, isWorking },
+      ]);
       ensureViewTabState(tabKey, viewId, resolved, { force: true, isWorking });
       setActiveTabKey(tabKey);
     },
-    [activeTabKey, autosaveActiveView, captureCanvasState, ensureViewTabState, viewTabStateById, viewTabs],
+    [
+      activeTabKey,
+      autosaveActiveView,
+      captureCanvasState,
+      ensureViewTabState,
+      viewTabStateById,
+      viewTabs,
+    ],
   );
 
   const closeViewTab = React.useCallback(
@@ -1317,9 +1647,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   React.useEffect(() => {
     if (!viewContext?.viewId) return;
-    const existing = viewTabs.find((tab) => tab.viewId === viewContext.viewId) ?? null;
+    const existing =
+      viewTabs.find((tab) => tab.viewId === viewContext.viewId) ?? null;
     if (existing && existing.readOnly === viewContext.readOnly) return;
-    ensureViewTab(viewContext.viewId, { readOnly: viewContext.readOnly, mode: 'existing' });
+    ensureViewTab(viewContext.viewId, {
+      readOnly: viewContext.readOnly,
+      mode: 'existing',
+    });
   }, [ensureViewTab, viewContext?.readOnly, viewContext?.viewId, viewTabs]);
 
   React.useEffect(() => {
@@ -1345,12 +1679,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (existing && existing.view === view) return;
         const positions = (view?.layoutMetadata as any)?.positions ?? {};
         const freeShapes = (view?.layoutMetadata as any)?.freeShapes ?? [];
-        const freeConnectors = (view?.layoutMetadata as any)?.freeConnectors ?? [];
+        const freeConnectors =
+          (view?.layoutMetadata as any)?.freeConnectors ?? [];
         const nextEntry: ViewTabState = {
           viewId: tab.viewId,
           view,
           saveStatus: existing?.saveStatus ?? 'saved',
-          lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
+          lastSavedSignature:
+            existing?.lastSavedSignature ??
+            stableStringify({
+              positions,
+              freeShapes,
+              freeConnectors,
+              viewport: (view?.layoutMetadata as any)?.viewport ?? null,
+            }),
         };
         nextState = nextState === prev ? { ...prev } : nextState;
         nextState[tab.key] = nextEntry;
@@ -1379,12 +1721,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
           if (existing && existing.view === view) return;
           const positions = (view?.layoutMetadata as any)?.positions ?? {};
           const freeShapes = (view?.layoutMetadata as any)?.freeShapes ?? [];
-          const freeConnectors = (view?.layoutMetadata as any)?.freeConnectors ?? [];
+          const freeConnectors =
+            (view?.layoutMetadata as any)?.freeConnectors ?? [];
           const nextEntry: ViewTabState = {
             viewId: existing.viewId,
             view,
             saveStatus: existing?.saveStatus ?? 'saved',
-            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (view?.layoutMetadata as any)?.viewport ?? null }),
+            lastSavedSignature:
+              existing?.lastSavedSignature ??
+              stableStringify({
+                positions,
+                freeShapes,
+                freeConnectors,
+                viewport: (view?.layoutMetadata as any)?.viewport ?? null,
+              }),
           };
           nextState = nextState === prev ? { ...prev } : nextState;
           nextState[id] = nextEntry;
@@ -1410,8 +1760,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const rawViewId = (draft?.id ?? e.detail?.viewId ?? '').trim();
       const viewId = rawViewId || (draft ? createWorkingViewId() : '');
       if (!viewId) return;
-      const resolvedDraft = draft && !draft.id ? { ...draft, id: viewId } : draft;
-      const isWorking = Boolean(e.detail?.working || (resolvedDraft && resolvedDraft.status === 'DRAFT'));
+      const resolvedDraft =
+        draft && !draft.id ? { ...draft, id: viewId } : draft;
+      const isWorking = Boolean(
+        e.detail?.working ||
+          (resolvedDraft && resolvedDraft.status === 'DRAFT'),
+      );
       ensureViewTab(viewId, {
         readOnly: e.detail?.readOnly,
         mode: e.detail?.openMode ?? 'new',
@@ -1421,7 +1775,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     };
 
     const onStudioViewExport = (event: Event) => {
-      const e = event as CustomEvent<{ viewId?: string; format?: 'png' | 'json' }>;
+      const e = event as CustomEvent<{
+        viewId?: string;
+        format?: 'png' | 'json';
+      }>;
       const viewId = (e.detail?.viewId ?? '').trim();
       if (!viewId) return;
       const format = e.detail?.format ?? 'json';
@@ -1429,11 +1786,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setPendingExport({ viewId, format });
     };
 
-    window.addEventListener('ea:studio.view.open', onStudioViewOpen as EventListener);
-    window.addEventListener('ea:studio.view.export', onStudioViewExport as EventListener);
+    window.addEventListener(
+      'ea:studio.view.open',
+      onStudioViewOpen as EventListener,
+    );
+    window.addEventListener(
+      'ea:studio.view.export',
+      onStudioViewExport as EventListener,
+    );
     return () => {
-      window.removeEventListener('ea:studio.view.open', onStudioViewOpen as EventListener);
-      window.removeEventListener('ea:studio.view.export', onStudioViewExport as EventListener);
+      window.removeEventListener(
+        'ea:studio.view.open',
+        onStudioViewOpen as EventListener,
+      );
+      window.removeEventListener(
+        'ea:studio.view.export',
+        onStudioViewExport as EventListener,
+      );
     };
   }, [ensureViewTab]);
 
@@ -1474,21 +1843,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     const refresh = () => {
       const tabState = viewTabStateByIdRef.current[activeTabKey];
-      const next = tabState?.isWorking ? tabState.view : (ViewStore.get(activeViewId) ?? null);
+      const next = tabState?.isWorking
+        ? tabState.view
+        : (ViewStore.get(activeViewId) ?? null);
       setActiveView(next);
       setViewTabStateById((prev) => {
         const existing = prev[activeTabKey];
         if (existing?.view === next) return prev;
         const positions = (next?.layoutMetadata as any)?.positions ?? {};
         const freeShapes = (next?.layoutMetadata as any)?.freeShapes ?? [];
-        const freeConnectors = (next?.layoutMetadata as any)?.freeConnectors ?? [];
+        const freeConnectors =
+          (next?.layoutMetadata as any)?.freeConnectors ?? [];
         return {
           ...prev,
           [activeTabKey]: {
             viewId: activeViewId,
             view: next,
             saveStatus: existing?.saveStatus ?? 'saved',
-            lastSavedSignature: existing?.lastSavedSignature ?? stableStringify({ positions, freeShapes, freeConnectors, viewport: (next?.layoutMetadata as any)?.viewport ?? null }),
+            lastSavedSignature:
+              existing?.lastSavedSignature ??
+              stableStringify({
+                positions,
+                freeShapes,
+                freeConnectors,
+                viewport: (next?.layoutMetadata as any)?.viewport ?? null,
+              }),
             isWorking: existing?.isWorking ?? false,
           },
         };
@@ -1512,8 +1891,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const connectionPointerActiveRef = React.useRef(false);
   const connectionDragLockRef = React.useRef(false);
   const [connectionDragLocked, setConnectionDragLocked] = React.useState(false);
-  const connectionDragPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map());
-  const connectionDragOriginRef = React.useRef<Map<string, { x: number; y: number }>>(new Map());
+  const connectionDragPositionsRef = React.useRef<
+    Map<string, { x: number; y: number }>
+  >(new Map());
+  const connectionDragOriginRef = React.useRef<
+    Map<string, { x: number; y: number }>
+  >(new Map());
   const skipCanvasRebuildRef = React.useRef(false);
   const persistWorkspaceRef = React.useRef<(() => void) | null>(null);
   const workspaceAutosavePendingRef = React.useRef(false);
@@ -1530,21 +1913,37 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const middlePanRafRef = React.useRef<number | null>(null);
   /** Accumulated pan delta between rAF frames for middle-mouse drag. */
   const middlePanDeltaRef = React.useRef({ dx: 0, dy: 0 });
-  const layoutUndoStackRef = React.useRef<Record<string, { x: number; y: number }>[]>([]);
-  const layoutRedoStackRef = React.useRef<Record<string, { x: number; y: number }>[]>([]);
-  const layoutDragSnapshotRef = React.useRef<Record<string, { x: number; y: number }> | null>(null);
+  const layoutUndoStackRef = React.useRef<
+    Record<string, { x: number; y: number }>[]
+  >([]);
+  const layoutRedoStackRef = React.useRef<
+    Record<string, { x: number; y: number }>[]
+  >([]);
+  const layoutDragSnapshotRef = React.useRef<Record<
+    string,
+    { x: number; y: number }
+  > | null>(null);
   const toolModeRef = React.useRef<StudioToolMode>('SELECT');
-  const relationshipEligibilityRef = React.useRef<Map<string, Set<string>>>(new Map());
-  const [alignmentGuides, setAlignmentGuides] = React.useState<{ x: number | null; y: number | null }>({
+  const relationshipEligibilityRef = React.useRef<Map<string, Set<string>>>(
+    new Map(),
+  );
+  const [alignmentGuides, setAlignmentGuides] = React.useState<{
+    x: number | null;
+    y: number | null;
+  }>({
     x: null,
     y: null,
   });
   const [commitOpen, setCommitOpen] = React.useState(false);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [repoEndpointOpen, setRepoEndpointOpen] = React.useState(false);
-  const [repoEndpointMode, setRepoEndpointMode] = React.useState<'source' | 'target'>('target');
+  const [repoEndpointMode, setRepoEndpointMode] = React.useState<
+    'source' | 'target'
+  >('target');
   const [toolMode, setToolMode] = React.useState<StudioToolMode>('SELECT');
-  const [lastAutoSaveAt, setLastAutoSaveAt] = React.useState<string | null>(null);
+  const [lastAutoSaveAt, setLastAutoSaveAt] = React.useState<string | null>(
+    null,
+  );
   const [isLargeGraph, setIsLargeGraph] = React.useState(false);
   const dragThrottleRef = React.useRef(0);
   const [relationshipDraft, setRelationshipDraft] = React.useState<{
@@ -1560,10 +1959,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
     message: null,
     dragging: false,
   });
-  const [relationshipChooser, setRelationshipChooser] = React.useState<RelationshipChooserState | null>(null);
+  const [relationshipChooser, setRelationshipChooser] =
+    React.useState<RelationshipChooserState | null>(null);
 
   // ─── Connection Resolution State (user-first EA connection system) ──
-  const connectionResolutionCacheRef = React.useRef<Map<string, ConnectionResolution>>(new Map());
+  const connectionResolutionCacheRef = React.useRef<
+    Map<string, ConnectionResolution>
+  >(new Map());
   const [connectionPalette, setConnectionPalette] = React.useState<{
     resolution: ConnectionResolution;
     position: { x: number; y: number };
@@ -1575,34 +1977,51 @@ const StudioShell: React.FC<StudioShellProps> = ({
     validIndirectPaths: any[];
     position: { x: number; y: number };
   } | null>(null);
-  const createdConnectionsRef = React.useRef<Map<string, CreatedConnection>>(new Map());
+  const createdConnectionsRef = React.useRef<Map<string, CreatedConnection>>(
+    new Map(),
+  );
   // ────────────────────────────────────────────────────────────────────
 
   const relationshipDraftRef = React.useRef(relationshipDraft);
-  const freeConnectorDragRef = React.useRef<{ sourceId: string | null; dragging: boolean }>({
+  const freeConnectorDragRef = React.useRef<{
+    sourceId: string | null;
+    dragging: boolean;
+  }>({
     sourceId: null,
     dragging: false,
   });
   const freeConnectorSourceIdRef = React.useRef<string | null>(null);
-  const pendingRelationshipTypeRef = React.useRef<RelationshipType | null>(null);
-  const pendingFreeConnectorKindRef = React.useRef<FreeConnectorKind | null>(null);
-  const intentConnectionRef = React.useRef<{ sourceId: string | null; active: boolean }>({
+  const pendingRelationshipTypeRef = React.useRef<RelationshipType | null>(
+    null,
+  );
+  const pendingFreeConnectorKindRef = React.useRef<FreeConnectorKind | null>(
+    null,
+  );
+  const intentConnectionRef = React.useRef<{
+    sourceId: string | null;
+    active: boolean;
+  }>({
     sourceId: null,
     active: false,
   });
-  const intentConnectionCandidatesRef = React.useRef<Map<string, RelationshipType[]>>(new Map());
+  const intentConnectionCandidatesRef = React.useRef<
+    Map<string, RelationshipType[]>
+  >(new Map());
   const suppressConnectionTapRef = React.useRef(false);
 
-  const updateRelationshipDraft = React.useCallback((next: {
-    sourceId: string | null;
-    targetId: string | null;
-    valid: boolean | null;
-    message: string | null;
-    dragging: boolean;
-  }) => {
-    relationshipDraftRef.current = next;
-    setRelationshipDraft(next);
-  }, []);
+  const updateRelationshipDraft = React.useCallback(
+    (next: {
+      sourceId: string | null;
+      targetId: string | null;
+      valid: boolean | null;
+      message: string | null;
+      dragging: boolean;
+    }) => {
+      relationshipDraftRef.current = next;
+      setRelationshipDraft(next);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     relationshipDraftRef.current = relationshipDraft;
@@ -1638,7 +2057,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     Governance: true,
   });
   const [gridSize, setGridSize] = React.useState(GRID_SIZE);
-  const [snapTemporarilyDisabled, setSnapTemporarilyDisabled] = React.useState(false);
+  const [snapTemporarilyDisabled, setSnapTemporarilyDisabled] =
+    React.useState(false);
 
   const snapToGridCenter = React.useCallback(
     (pos: { x: number; y: number }) => {
@@ -1651,46 +2071,47 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [gridSize],
   );
 
-  const [pendingElementType, setPendingElementType] = React.useState<ObjectType | null>(null);
-  const [pendingElementVisualKind, setPendingElementVisualKind] = React.useState<string | null>(null);
-  const [placement, setPlacement] = React.useState<{ x: number; y: number } | null>(null);
+  const [pendingElementType, setPendingElementType] =
+    React.useState<ObjectType | null>(null);
+  const [pendingElementVisualKind, setPendingElementVisualKind] =
+    React.useState<string | null>(null);
+  const [placement, setPlacement] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
-  const [pendingRelationshipType, setPendingRelationshipType] = React.useState<RelationshipType | null>(null);
-  const [relationshipSourceId, setRelationshipSourceId] = React.useState<string | null>(null);
-  const [relationshipTargetId, setRelationshipTargetId] = React.useState<string | null>(null);
+  const [pendingRelationshipType, setPendingRelationshipType] =
+    React.useState<RelationshipType | null>(null);
+  const [relationshipSourceId, setRelationshipSourceId] = React.useState<
+    string | null
+  >(null);
+  const [relationshipTargetId, setRelationshipTargetId] = React.useState<
+    string | null
+  >(null);
   const [auditPreviewOpen, setAuditPreviewOpen] = React.useState(false);
   const [propertiesExpanded, setPropertiesExpanded] = React.useState(false);
-  const [pendingElementDraft, setPendingElementDraft] = React.useState<
-    | {
-        type: ObjectType;
-        name: string;
-        description: string;
-        placement: { x: number; y: number } | null;
-        visualKind?: string | null;
-      }
-    | null
-  >(null);
-  const [pendingElementNameDraft, setPendingElementNameDraft] = React.useState<
-    | {
-        type: ObjectType;
-        name: string;
-        description: string;
-        visualKind?: string | null;
-      }
-    | null
-  >(null);
-  const [inlineNamePrompt, setInlineNamePrompt] = React.useState<InlineNamePrompt | null>(null);
+  const [pendingElementDraft, setPendingElementDraft] = React.useState<{
+    type: ObjectType;
+    name: string;
+    description: string;
+    placement: { x: number; y: number } | null;
+    visualKind?: string | null;
+  } | null>(null);
+  const [pendingElementNameDraft, setPendingElementNameDraft] = React.useState<{
+    type: ObjectType;
+    name: string;
+    description: string;
+    visualKind?: string | null;
+  } | null>(null);
+  const [inlineNamePrompt, setInlineNamePrompt] =
+    React.useState<InlineNamePrompt | null>(null);
   const [inlineNameValue, setInlineNameValue] = React.useState('');
   const inlineNameHandledRef = React.useRef(false);
-  const [pendingFreeShapeDraft, setPendingFreeShapeDraft] = React.useState<
-    | {
-        id: string;
-        kind: FreeShapeKind;
-      }
-    | null
-  >(null);
+  const [pendingFreeShapeDraft, setPendingFreeShapeDraft] = React.useState<{
+    id: string;
+    kind: FreeShapeKind;
+  } | null>(null);
   const [freeShapeModalOpen, setFreeShapeModalOpen] = React.useState(false);
-
 
   const handleOpenProperties = React.useCallback(() => {
     propertiesOverrideRef.current = true;
@@ -1719,7 +2140,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const activeViewpoint = React.useMemo(() => {
     if (activeViewIsWorking) return null;
-    const view = activeView ?? (viewContext?.viewId ? ViewStore.get(viewContext.viewId) : null);
+    const view =
+      activeView ??
+      (viewContext?.viewId ? ViewStore.get(viewContext.viewId) : null);
     if (!view) return null;
     return ViewpointRegistry.get(view.viewpointId) ?? null;
   }, [activeView, activeViewIsWorking, viewContext?.viewId]);
@@ -1736,10 +2159,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const frameworkFilteredElementTypes = React.useMemo(() => {
     if (!metadata) return paletteElementTypes;
     return paletteElementTypes.filter((type) => {
-      if (!isObjectTypeAllowedForReferenceFramework(metadata.referenceFramework, type)) return false;
+      if (
+        !isObjectTypeAllowedForReferenceFramework(
+          metadata.referenceFramework,
+          type,
+        )
+      )
+        return false;
       if (metadata.referenceFramework === 'Custom') {
-        if (!isCustomFrameworkModelingEnabled('Custom', metadata.frameworkConfig ?? undefined)) return false;
-        return isObjectTypeEnabledForFramework('Custom', metadata.frameworkConfig ?? undefined, type);
+        if (
+          !isCustomFrameworkModelingEnabled(
+            'Custom',
+            metadata.frameworkConfig ?? undefined,
+          )
+        )
+          return false;
+        return isObjectTypeEnabledForFramework(
+          'Custom',
+          metadata.frameworkConfig ?? undefined,
+          type,
+        );
       }
       return true;
     });
@@ -1755,16 +2194,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const toolboxComponentItems = React.useMemo(() => {
     const allowedTypeSet = new Set(visiblePaletteElementTypes);
-    return EA_VISUALS.filter((visual) => visual.layer !== 'Technology' && allowedTypeSet.has(visual.type));
+    return EA_VISUALS.filter(
+      (visual) =>
+        visual.layer !== 'Technology' && allowedTypeSet.has(visual.type),
+    );
   }, [visiblePaletteElementTypes]);
 
   const toolboxTechnologyItems = React.useMemo(() => {
     const allowedTypeSet = new Set(visiblePaletteElementTypes);
-    return EA_VISUALS.filter((visual) => visual.layer === 'Technology' && allowedTypeSet.has(visual.type));
+    return EA_VISUALS.filter(
+      (visual) =>
+        visual.layer === 'Technology' && allowedTypeSet.has(visual.type),
+    );
   }, [visiblePaletteElementTypes]);
 
   const paletteRelationships = React.useMemo(() => {
-    const allowed = EA_CONNECTOR_REGISTRY.map((entry) => entry.type) as RelationshipType[];
+    const allowed = EA_CONNECTOR_REGISTRY.map(
+      (entry) => entry.type,
+    ) as RelationshipType[];
     const visibleElementSet = new Set(visiblePaletteElementTypes);
     return allowed
       .map((type) => RELATIONSHIP_TYPE_DEFINITIONS[type])
@@ -1774,7 +2221,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (layerVisibility[relDef.layer] === false) return false;
         const pairs = relDef.allowedEndpointPairs ?? [];
         if (Array.isArray(pairs) && pairs.length > 0) {
-          return pairs.some((pair) => visibleElementSet.has(pair.from) && visibleElementSet.has(pair.to));
+          return pairs.some(
+            (pair) =>
+              visibleElementSet.has(pair.from) &&
+              visibleElementSet.has(pair.to),
+          );
         }
         return (
           relDef.fromTypes.some((from) => visibleElementSet.has(from)) &&
@@ -1791,7 +2242,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     (type?: ObjectType | null) => {
       if (!type) {
         return (
-          <span className={styles.studioTypeIcon} style={{ background: '#d9d9d9' }}>
+          <span
+            className={styles.studioTypeIcon}
+            style={{ background: '#d9d9d9' }}
+          >
             ?
           </span>
         );
@@ -1824,7 +2278,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     cy.batch(() => {
       cy.nodes().forEach((node) => {
         const elementType = node.data('elementType') as ObjectType | undefined;
-        const layer = elementType ? OBJECT_TYPE_DEFINITIONS[elementType]?.layer : null;
+        const layer = elementType
+          ? OBJECT_TYPE_DEFINITIONS[elementType]?.layer
+          : null;
         const visible = layer ? layerVisibility[layer] !== false : true;
         node.toggleClass('layerHidden', !visible);
       });
@@ -1837,16 +2293,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
     });
   }, [layerVisibility]);
 
-
   const stagedElementById = React.useMemo(() => {
     return new Map(stagedElements.map((e) => [e.id, e] as const));
   }, [stagedElements]);
 
-  const requiredElementAttributes = React.useCallback((type: ObjectType): string[] => {
-    const def = OBJECT_TYPE_DEFINITIONS[type];
-    if (!def || def.layer !== 'Technology') return [];
-    return def.attributes.filter((attr) => attr !== 'name' && attr !== 'description');
-  }, []);
+  const requiredElementAttributes = React.useCallback(
+    (type: ObjectType): string[] => {
+      const def = OBJECT_TYPE_DEFINITIONS[type];
+      if (!def || def.layer !== 'Technology') return [];
+      return def.attributes.filter(
+        (attr) => attr !== 'name' && attr !== 'description',
+      );
+    },
+    [],
+  );
 
   const validateStudioElementType = React.useCallback(
     (type: ObjectType): boolean => {
@@ -1861,28 +2321,55 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       if (metadata.referenceFramework === 'Custom') {
-        if (!isCustomFrameworkModelingEnabled('Custom', metadata.frameworkConfig ?? undefined)) {
-          message.warning('Custom framework: define at least one element type in Metamodel to enable modeling.');
+        if (
+          !isCustomFrameworkModelingEnabled(
+            'Custom',
+            metadata.frameworkConfig ?? undefined,
+          )
+        ) {
+          message.warning(
+            'Custom framework: define at least one element type in Metamodel to enable modeling.',
+          );
           return false;
         }
 
-        if (!isObjectTypeEnabledForFramework('Custom', metadata.frameworkConfig ?? undefined, type)) {
-          message.warning(`Custom framework: element type "${type}" is not enabled.`);
+        if (
+          !isObjectTypeEnabledForFramework(
+            'Custom',
+            metadata.frameworkConfig ?? undefined,
+            type,
+          )
+        ) {
+          message.warning(
+            `Custom framework: element type "${type}" is not enabled.`,
+          );
           return false;
         }
       }
 
-      if (!isObjectTypeAllowedForReferenceFramework(metadata.referenceFramework, type)) {
-        message.warning(`Type "${type}" is not enabled for the selected Reference Framework.`);
+      if (
+        !isObjectTypeAllowedForReferenceFramework(
+          metadata.referenceFramework,
+          type,
+        )
+      ) {
+        message.warning(
+          `Type "${type}" is not enabled for the selected Reference Framework.`,
+        );
         return false;
       }
 
       if (!hasRegisteredEaShape(type)) {
-        message.error(`EA Shape Registry mapping is missing for element type "${type}". Creation is blocked.`);
+        message.error(
+          `EA Shape Registry mapping is missing for element type "${type}". Creation is blocked.`,
+        );
         return false;
       }
 
-      const lifecycleGuard = canCreateObjectTypeForLifecycleCoverage(metadata.lifecycleCoverage, type);
+      const lifecycleGuard = canCreateObjectTypeForLifecycleCoverage(
+        metadata.lifecycleCoverage,
+        type,
+      );
       if (!lifecycleGuard.ok) {
         message.warning(lifecycleGuard.reason);
         return false;
@@ -1893,25 +2380,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [metadata],
   );
 
-  const toCanvasPosition = React.useCallback((clientX: number, clientY: number) => {
-    if (!containerRef.current || !cyRef.current) return { x: 0, y: 0 };
-    const rect = containerRef.current.getBoundingClientRect();
-    const renderedX = clientX - rect.left;
-    const renderedY = clientY - rect.top;
-    const pan = cyRef.current.pan();
-    const zoom = cyRef.current.zoom();
-    return {
-      x: (renderedX - pan.x) / zoom,
-      y: (renderedY - pan.y) / zoom,
-    };
-  }, []);
+  const toCanvasPosition = React.useCallback(
+    (clientX: number, clientY: number) => {
+      if (!containerRef.current || !cyRef.current) return { x: 0, y: 0 };
+      const rect = containerRef.current.getBoundingClientRect();
+      const renderedX = clientX - rect.left;
+      const renderedY = clientY - rect.top;
+      const pan = cyRef.current.pan();
+      const zoom = cyRef.current.zoom();
+      return {
+        x: (renderedX - pan.x) / zoom,
+        y: (renderedY - pan.y) / zoom,
+      };
+    },
+    [],
+  );
 
-  const toRenderedPosition = React.useCallback((pos: { x: number; y: number }) => {
-    if (!cyRef.current) return null;
-    const zoom = cyRef.current.zoom();
-    const pan = cyRef.current.pan();
-    return { x: pos.x * zoom + pan.x, y: pos.y * zoom + pan.y };
-  }, []);
+  const toRenderedPosition = React.useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!cyRef.current) return null;
+      const zoom = cyRef.current.zoom();
+      const pan = cyRef.current.pan();
+      return { x: pos.x * zoom + pan.x, y: pos.y * zoom + pan.y };
+    },
+    [],
+  );
 
   const captureLayoutSnapshot = React.useCallback(() => {
     if (!cyRef.current) return null;
@@ -1924,15 +2417,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return snapshot;
   }, []);
 
-  const layoutSnapshotSignature = React.useCallback((snapshot: Record<string, { x: number; y: number }>) => {
-    return Object.keys(snapshot)
-      .sort()
-      .map((id) => {
-        const pos = snapshot[id];
-        return `${id}:${pos.x.toFixed(2)},${pos.y.toFixed(2)}`;
-      })
-      .join('|');
-  }, []);
+  const layoutSnapshotSignature = React.useCallback(
+    (snapshot: Record<string, { x: number; y: number }>) => {
+      return Object.keys(snapshot)
+        .sort()
+        .map((id) => {
+          const pos = snapshot[id];
+          return `${id}:${pos.x.toFixed(2)},${pos.y.toFixed(2)}`;
+        })
+        .join('|');
+    },
+    [],
+  );
 
   const applyLayoutSnapshot = React.useCallback(
     (snapshot: Record<string, { x: number; y: number }>) => {
@@ -1981,24 +2477,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return true;
   }, [applyLayoutSnapshot, captureLayoutSnapshot]);
 
-
-
-  const findNodeAtPosition = React.useCallback((pos: { x: number; y: number }) => {
-    if (!cyRef.current) return null;
-    const cy = cyRef.current;
-    const nodes = cy.nodes().filter((n) => {
-      if (n.data('draftTarget')) return false;
-      const bb = n.boundingBox({ includeNodes: true, includeLabels: false, includeShadows: false });
-      return pos.x >= bb.x1 && pos.x <= bb.x2 && pos.y >= bb.y1 && pos.y <= bb.y2;
-    });
-    return nodes.length ? nodes[0] : null;
-  }, []);
-
+  const findNodeAtPosition = React.useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!cyRef.current) return null;
+      const cy = cyRef.current;
+      const nodes = cy.nodes().filter((n) => {
+        if (n.data('draftTarget')) return false;
+        const bb = n.boundingBox({
+          includeNodes: true,
+          includeLabels: false,
+          includeShadows: false,
+        });
+        return (
+          pos.x >= bb.x1 && pos.x <= bb.x2 && pos.y >= bb.y1 && pos.y <= bb.y2
+        );
+      });
+      return nodes.length ? nodes[0] : null;
+    },
+    [],
+  );
 
   const getCanvasCenterPosition = React.useCallback(() => {
     if (!containerRef.current || !cyRef.current) return null;
     const rect = containerRef.current.getBoundingClientRect();
-    return toCanvasPosition(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return toCanvasPosition(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
   }, [toCanvasPosition]);
 
   const inlinePromptPosition = React.useMemo(() => {
@@ -2006,9 +2511,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const rect = containerRef.current?.getBoundingClientRect();
     const offsetX = rect?.left ?? 0;
     const offsetY = rect?.top ?? 0;
-    if (inlineNamePrompt.anchor === 'overlay') return { x: offsetX + 12, y: offsetY + 12 };
+    if (inlineNamePrompt.anchor === 'overlay')
+      return { x: offsetX + 12, y: offsetY + 12 };
     let rendered: { x: number; y: number } | null = null;
-    if (inlineNamePrompt.mode === 'rename' && inlineNamePrompt.nodeId && cyRef.current) {
+    if (
+      inlineNamePrompt.mode === 'rename' &&
+      inlineNamePrompt.nodeId &&
+      cyRef.current
+    ) {
       const node = cyRef.current.getElementById(inlineNamePrompt.nodeId);
       if (node && !node.empty()) {
         const pos = node.position();
@@ -2023,8 +2533,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [inlineNamePrompt, toRenderedPosition]);
 
   const openInlineCreatePrompt = React.useCallback(
-    (args: { type: ObjectType; placement: { x: number; y: number }; visualKind?: string | null; anchor?: 'node' | 'overlay' }) => {
-      const label = resolveElementVisualLabel(args.type, args.visualKind ?? null);
+    (args: {
+      type: ObjectType;
+      placement: { x: number; y: number };
+      visualKind?: string | null;
+      anchor?: 'node' | 'overlay';
+    }) => {
+      const label = resolveElementVisualLabel(
+        args.type,
+        args.visualKind ?? null,
+      );
       inlineNameHandledRef.current = false;
       setInlineNamePrompt({
         mode: 'create',
@@ -2057,7 +2575,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       description: '',
       viewpointId: defaultViewpointId,
       scope: { kind: 'ManualSelection', elementIds: [] },
-      layoutMetadata: { workingView: true, positions: {}, visibleElementIds: [], visibleRelationshipIds: [], freeShapes: [], freeConnectors: [] },
+      layoutMetadata: {
+        workingView: true,
+        positions: {},
+        visibleElementIds: [],
+        visibleRelationshipIds: [],
+        freeShapes: [],
+        freeConnectors: [],
+      },
       createdAt: now,
       createdBy: actor,
       status: 'DRAFT',
@@ -2069,11 +2594,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!restoredTabs) return;
     if (viewTabs.length > 0) return;
     const workingView = createWorkingView();
-    ensureViewTab(workingView.id, { mode: 'new', view: workingView, isWorking: true });
+    ensureViewTab(workingView.id, {
+      mode: 'new',
+      view: workingView,
+      isWorking: true,
+    });
   }, [createWorkingView, ensureViewTab, restoredTabs, viewTabs.length]);
 
   const addFreeShape = React.useCallback(
-    (kind: FreeShapeKind, position: { x: number; y: number }, labelOverride?: string) => {
+    (
+      kind: FreeShapeKind,
+      position: { x: number; y: number },
+      labelOverride?: string,
+    ) => {
       if (repositoryOnlyCanvas) {
         rejectVisualOnlyAction('Free shape');
         return null;
@@ -2131,21 +2664,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [addFreeShape, freeShapeForm, rejectVisualOnlyAction, repositoryOnlyCanvas],
   );
 
-  const updateFreeShape = React.useCallback((id: string, patch: Partial<FreeShape>) => {
-    if (repositoryOnlyCanvas) {
-      rejectVisualOnlyAction('Free shape');
-      return;
-    }
-    setFreeShapes((prev) =>
-      prev.map((shape) => (shape.id === id ? { ...shape, ...patch } : shape)),
-    );
-    if (!cyRef.current) return;
-    const node = cyRef.current.getElementById(id);
-    if (!node || node.empty()) return;
-    if (typeof patch.label === 'string') node.data('label', patch.label);
-    if (typeof patch.width === 'number') node.data('width', patch.width);
-    if (typeof patch.height === 'number') node.data('height', patch.height);
-  }, [rejectVisualOnlyAction, repositoryOnlyCanvas]);
+  const updateFreeShape = React.useCallback(
+    (id: string, patch: Partial<FreeShape>) => {
+      if (repositoryOnlyCanvas) {
+        rejectVisualOnlyAction('Free shape');
+        return;
+      }
+      setFreeShapes((prev) =>
+        prev.map((shape) => (shape.id === id ? { ...shape, ...patch } : shape)),
+      );
+      if (!cyRef.current) return;
+      const node = cyRef.current.getElementById(id);
+      if (!node || node.empty()) return;
+      if (typeof patch.label === 'string') node.data('label', patch.label);
+      if (typeof patch.width === 'number') node.data('width', patch.width);
+      if (typeof patch.height === 'number') node.data('height', patch.height);
+    },
+    [rejectVisualOnlyAction, repositoryOnlyCanvas],
+  );
 
   const currentRepositoryUpdatedAt = React.useMemo(() => {
     try {
@@ -2160,24 +2696,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const repositoryOnlyCanvas = true;
 
-  const declareModelingAction = React.useCallback((decl: CanvasModelingDeclaration) => {
-    const flags = `createElement=${decl.createsElement ? 'yes' : 'no'} reuseElement=${decl.reusesElement ? 'yes' : 'no'} createRelationship=${decl.createsRelationship ? 'yes' : 'no'}`;
-    const source = decl.source ?? 'unknown';
-    const target = decl.elementId
-      ? ` element=${decl.elementId}`
-      : decl.fromId && decl.toId
-        ? ` from=${decl.fromId} to=${decl.toId}`
-        : '';
-    eaConsole.push({
-      level: 'info',
-      domain: 'repository',
-      message: `Canvas action declared: ${flags}; source=${source}.${target}`.trim(),
-      context: { elementId: decl.elementId, relationshipType: decl.relationshipType },
-    });
-  }, []);
+  const declareModelingAction = React.useCallback(
+    (decl: CanvasModelingDeclaration) => {
+      const flags = `createElement=${decl.createsElement ? 'yes' : 'no'} reuseElement=${decl.reusesElement ? 'yes' : 'no'} createRelationship=${decl.createsRelationship ? 'yes' : 'no'}`;
+      const source = decl.source ?? 'unknown';
+      const target = decl.elementId
+        ? ` element=${decl.elementId}`
+        : decl.fromId && decl.toId
+          ? ` from=${decl.fromId} to=${decl.toId}`
+          : '';
+      eaConsole.push({
+        level: 'info',
+        domain: 'repository',
+        message:
+          `Canvas action declared: ${flags}; source=${source}.${target}`.trim(),
+        context: {
+          elementId: decl.elementId,
+          relationshipType: decl.relationshipType,
+        },
+      });
+    },
+    [],
+  );
 
   const rejectVisualOnlyAction = React.useCallback((label: string) => {
-    message.warning(`${label} blocked: canvas is view-only. Create repository elements/relationships instead.`);
+    message.warning(
+      `${label} blocked: canvas is view-only. Create repository elements/relationships instead.`,
+    );
     eaConsole.push({
       level: 'warning',
       domain: 'canvas',
@@ -2210,7 +2755,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (!node || node.empty()) return;
       const pos = node.position();
       inlineNameHandledRef.current = false;
-      setInlineNamePrompt({ mode: 'rename', type: resolved.type, placement: { x: pos.x, y: pos.y }, nodeId });
+      setInlineNamePrompt({
+        mode: 'rename',
+        type: resolved.type,
+        placement: { x: pos.x, y: pos.y },
+        nodeId,
+      });
       setInlineNameValue(resolved.label ?? '');
       setPendingElementType(null);
       setPendingElementVisualKind(null);
@@ -2222,12 +2772,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [resolveElementLabel, userRole, viewReadOnly],
   );
 
-  const hierarchyRelationshipType = React.useMemo<RelationshipType | null>(() => {
-    if (!activeViewpoint?.allowedRelationshipTypes?.length) return null;
-    if (activeViewpoint.allowedRelationshipTypes.includes('DECOMPOSES_TO')) return 'DECOMPOSES_TO';
-    if (activeViewpoint.allowedRelationshipTypes.includes('COMPOSED_OF')) return 'COMPOSED_OF';
-    return null;
-  }, [activeViewpoint]);
+  const hierarchyRelationshipType =
+    React.useMemo<RelationshipType | null>(() => {
+      if (!activeViewpoint?.allowedRelationshipTypes?.length) return null;
+      if (activeViewpoint.allowedRelationshipTypes.includes('DECOMPOSES_TO'))
+        return 'DECOMPOSES_TO';
+      if (activeViewpoint.allowedRelationshipTypes.includes('COMPOSED_OF'))
+        return 'COMPOSED_OF';
+      return null;
+    }, [activeViewpoint]);
 
   const isHierarchicalView = Boolean(hierarchyRelationshipType);
 
@@ -2244,39 +2797,62 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [visiblePaletteElementTypes]);
 
   const resolveChildCreationSpec = React.useCallback(
-    (parentType: ObjectType | null): { relationshipType: RelationshipType; childType: ObjectType } | null => {
+    (
+      parentType: ObjectType | null,
+    ): { relationshipType: RelationshipType; childType: ObjectType } | null => {
       if (!parentType) return null;
       if (!hierarchyRelationshipType) return null;
       const relDef = RELATIONSHIP_TYPE_DEFINITIONS[hierarchyRelationshipType];
       if (!relDef) return null;
       const parentDef = OBJECT_TYPE_DEFINITIONS[parentType];
-      if (!parentDef?.allowedOutgoingRelationships?.includes(hierarchyRelationshipType)) return null;
+      if (
+        !parentDef?.allowedOutgoingRelationships?.includes(
+          hierarchyRelationshipType,
+        )
+      )
+        return null;
 
-      const allowedByView = (activeViewpoint?.allowedElementTypes ?? []) as ObjectType[];
+      const allowedByView = (activeViewpoint?.allowedElementTypes ??
+        []) as ObjectType[];
       const candidateTypes = (() => {
         const pairs = relDef.allowedEndpointPairs ?? [];
         if (Array.isArray(pairs) && pairs.length > 0) {
-          return pairs.filter((p) => p.from === parentType).map((p) => p.to as ObjectType);
+          return pairs
+            .filter((p) => p.from === parentType)
+            .map((p) => p.to as ObjectType);
         }
         if (!relDef.fromTypes.includes(parentType)) return [] as ObjectType[];
         return relDef.toTypes as ObjectType[];
       })();
 
-      const filtered = candidateTypes.filter((type) => allowedByView.length === 0 || allowedByView.includes(type));
+      const filtered = candidateTypes.filter(
+        (type) => allowedByView.length === 0 || allowedByView.includes(type),
+      );
       const preferredByParent: Partial<Record<ObjectType, ObjectType>> = {
         CapabilityCategory: 'Capability',
         Capability: 'SubCapability',
       };
       const preferred = preferredByParent[parentType];
       if (preferred && filtered.includes(preferred)) {
-        return { relationshipType: hierarchyRelationshipType, childType: preferred };
+        return {
+          relationshipType: hierarchyRelationshipType,
+          childType: preferred,
+        };
       }
       if (filtered.length > 0) {
-        return { relationshipType: hierarchyRelationshipType, childType: filtered[0] };
+        return {
+          relationshipType: hierarchyRelationshipType,
+          childType: filtered[0],
+        };
       }
       if (allowedByView.length > 0) {
-        const fallback = allowedByView.find((type) => type !== parentType) ?? allowedByView[0];
-        if (fallback) return { relationshipType: hierarchyRelationshipType, childType: fallback };
+        const fallback =
+          allowedByView.find((type) => type !== parentType) ?? allowedByView[0];
+        if (fallback)
+          return {
+            relationshipType: hierarchyRelationshipType,
+            childType: fallback,
+          };
       }
       return null;
     },
@@ -2297,7 +2873,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
   );
 
   const selectedStagedElements = React.useMemo(() => {
-    if (selectedNodeIds.length === 0) return [] as DesignWorkspaceStagedElement[];
+    if (selectedNodeIds.length === 0)
+      return [] as DesignWorkspaceStagedElement[];
     const selectedSet = new Set(selectedNodeIds);
     return stagedElements.filter((e) => selectedSet.has(e.id));
   }, [selectedNodeIds, stagedElements]);
@@ -2320,11 +2897,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const stagedSelectedRelationshipExistsInRepo = React.useMemo(() => {
     if (!stagedSelectedRelationship || !eaRepository) return false;
     return Boolean(
-      eaRepository.relationships.find((rel) =>
-        rel.id === stagedSelectedRelationship.id ||
-        (rel.fromId === stagedSelectedRelationship.fromId &&
-          rel.toId === stagedSelectedRelationship.toId &&
-          rel.type === stagedSelectedRelationship.type),
+      eaRepository.relationships.find(
+        (rel) =>
+          rel.id === stagedSelectedRelationship.id ||
+          (rel.fromId === stagedSelectedRelationship.fromId &&
+            rel.toId === stagedSelectedRelationship.toId &&
+            rel.type === stagedSelectedRelationship.type),
       ),
     );
   }, [eaRepository, stagedSelectedRelationship]);
@@ -2354,6 +2932,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
     cyRef.current.animate({ center: { eles: node }, duration: 220 });
   }, [selection.selectedElementId, selection.selectedSource]);
 
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ elementId?: string }>).detail;
+      const targetId = String(detail?.elementId ?? '').trim();
+      if (!targetId || !cyRef.current) return;
+      const node = cyRef.current.getElementById(targetId);
+      if (!node || node.empty()) return;
+      setSelectedNodeIds([targetId]);
+      node.select();
+      cyRef.current.animate({ center: { eles: node }, duration: 220 });
+    };
+    window.addEventListener('ea:studio.focus', handler as EventListener);
+    return () =>
+      window.removeEventListener('ea:studio.focus', handler as EventListener);
+  }, []);
+
   const selectedChildCreationSpec = React.useMemo(() => {
     if (!selectedNodeType) return null;
     return resolveChildCreationSpec(selectedNodeType);
@@ -2361,12 +2955,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const canAddChild = Boolean(
     activeViewId &&
-    activeTabKey !== WORKSPACE_TAB_KEY &&
-    selectedNodeId &&
-    selectedChildCreationSpec &&
-    canDiagramMode &&
-    !viewReadOnly &&
-    designWorkspace.status === 'DRAFT',
+      activeTabKey !== WORKSPACE_TAB_KEY &&
+      selectedNodeId &&
+      selectedChildCreationSpec &&
+      canDiagramMode &&
+      !viewReadOnly &&
+      designWorkspace.status === 'DRAFT',
   );
 
   const canContextMenuDecompose = React.useMemo(() => {
@@ -2376,7 +2970,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (viewReadOnly || designWorkspace.status !== 'DRAFT') return false;
     const nodeType = resolveElementLabel(nodeContextMenu.nodeId)?.type ?? null;
     return Boolean(nodeType && resolveChildCreationSpec(nodeType));
-  }, [activeTabKey, activeViewId, canDiagramMode, designWorkspace.status, nodeContextMenu?.nodeId, resolveChildCreationSpec, resolveElementLabel, viewReadOnly]);
+  }, [
+    activeTabKey,
+    activeViewId,
+    canDiagramMode,
+    designWorkspace.status,
+    nodeContextMenu?.nodeId,
+    resolveChildCreationSpec,
+    resolveElementLabel,
+    viewReadOnly,
+  ]);
 
   const selectedExistingElement = React.useMemo(() => {
     if (!iterativeModeling || !selectedNodeId) return null;
@@ -2399,7 +3002,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (selectedExistingElement) {
       const name = (selectedExistingElement.attributes as any)?.name;
       return {
-        name: typeof name === 'string' && name.trim() ? name.trim() : selectedExistingElement.id,
+        name:
+          typeof name === 'string' && name.trim()
+            ? name.trim()
+            : selectedExistingElement.id,
         type: selectedExistingElement.type,
       };
     }
@@ -2408,7 +3014,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (resolved) return { name: resolved.label, type: resolved.type };
     }
     return null;
-  }, [resolveElementLabel, selectedExistingElement, selectedNodeId, stagedSelectedElement]);
+  }, [
+    resolveElementLabel,
+    selectedExistingElement,
+    selectedNodeId,
+    stagedSelectedElement,
+  ]);
 
   const compactWarningCount = React.useMemo(() => {
     if (!validationGateOpen || !validationSummary) return 0;
@@ -2444,7 +3055,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!iterativeModeling || !selectedEdgeId) return null;
     if (stagedSelectedRelationship) return null;
     return resolveExistingRelationship(selectedEdgeId);
-  }, [iterativeModeling, resolveExistingRelationship, selectedEdgeId, stagedSelectedRelationship]);
+  }, [
+    iterativeModeling,
+    resolveExistingRelationship,
+    selectedEdgeId,
+    stagedSelectedRelationship,
+  ]);
 
   React.useEffect(() => {
     if (!stagedSelectedRelationship) {
@@ -2452,7 +3068,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
       return;
     }
 
-    const relDef = RELATIONSHIP_TYPE_DEFINITIONS[stagedSelectedRelationship.type];
+    const relDef =
+      RELATIONSHIP_TYPE_DEFINITIONS[stagedSelectedRelationship.type];
     const attrs = stagedSelectedRelationship.attributes ?? {};
     const nextValues: Record<string, string> = {};
     (relDef?.attributes ?? []).forEach((attr) => {
@@ -2466,7 +3083,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
     });
     relationshipAttributesForm.setFieldsValue(nextValues);
-  }, [relationshipAttributesForm, stagedSelectedRelationship?.id, stagedSelectedRelationship?.type]);
+  }, [
+    relationshipAttributesForm,
+    stagedSelectedRelationship?.id,
+    stagedSelectedRelationship?.type,
+  ]);
 
   const deleteStagedElement = React.useCallback(
     (elementId: string) => {
@@ -2474,7 +3095,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const applied = applyRepositoryTransaction((repo) => {
         if (!repo.objects.has(elementId)) return { ok: true } as const;
         repo.objects.delete(elementId);
-        repo.relationships = repo.relationships.filter((r) => r.fromId !== elementId && r.toId !== elementId);
+        repo.relationships = repo.relationships.filter(
+          (r) => r.fromId !== elementId && r.toId !== elementId,
+        );
         return { ok: true } as const;
       });
       if (!applied.ok) {
@@ -2482,11 +3105,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
         return;
       }
       setStagedElements((prev) => prev.filter((el) => el.id !== elementId));
-      setStagedRelationships((prev) => prev.filter((rel) => rel.fromId !== elementId && rel.toId !== elementId));
+      setStagedRelationships((prev) =>
+        prev.filter(
+          (rel) => rel.fromId !== elementId && rel.toId !== elementId,
+        ),
+      );
       if (cyRef.current) {
         const cy = cyRef.current;
         cy.remove(`node#${elementId}`);
-        cy.edges().filter((e) => e.data('source') === elementId || e.data('target') === elementId).remove();
+        cy.edges()
+          .filter(
+            (e) =>
+              e.data('source') === elementId || e.data('target') === elementId,
+          )
+          .remove();
         setIsLargeGraph(cy.nodes().length > LARGE_GRAPH_THRESHOLD);
       }
       setSelectedNodeIds((prev) => prev.filter((id) => id !== elementId));
@@ -2494,44 +3126,67 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // WRITE-THROUGH: persist workspace immediately after element deletion
       persistWorkspaceDebounced(100);
     },
-    [applyRepositoryTransaction, persistWorkspaceDebounced, removeElementFromAllViews],
+    [
+      applyRepositoryTransaction,
+      persistWorkspaceDebounced,
+      removeElementFromAllViews,
+    ],
   );
 
   const removeElementFromView = React.useCallback(
     (elementId: string) => {
       setValidationGateOpen(true);
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       if (isViewCanvas && activeView) {
         let nextView: ViewInstance = activeView;
         let didUpdate = false;
 
         if (activeView.scope.kind === 'ManualSelection') {
-          const currentIds = Array.isArray(activeView.scope.elementIds) ? activeView.scope.elementIds : [];
+          const currentIds = Array.isArray(activeView.scope.elementIds)
+            ? activeView.scope.elementIds
+            : [];
           if (currentIds.includes(elementId)) {
             nextView = {
               ...nextView,
-              scope: { kind: 'ManualSelection', elementIds: currentIds.filter((id) => id !== elementId) },
+              scope: {
+                kind: 'ManualSelection',
+                elementIds: currentIds.filter((id) => id !== elementId),
+              },
             };
             didUpdate = true;
           }
         }
 
         const layoutMetadata = nextView.layoutMetadata ?? {};
-        const positions = (layoutMetadata as any)?.positions as Record<string, { x: number; y: number }> | undefined;
+        const positions = (layoutMetadata as any)?.positions as
+          | Record<string, { x: number; y: number }>
+          | undefined;
         if (positions && positions[elementId]) {
           const nextPositions = { ...positions };
           delete nextPositions[elementId];
-          nextView = { ...nextView, layoutMetadata: { ...layoutMetadata, positions: nextPositions } };
+          nextView = {
+            ...nextView,
+            layoutMetadata: { ...layoutMetadata, positions: nextPositions },
+          };
           didUpdate = true;
         }
 
-        const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as string[] | undefined;
-        if (Array.isArray(visibleElementIds) && visibleElementIds.includes(elementId)) {
+        const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as
+          | string[]
+          | undefined;
+        if (
+          Array.isArray(visibleElementIds) &&
+          visibleElementIds.includes(elementId)
+        ) {
           nextView = {
             ...nextView,
             layoutMetadata: {
               ...layoutMetadata,
-              visibleElementIds: visibleElementIds.filter((id) => id !== elementId),
+              visibleElementIds: visibleElementIds.filter(
+                (id) => id !== elementId,
+              ),
             },
           };
           didUpdate = true;
@@ -2539,20 +3194,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
         // VIEW ISOLATION: Also remove relationships connected to this element
         // from the view's visibleRelationshipIds
-        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds)
+          ? [...nextView.visibleRelationshipIds]
+          : [];
         if (currentRelIds.length > 0 && eaRepository) {
           const connectedRelIds = new Set(
             eaRepository.relationships
-              .filter((rel) => rel.fromId === elementId || rel.toId === elementId)
-              .map((rel) => rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`),
+              .filter(
+                (rel) => rel.fromId === elementId || rel.toId === elementId,
+              )
+              .map(
+                (rel) => rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
+              ),
           );
-          const filteredRelIds = currentRelIds.filter((id) => !connectedRelIds.has(id));
+          const filteredRelIds = currentRelIds.filter(
+            (id) => !connectedRelIds.has(id),
+          );
           if (filteredRelIds.length !== currentRelIds.length) {
             nextView = { ...nextView, visibleRelationshipIds: filteredRelIds };
             const nextLayoutMeta = nextView.layoutMetadata ?? {};
             nextView = {
               ...nextView,
-              layoutMetadata: { ...nextLayoutMeta, visibleRelationshipIds: filteredRelIds },
+              layoutMetadata: {
+                ...nextLayoutMeta,
+                visibleRelationshipIds: filteredRelIds,
+              },
             };
             didUpdate = true;
           }
@@ -2575,18 +3241,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
       }
       setStagedElements((prev) => prev.filter((el) => el.id !== elementId));
-      setStagedRelationships((prev) => prev.filter((rel) => rel.fromId !== elementId && rel.toId !== elementId));
+      setStagedRelationships((prev) =>
+        prev.filter(
+          (rel) => rel.fromId !== elementId && rel.toId !== elementId,
+        ),
+      );
       if (cyRef.current) {
         const cy = cyRef.current;
         cy.remove(`node#${elementId}`);
-        cy.edges().filter((e) => e.data('source') === elementId || e.data('target') === elementId).remove();
+        cy.edges()
+          .filter(
+            (e) =>
+              e.data('source') === elementId || e.data('target') === elementId,
+          )
+          .remove();
         setIsLargeGraph(cy.nodes().length > LARGE_GRAPH_THRESHOLD);
       }
       setSelectedNodeIds((prev) => prev.filter((id) => id !== elementId));
       // WRITE-THROUGH: persist workspace immediately after element removal from view
       persistWorkspaceDebounced(100);
     },
-    [activeTabKey, activeView, activeViewId, persistWorkspaceDebounced, setViewTabStateById],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      persistWorkspaceDebounced,
+      setViewTabStateById,
+    ],
   );
 
   const removeElementFromAllViews = React.useCallback((elementId: string) => {
@@ -2599,32 +3280,49 @@ const StudioShell: React.FC<StudioShellProps> = ({
       let changed = false;
 
       if (view.scope?.kind === 'ManualSelection') {
-        const currentIds = Array.isArray(view.scope.elementIds) ? view.scope.elementIds : [];
+        const currentIds = Array.isArray(view.scope.elementIds)
+          ? view.scope.elementIds
+          : [];
         if (currentIds.includes(elementId)) {
           next = {
             ...next,
-            scope: { kind: 'ManualSelection', elementIds: currentIds.filter((id) => id !== elementId) },
+            scope: {
+              kind: 'ManualSelection',
+              elementIds: currentIds.filter((id) => id !== elementId),
+            },
           };
           changed = true;
         }
       }
 
       const layoutMetadata = next.layoutMetadata ?? {};
-      const positions = (layoutMetadata as any)?.positions as Record<string, { x: number; y: number }> | undefined;
+      const positions = (layoutMetadata as any)?.positions as
+        | Record<string, { x: number; y: number }>
+        | undefined;
       if (positions && positions[elementId]) {
         const nextPositions = { ...positions };
         delete nextPositions[elementId];
-        next = { ...next, layoutMetadata: { ...layoutMetadata, positions: nextPositions } };
+        next = {
+          ...next,
+          layoutMetadata: { ...layoutMetadata, positions: nextPositions },
+        };
         changed = true;
       }
 
-      const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as string[] | undefined;
-      if (Array.isArray(visibleElementIds) && visibleElementIds.includes(elementId)) {
+      const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as
+        | string[]
+        | undefined;
+      if (
+        Array.isArray(visibleElementIds) &&
+        visibleElementIds.includes(elementId)
+      ) {
         next = {
           ...next,
           layoutMetadata: {
             ...layoutMetadata,
-            visibleElementIds: visibleElementIds.filter((id) => id !== elementId),
+            visibleElementIds: visibleElementIds.filter(
+              (id) => id !== elementId,
+            ),
           },
         };
         changed = true;
@@ -2650,7 +3348,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     (elementIds: string[]) => {
       if (elementIds.length === 0) return;
       Modal.confirm({
-        title: elementIds.length > 1 ? `Remove ${elementIds.length} elements?` : 'Remove element?',
+        title:
+          elementIds.length > 1
+            ? `Remove ${elementIds.length} elements?`
+            : 'Remove element?',
         content: 'Remove from view or delete from repository?',
         okText: 'Delete from repository',
         okButtonProps: { danger: true },
@@ -2672,35 +3373,55 @@ const StudioShell: React.FC<StudioShellProps> = ({
     (relationshipId: string) => {
       setValidationGateOpen(true);
       const applied = applyRepositoryTransaction((repo) => {
-        repo.relationships = repo.relationships.filter((r) => r.id !== relationshipId);
+        repo.relationships = repo.relationships.filter(
+          (r) => r.id !== relationshipId,
+        );
         return { ok: true } as const;
       });
       if (!applied.ok) {
         message.error(applied.error);
         return;
       }
-      setStagedRelationships((prev) => prev.filter((rel) => rel.id !== relationshipId));
+      setStagedRelationships((prev) =>
+        prev.filter((rel) => rel.id !== relationshipId),
+      );
       if (cyRef.current) {
         cyRef.current.remove(`edge#${relationshipId}`);
       }
       setSelectedEdgeId((prev) => (prev === relationshipId ? null : prev));
 
       // VIEW ISOLATION: remove relationship from active view's visibleRelationshipIds
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       if (isViewCanvas && activeView) {
-        const currentRelIds = Array.isArray(activeView.visibleRelationshipIds) ? [...activeView.visibleRelationshipIds] : [];
+        const currentRelIds = Array.isArray(activeView.visibleRelationshipIds)
+          ? [...activeView.visibleRelationshipIds]
+          : [];
         if (currentRelIds.includes(relationshipId)) {
-          const nextRelIds = currentRelIds.filter((id) => id !== relationshipId);
+          const nextRelIds = currentRelIds.filter(
+            (id) => id !== relationshipId,
+          );
           const nextView: ViewInstance = {
             ...activeView,
             visibleRelationshipIds: nextRelIds,
-            layoutMetadata: { ...(activeView.layoutMetadata ?? {}), visibleRelationshipIds: nextRelIds },
+            layoutMetadata: {
+              ...(activeView.layoutMetadata ?? {}),
+              visibleRelationshipIds: nextRelIds,
+            },
           };
           setActiveView(nextView);
           setViewTabStateById((prev) => {
             const existing = prev[activeTabKey];
             if (!existing) return prev;
-            return { ...prev, [activeTabKey]: { ...existing, view: nextView, saveStatus: 'dirty' } };
+            return {
+              ...prev,
+              [activeTabKey]: {
+                ...existing,
+                view: nextView,
+                saveStatus: 'dirty',
+              },
+            };
           });
         }
       }
@@ -2708,7 +3429,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // WRITE-THROUGH: persist workspace immediately after relationship deletion
       persistWorkspaceDebounced(100);
     },
-    [activeTabKey, activeView, activeViewId, applyRepositoryTransaction, persistWorkspaceDebounced, setViewTabStateById],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      applyRepositoryTransaction,
+      persistWorkspaceDebounced,
+      setViewTabStateById,
+    ],
   );
 
   const clearRelationshipDraftArtifacts = React.useCallback(() => {
@@ -2716,7 +3444,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const cy = cyRef.current;
     cy.getElementById(DRAFT_EDGE_ID)?.remove();
     removeDraftTarget();
-    cy.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+    cy.nodes()
+      .removeClass('validTarget')
+      .removeClass('invalidTarget')
+      .removeClass('validTargetCandidate')
+      .removeClass('connectionSource');
   }, [removeDraftTarget]);
 
   const isNodeEditable = React.useCallback(
@@ -2724,7 +3456,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (iterativeModeling) return true;
       if (!node || typeof node.data !== 'function') return false;
       if (activeViewIdRef.current) return true;
-      return Boolean(node.data('staged') || node.data('freeShape') || node.data('viewInstance'));
+      return Boolean(
+        node.data('staged') ||
+          node.data('freeShape') ||
+          node.data('viewInstance'),
+      );
     },
     [iterativeModeling],
   );
@@ -2770,7 +3506,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
     cy.nodes().forEach((node) => {
       node.unlock();
-      const shouldGrab = !presentationView && !viewReadOnly && isNodeEditable(node);
+      const shouldGrab =
+        !presentationView && !viewReadOnly && isNodeEditable(node);
       node.grabify(shouldGrab);
       node.grabbable(shouldGrab);
     });
@@ -2786,7 +3523,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const cancelConnectionInteraction = React.useCallback(() => {
     if (!relationshipDraftRef.current.dragging) return;
-    updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+    updateRelationshipDraft({
+      sourceId: null,
+      targetId: null,
+      valid: null,
+      message: null,
+      dragging: false,
+    });
     setRelationshipSourceId(null);
     setRelationshipTargetId(null);
     clearRelationshipDraftArtifacts();
@@ -2795,7 +3538,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     pendingRelationshipTypeRef.current = null;
     setToolMode('SELECT');
     toolModeRef.current = 'SELECT';
-  }, [clearRelationshipDraftArtifacts, releaseConnectionDragLock, updateRelationshipDraft]);
+  }, [
+    clearRelationshipDraftArtifacts,
+    releaseConnectionDragLock,
+    updateRelationshipDraft,
+  ]);
 
   const ensureDraftTargetId = React.useCallback(() => {
     if (!draftTargetIdRef.current) {
@@ -2811,19 +3558,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
     draftAnchorPosRef.current = null;
   }, []);
 
-  const ensureDraftTargetAt = React.useCallback((pos: { x: number; y: number }) => {
-    if (!cyRef.current) return;
-    const cy = cyRef.current;
-    const targetId = ensureDraftTargetId();
-    const target = cy.getElementById(targetId);
-    if (target.empty()) {
-      cy.add({ data: { id: targetId, draftTarget: true }, position: { x: pos.x, y: pos.y }, classes: '' });
+  const ensureDraftTargetAt = React.useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!cyRef.current) return;
+      const cy = cyRef.current;
+      const targetId = ensureDraftTargetId();
+      const target = cy.getElementById(targetId);
+      if (target.empty()) {
+        cy.add({
+          data: { id: targetId, draftTarget: true },
+          position: { x: pos.x, y: pos.y },
+          classes: '',
+        });
+        draftAnchorPosRef.current = { x: pos.x, y: pos.y };
+        return;
+      }
+      target.position({ x: pos.x, y: pos.y });
       draftAnchorPosRef.current = { x: pos.x, y: pos.y };
-      return;
-    }
-    target.position({ x: pos.x, y: pos.y });
-    draftAnchorPosRef.current = { x: pos.x, y: pos.y };
-  }, [ensureDraftTargetId]);
+    },
+    [ensureDraftTargetId],
+  );
 
   const getFallbackAnchorPos = React.useCallback((sourceId?: string | null) => {
     if (draftAnchorPosRef.current) return draftAnchorPosRef.current;
@@ -2835,11 +3589,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, []);
 
   const updateDraftEdgeTarget = React.useCallback(
-    (pos?: { x: number; y: number } | null, hoverNode?: any | null, forceSnap = false, sourceId?: string | null) => {
+    (
+      pos?: { x: number; y: number } | null,
+      hoverNode?: any | null,
+      forceSnap = false,
+      sourceId?: string | null,
+    ) => {
       if (!cyRef.current) return;
       const edge = cyRef.current.getElementById(DRAFT_EDGE_ID);
       if (!edge || edge.empty()) return;
-      if (hoverNode && !hoverNode.empty() && (forceSnap || hoverNode.hasClass('validTargetCandidate'))) {
+      if (
+        hoverNode &&
+        !hoverNode.empty() &&
+        (forceSnap || hoverNode.hasClass('validTargetCandidate'))
+      ) {
         edge.data('target', String(hoverNode.id()));
         edge.style('target-endpoint', 'outside-to-node');
         return;
@@ -2875,7 +3638,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
     setRelationshipSourceId(null);
     setRelationshipTargetId(null);
     setFreeConnectorSourceId(null);
-    setRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+    setRelationshipDraft({
+      sourceId: null,
+      targetId: null,
+      valid: null,
+      message: null,
+      dragging: false,
+    });
     freeConnectorDragRef.current = { sourceId: null, dragging: false };
     suppressConnectionTapRef.current = false;
     setPlacementModeActive(false);
@@ -2910,7 +3679,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [pendingRelationshipType, toolMode]);
 
   React.useEffect(() => {
-    if (toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR') {
+    if (
+      toolMode === 'CREATE_RELATIONSHIP' ||
+      toolMode === 'CREATE_FREE_CONNECTOR'
+    ) {
       if (!connectionDragLockRef.current) {
         connectionDragLockRef.current = true;
         setConnectionDragLocked(true);
@@ -2918,13 +3690,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       lockNodesForConnection();
       return;
     }
-    if (!relationshipDraftRef.current.dragging && !freeConnectorDragRef.current.dragging) {
+    if (
+      !relationshipDraftRef.current.dragging &&
+      !freeConnectorDragRef.current.dragging
+    ) {
       releaseConnectionDragLock();
     }
   }, [lockNodesForConnection, releaseConnectionDragLock, toolMode]);
 
   React.useEffect(() => {
-    if (toolMode !== 'CREATE_RELATIONSHIP' && toolMode !== 'CREATE_FREE_CONNECTOR') {
+    if (
+      toolMode !== 'CREATE_RELATIONSHIP' &&
+      toolMode !== 'CREATE_FREE_CONNECTOR'
+    ) {
       if (connectionDragLockRef.current) {
         releaseConnectionDragLock();
       }
@@ -2936,12 +3714,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   React.useEffect(() => {
     if (!cyRef.current) return;
-    if (toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR') return;
+    if (
+      toolMode === 'CREATE_RELATIONSHIP' ||
+      toolMode === 'CREATE_FREE_CONNECTOR'
+    )
+      return;
     refreshConnectionPositionSnapshot();
-  }, [refreshConnectionPositionSnapshot, stagedElements.length, stagedRelationships.length, toolMode]);
+  }, [
+    refreshConnectionPositionSnapshot,
+    stagedElements.length,
+    stagedRelationships.length,
+    toolMode,
+  ]);
 
   React.useEffect(() => {
-    if (toolMode !== 'CREATE_RELATIONSHIP' || !pendingRelationshipType || !cyRef.current) {
+    if (
+      toolMode !== 'CREATE_RELATIONSHIP' ||
+      !pendingRelationshipType ||
+      !cyRef.current
+    ) {
       relationshipEligibilityRef.current = new Map();
       return;
     }
@@ -2950,7 +3741,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     cy.nodes().forEach((n) => {
       const sourceId = String(n.id());
       if (!sourceId) return;
-      next.set(sourceId, getValidTargetsForSource(sourceId, pendingRelationshipType));
+      next.set(
+        sourceId,
+        getValidTargetsForSource(sourceId, pendingRelationshipType),
+      );
     });
     relationshipEligibilityRef.current = next;
   }, [getValidTargetsForSource, pendingRelationshipType, toolMode]);
@@ -2968,7 +3762,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [presentationView, resetToolDrafts]);
 
   React.useEffect(() => {
-    if (!canDiagramMode && (toolMode === 'CREATE_ELEMENT' || toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR')) {
+    if (
+      !canDiagramMode &&
+      (toolMode === 'CREATE_ELEMENT' ||
+        toolMode === 'CREATE_RELATIONSHIP' ||
+        toolMode === 'CREATE_FREE_CONNECTOR')
+    ) {
       resetToolDrafts();
       setToolMode('SELECT');
     }
@@ -2989,7 +3788,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
     setRelationshipTargetId(null);
     setQuickCreateOpen(false);
     setRepoEndpointOpen(false);
-    setRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+    setRelationshipDraft({
+      sourceId: null,
+      targetId: null,
+      valid: null,
+      message: null,
+      dragging: false,
+    });
     freeConnectorDragRef.current = { sourceId: null, dragging: false };
     suppressConnectionTapRef.current = false;
     setPlacementModeActive(false);
@@ -3008,19 +3813,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const stagedValidationIssues = React.useMemo(() => {
     if (iterativeModeling) return [] as ValidationIssue[];
     const issues: ValidationIssue[] = [];
-    const activeElements = stagedElements.filter((el) => !isMarkedForRemoval(el.attributes));
-    const activeRelationships = stagedRelationships.filter((rel) => !isMarkedForRemoval(rel.attributes));
+    const activeElements = stagedElements.filter(
+      (el) => !isMarkedForRemoval(el.attributes),
+    );
+    const activeRelationships = stagedRelationships.filter(
+      (rel) => !isMarkedForRemoval(rel.attributes),
+    );
     const traceabilityCheckEnabled = activeElements.some(
-      (el) => el.modelingState === 'REVIEW_READY' || el.modelingState === 'APPROVED',
+      (el) =>
+        el.modelingState === 'REVIEW_READY' || el.modelingState === 'APPROVED',
     );
 
     for (const el of activeElements) {
       if (!el.name || !el.name.trim()) {
-        issues.push({ message: `Element ${el.id}: name is required.`, severity: 'error', context: { elementId: el.id } });
+        issues.push({
+          message: `Element ${el.id}: name is required.`,
+          severity: 'error',
+          context: { elementId: el.id },
+        });
       }
       if (el.type === 'Capability') {
         const nameText = el.name ?? '';
-        const descriptionText = typeof el.description === 'string' ? el.description : '';
+        const descriptionText =
+          typeof el.description === 'string' ? el.description : '';
         const offending = findTechnicalTerm(`${nameText} ${descriptionText}`);
         if (offending) {
           issues.push({
@@ -3059,7 +3874,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
       if (el.type === 'Application') {
         const nameText = el.name ?? '';
-        const descriptionText = typeof el.description === 'string' ? el.description : '';
+        const descriptionText =
+          typeof el.description === 'string' ? el.description : '';
         const offending = findPhysicalTerm(`${nameText} ${descriptionText}`);
         if (offending) {
           issues.push({
@@ -3113,8 +3929,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
           context: { elementId: relContextId, relationshipType: rel.type },
         });
       }
-      const sourceOk = rel.fromId ? Boolean(resolveElementLabel(rel.fromId)) : false;
-      const targetOk = rel.toId ? Boolean(resolveElementLabel(rel.toId)) : false;
+      const sourceOk = rel.fromId
+        ? Boolean(resolveElementLabel(rel.fromId))
+        : false;
+      const targetOk = rel.toId
+        ? Boolean(resolveElementLabel(rel.toId))
+        : false;
       if (!sourceOk || !targetOk) {
         issues.push({
           message: `Relationship ${rel.id}: endpoints must exist in workspace or repository.`,
@@ -3134,7 +3954,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const relDef = RELATIONSHIP_TYPE_DEFINITIONS[rel.type];
       const requiredAttrs = relDef?.attributes ?? [];
       if (requiredAttrs.length > 0) {
-        const attrs = (rel as DesignWorkspaceStagedRelationship).attributes ?? {};
+        const attrs =
+          (rel as DesignWorkspaceStagedRelationship).attributes ?? {};
         requiredAttrs.forEach((attr) => {
           const value = (attrs as any)?.[attr];
           const missing =
@@ -3152,7 +3973,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
     }
     return issues;
-  }, [iterativeModeling, requiredElementAttributes, resolveElementLabel, stagedElementById, stagedElements, stagedRelationships]);
+  }, [
+    iterativeModeling,
+    requiredElementAttributes,
+    resolveElementLabel,
+    stagedElementById,
+    stagedElements,
+    stagedRelationships,
+  ]);
 
   const stagedValidationErrors = React.useMemo(
     () => stagedValidationIssues.map((issue) => issue.message),
@@ -3163,12 +3991,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (iterativeModeling) return [] as ValidationIssue[];
     if (!eaRepository) return [] as ValidationIssue[];
     const issues: ValidationIssue[] = [];
-    const activeElements = stagedElements.filter((el) => !isMarkedForRemoval(el.attributes));
-    const activeRelationships = stagedRelationships.filter((rel) => !isMarkedForRemoval(rel.attributes));
+    const activeElements = stagedElements.filter(
+      (el) => !isMarkedForRemoval(el.attributes),
+    );
+    const activeRelationships = stagedRelationships.filter(
+      (rel) => !isMarkedForRemoval(rel.attributes),
+    );
     const elementTypeById = new Map<string, ObjectType>();
     const elementAttrsById = new Map<string, Record<string, unknown>>();
     const traceabilityCheckEnabled = activeElements.some(
-      (el) => el.modelingState === 'REVIEW_READY' || el.modelingState === 'APPROVED',
+      (el) =>
+        el.modelingState === 'REVIEW_READY' || el.modelingState === 'APPROVED',
     );
 
     eaRepository.objects.forEach((obj) => {
@@ -3197,31 +4030,52 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const isEnterprise = (t?: ObjectType) => t === 'Enterprise';
     const isDepartment = (t?: ObjectType) => t === 'Department';
 
-    const countRelationships = (predicate: (rel: { fromId: string; toId: string; type: RelationshipType }) => boolean) =>
-      relationships.filter(predicate).length;
+    const countRelationships = (
+      predicate: (rel: {
+        fromId: string;
+        toId: string;
+        type: RelationshipType;
+      }) => boolean,
+    ) => relationships.filter(predicate).length;
 
     for (const el of activeElements) {
       const attrs = elementAttrsById.get(el.id) ?? {};
-      const ownerId = typeof (attrs as any)?.ownerId === 'string' ? String((attrs as any).ownerId).trim() : '';
+      const ownerId =
+        typeof (attrs as any)?.ownerId === 'string'
+          ? String((attrs as any).ownerId).trim()
+          : '';
       if (!ownerId) {
         issues.push({
           message: `${el.type} ${el.name || el.id} is missing owner (Enterprise/Department).`,
           severity: 'error',
           context: { elementId: el.id },
         });
-      } else if (!(isEnterprise(typeOf(ownerId)) || isDepartment(typeOf(ownerId)))) {
+      } else if (
+        !(isEnterprise(typeOf(ownerId)) || isDepartment(typeOf(ownerId)))
+      ) {
         issues.push({
           message: `${el.type} ${el.name || el.id} has invalid owner reference (${ownerId}).`,
           severity: 'error',
           context: { elementId: el.id },
         });
-      } else if ((el.type === 'Enterprise' || el.type === 'Department') && ownerId === el.id) {
+      } else if (
+        (el.type === 'Enterprise' || el.type === 'Department') &&
+        ownerId === el.id
+      ) {
         // self-ownership allowed
       }
 
-      if (el.type === 'Capability' || el.type === 'SubCapability' || el.type === 'Application' || el.type === 'Programme') {
+      if (
+        el.type === 'Capability' ||
+        el.type === 'SubCapability' ||
+        el.type === 'Application' ||
+        el.type === 'Programme'
+      ) {
         const owningCount = countRelationships(
-          (r) => r.type === 'OWNS' && r.toId === el.id && isEnterprise(typeOf(r.fromId)),
+          (r) =>
+            r.type === 'OWNS' &&
+            r.toId === el.id &&
+            isEnterprise(typeOf(r.fromId)),
         );
         if (owningCount !== 1) {
           issues.push({
@@ -3234,7 +4088,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       if (el.type === 'Department') {
         const owningCount = countRelationships(
-          (r) => r.type === 'HAS' && r.toId === el.id && isEnterprise(typeOf(r.fromId)),
+          (r) =>
+            r.type === 'HAS' &&
+            r.toId === el.id &&
+            isEnterprise(typeOf(r.fromId)),
         );
         if (owningCount !== 1) {
           issues.push({
@@ -3252,10 +4109,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
           const toType = typeOf(r.toId);
           const isHierarchy =
             (r.type === 'DECOMPOSES_TO' || r.type === 'COMPOSED_OF') &&
-            ['Capability', 'SubCapability', 'CapabilityCategory'].includes(String(fromType)) &&
-            ['Capability', 'SubCapability', 'CapabilityCategory'].includes(String(toType));
+            ['Capability', 'SubCapability', 'CapabilityCategory'].includes(
+              String(fromType),
+            ) &&
+            ['Capability', 'SubCapability', 'CapabilityCategory'].includes(
+              String(toType),
+            );
           const isRealizedByProcess =
-            r.type === 'REALIZED_BY' && fromType === 'Capability' && toType === 'BusinessProcess' && r.fromId === el.id;
+            r.type === 'REALIZED_BY' &&
+            fromType === 'Capability' &&
+            toType === 'BusinessProcess' &&
+            r.fromId === el.id;
           return !(isHierarchy || isRealizedByProcess);
         });
         if (invalid) {
@@ -3269,7 +4133,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       if (el.type === 'ApplicationService' && traceabilityCheckEnabled) {
         const providerCount = countRelationships(
-          (r) => r.type === 'PROVIDED_BY' && r.fromId === el.id && typeOf(r.toId) === 'Application',
+          (r) =>
+            r.type === 'PROVIDED_BY' &&
+            r.fromId === el.id &&
+            typeOf(r.toId) === 'Application',
         );
         if (providerCount !== 1) {
           issues.push({
@@ -3279,7 +4146,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           });
         }
         const usageCount = countRelationships(
-          (r) => r.type === 'USED_BY' && r.fromId === el.id && ['Application', 'BusinessProcess'].includes(String(typeOf(r.toId))),
+          (r) =>
+            r.type === 'USED_BY' &&
+            r.fromId === el.id &&
+            ['Application', 'BusinessProcess'].includes(String(typeOf(r.toId))),
         );
         if (usageCount < 1) {
           issues.push({
@@ -3292,7 +4162,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       if (el.type === 'Application' && traceabilityCheckEnabled) {
         const servesCount = countRelationships(
-          (r) => r.type === 'SERVED_BY' && r.toId === el.id && typeOf(r.fromId) === 'BusinessProcess',
+          (r) =>
+            r.type === 'SERVED_BY' &&
+            r.toId === el.id &&
+            typeOf(r.fromId) === 'BusinessProcess',
         );
         if (servesCount < 1) {
           issues.push({
@@ -3317,18 +4190,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const source = resolveElementLabel(sourceId);
       const target = resolveElementLabel(targetId);
       if (!source || !target) {
-        return { valid: false, message: 'Select valid source and target elements.' };
+        return {
+          valid: false,
+          message: 'Select valid source and target elements.',
+        };
       }
       if (allowAnyRelationship) {
-        return { valid: true, message: `${source.type} → ${target.type} allowed.` };
+        return {
+          valid: true,
+          message: `${source.type} → ${target.type} allowed.`,
+        };
       }
       const relDef = RELATIONSHIP_TYPE_DEFINITIONS[type];
-      if (!relDef) return { valid: false, message: 'Unknown relationship type.' };
+      if (!relDef)
+        return { valid: false, message: 'Unknown relationship type.' };
       const pairs = relDef.allowedEndpointPairs ?? [];
       const valid =
-        (Array.isArray(pairs) && pairs.length > 0
+        Array.isArray(pairs) && pairs.length > 0
           ? pairs.some((p) => p.from === source.type && p.to === target.type)
-          : relDef.fromTypes.includes(source.type) && relDef.toTypes.includes(target.type));
+          : relDef.fromTypes.includes(source.type) &&
+            relDef.toTypes.includes(target.type);
       if (!valid) {
         return {
           valid: false,
@@ -3337,24 +4218,41 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
       return { valid: true, message: `${source.type} → ${target.type} valid.` };
     },
-    [allowAnyRelationship, iterativeModeling, resolveElementLabel, stagedElementById],
+    [
+      allowAnyRelationship,
+      iterativeModeling,
+      resolveElementLabel,
+      stagedElementById,
+    ],
   );
 
   const hasDuplicateRelationship = React.useCallback(
     (sourceId: string, targetId: string, type: RelationshipType) => {
       if (!sourceId || !targetId) return false;
       const matchesRepo = Boolean(
-        eaRepository?.relationships?.some((rel) => rel.fromId === sourceId && rel.toId === targetId && rel.type === type),
+        eaRepository?.relationships?.some(
+          (rel) =>
+            rel.fromId === sourceId &&
+            rel.toId === targetId &&
+            rel.type === type,
+        ),
       );
       if (matchesRepo) return true;
-      return stagedRelationships.some((rel) => rel.fromId === sourceId && rel.toId === targetId && rel.type === type);
+      return stagedRelationships.some(
+        (rel) =>
+          rel.fromId === sourceId && rel.toId === targetId && rel.type === type,
+      );
     },
     [eaRepository, stagedRelationships],
   );
 
   const validateRelationshipCreation = React.useCallback(
     (sourceId: string, targetId: string, type: RelationshipType) => {
-      const endpointValidation = validateRelationshipEndpoints(sourceId, targetId, type);
+      const endpointValidation = validateRelationshipEndpoints(
+        sourceId,
+        targetId,
+        type,
+      );
       if (!endpointValidation.valid) return endpointValidation;
       if (hasDuplicateRelationship(sourceId, targetId, type)) {
         return { valid: false, message: 'Relationship already exists.' };
@@ -3373,14 +4271,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
         ? new Set(activeViewpoint.allowedRelationshipTypes)
         : null;
       const inferred: RelationshipType[] = [];
-      (Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]).forEach((type) => {
+      (
+        Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]
+      ).forEach((type) => {
         if (allowedByView && !allowedByView.has(type)) return;
         const relDef = RELATIONSHIP_TYPE_DEFINITIONS[type];
         if (!relDef) return;
         const pairs = relDef.allowedEndpointPairs ?? [];
-        const endpointOk = pairs.length > 0
-          ? pairs.some((p) => p.from === source.type && p.to === target.type)
-          : relDef.fromTypes.includes(source.type) && relDef.toTypes.includes(target.type);
+        const endpointOk =
+          pairs.length > 0
+            ? pairs.some((p) => p.from === source.type && p.to === target.type)
+            : relDef.fromTypes.includes(source.type) &&
+              relDef.toTypes.includes(target.type);
         if (!endpointOk) return;
         inferred.push(type);
       });
@@ -3420,22 +4322,34 @@ const StudioShell: React.FC<StudioShellProps> = ({
         ? new Set(activeViewpoint.allowedRelationshipTypes)
         : null;
       const valid: RelationshipType[] = [];
-      (Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]).forEach((type) => {
+      (
+        Object.keys(RELATIONSHIP_TYPE_DEFINITIONS) as RelationshipType[]
+      ).forEach((type) => {
         if (allowedByView && !allowedByView.has(type)) return;
         const relDef = RELATIONSHIP_TYPE_DEFINITIONS[type];
         if (!relDef) return;
         const pairs = relDef.allowedEndpointPairs ?? [];
-        const endpointOk = pairs.length > 0
-          ? pairs.some((p) => p.from === source.type && p.to === target.type)
-          : relDef.fromTypes.includes(source.type) && relDef.toTypes.includes(target.type);
+        const endpointOk =
+          pairs.length > 0
+            ? pairs.some((p) => p.from === source.type && p.to === target.type)
+            : relDef.fromTypes.includes(source.type) &&
+              relDef.toTypes.includes(target.type);
         if (!endpointOk) return;
-        const validation = validateRelationshipCreation(sourceId, targetId, type);
+        const validation = validateRelationshipCreation(
+          sourceId,
+          targetId,
+          type,
+        );
         if (!validation.valid) return;
         valid.push(type);
       });
       return valid;
     },
-    [activeViewpoint?.allowedRelationshipTypes, resolveElementLabel, validateRelationshipCreation],
+    [
+      activeViewpoint?.allowedRelationshipTypes,
+      resolveElementLabel,
+      validateRelationshipCreation,
+    ],
   );
 
   const buildIntentConnectionCandidates = React.useCallback(
@@ -3481,7 +4395,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
         ? new Set(activeViewpoint.allowedRelationshipTypes)
         : undefined;
 
-      return resolveConnectionsForSource(sourceId, sourceType, targets, viewpointFilter);
+      return resolveConnectionsForSource(
+        sourceId,
+        sourceType,
+        targets,
+        viewpointFilter,
+      );
     },
     [activeViewpoint?.allowedRelationshipTypes, resolveElementLabel],
   );
@@ -3513,28 +4432,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (!target) return;
 
         const valid =
-          (Array.isArray(pairs) && pairs.length > 0
+          Array.isArray(pairs) && pairs.length > 0
             ? pairs.some((p) => p.from === source.type && p.to === target.type)
-            : relDef.fromTypes.includes(source.type) && relDef.toTypes.includes(target.type));
+            : relDef.fromTypes.includes(source.type) &&
+              relDef.toTypes.includes(target.type);
         if (valid) validTargets.add(targetId);
       });
 
       return validTargets;
     },
-    [allowAnyRelationship, iterativeModeling, resolveElementLabel, stagedElementById],
+    [
+      allowAnyRelationship,
+      iterativeModeling,
+      resolveElementLabel,
+      stagedElementById,
+    ],
   );
 
   const repositoryElementOptions = React.useMemo(() => {
     if (!eaRepository) return [];
     return Array.from(eaRepository.objects.values()).map((obj) => {
       const name = (obj.attributes as any)?.name;
-      const label = typeof name === 'string' && name.trim() ? `${name} (${obj.type})` : `${obj.id} (${obj.type})`;
+      const label =
+        typeof name === 'string' && name.trim()
+          ? `${name} (${obj.type})`
+          : `${obj.id} (${obj.type})`;
       return { value: obj.id, label };
     });
   }, [eaRepository]);
 
   const getAlignmentGuideForNode = React.useCallback((nodeId: string) => {
-    if (!cyRef.current) return { x: null as number | null, y: null as number | null };
+    if (!cyRef.current)
+      return { x: null as number | null, y: null as number | null };
     const cy = cyRef.current;
     const node = cy.getElementById(nodeId);
     if (!node || node.empty()) return { x: null, y: null };
@@ -3615,7 +4544,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         .filter((n) => n && !n.empty() && isNodeEditable(n));
 
       if (nodes.length < 3) {
-        message.info(iterativeModeling ? 'Select at least three elements to distribute.' : 'Select at least three staged or view elements to distribute.');
+        message.info(
+          iterativeModeling
+            ? 'Select at least three elements to distribute.'
+            : 'Select at least three staged or view elements to distribute.',
+        );
         return;
       }
 
@@ -3629,7 +4562,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const firstPos = sorted[0].position();
       const lastPos = sorted[sorted.length - 1].position();
-      const span = axis === 'x' ? lastPos.x - firstPos.x : lastPos.y - firstPos.y;
+      const span =
+        axis === 'x' ? lastPos.x - firstPos.x : lastPos.y - firstPos.y;
       if (!Number.isFinite(span) || span === 0) return;
 
       const step = span / (sorted.length - 1);
@@ -3644,7 +4578,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       setAlignmentGuides({ x: null, y: null });
     },
-    [isNodeEditable, iterativeModeling, recordLayoutUndoSnapshot, selectedNodeIds],
+    [
+      isNodeEditable,
+      iterativeModeling,
+      recordLayoutUndoSnapshot,
+      selectedNodeIds,
+    ],
   );
 
   const resetLayout = React.useCallback(() => {
@@ -3684,7 +4623,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const rawEdges = cy
         .edges()
-        .filter((edge) => !edge.data('freeConnector') && !edge.data('governanceWarning'))
+        .filter(
+          (edge) =>
+            !edge.data('freeConnector') && !edge.data('governanceWarning'),
+        )
         .toArray() as cytoscape.EdgeSingular[];
 
       const edges = rawEdges
@@ -3699,7 +4641,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const dataType = node.data('elementType') as ObjectType | undefined;
         const fallback = stagedElementById.get(id);
         const type = dataType ?? fallback?.type;
-        const layer = type ? OBJECT_TYPE_DEFINITIONS[type]?.layer ?? 'Business' : 'Business';
+        const layer = type
+          ? (OBJECT_TYPE_DEFINITIONS[type]?.layer ?? 'Business')
+          : 'Business';
         return {
           id,
           node,
@@ -3710,29 +4654,42 @@ const StudioShell: React.FC<StudioShellProps> = ({
         };
       });
 
-      const layerIndex = new Map<EaLayer, number>(EA_LAYERS.map((layer, index) => [layer, index]));
+      const layerIndex = new Map<EaLayer, number>(
+        EA_LAYERS.map((layer, index) => [layer, index]),
+      );
       const rowGap = Math.max(120, gridSize * 4);
       const columnGap = Math.max(240, gridSize * 6);
       const groupGap = Math.max(60, gridSize * 3);
       const center = getCanvasCenter();
 
-      const sortNodes = (a: typeof nodes[number], b: typeof nodes[number]) => {
-        const layerDiff = (layerIndex.get(a.layer) ?? 0) - (layerIndex.get(b.layer) ?? 0);
+      const sortNodes = (
+        a: (typeof nodes)[number],
+        b: (typeof nodes)[number],
+      ) => {
+        const layerDiff =
+          (layerIndex.get(a.layer) ?? 0) - (layerIndex.get(b.layer) ?? 0);
         if (layerDiff !== 0) return layerDiff;
         if (a.currentY !== b.currentY) return a.currentY - b.currentY;
-        const labelDiff = a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+        const labelDiff = a.label.localeCompare(b.label, undefined, {
+          sensitivity: 'base',
+        });
         if (labelDiff !== 0) return labelDiff;
         return a.id.localeCompare(b.id, undefined, { sensitivity: 'base' });
       };
 
-      const placeColumns = (columns: { groups: { nodes: typeof nodes }[] }[]) => {
+      const placeColumns = (
+        columns: { groups: { nodes: typeof nodes }[] }[],
+      ) => {
         const totalColumns = columns.length;
         const startX = center.x - (totalColumns - 1) * (columnGap / 2);
         const positions = new Map<string, { x: number; y: number }>();
 
         columns.forEach((column, columnIndex) => {
           let cursor = 0;
-          const placements: { node: typeof nodes[number]; offsetY: number }[] = [];
+          const placements: {
+            node: (typeof nodes)[number];
+            offsetY: number;
+          }[] = [];
           column.groups.forEach((group, groupIndex) => {
             group.nodes.forEach((node, index) => {
               placements.push({ node, offsetY: cursor + index * rowGap });
@@ -3766,9 +4723,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       recordLayoutUndoSnapshot();
 
-      const resolvedMode: AutoLayoutMode = mode === 'flow' && edges.length === 0 ? 'layer' : mode;
+      const resolvedMode: AutoLayoutMode =
+        mode === 'flow' && edges.length === 0 ? 'layer' : mode;
       if (mode === 'flow' && resolvedMode === 'layer') {
-        message.info('No relationships found for flow layout. Using By Layer instead.');
+        message.info(
+          'No relationships found for flow layout. Using By Layer instead.',
+        );
       }
 
       if (resolvedMode === 'layer') {
@@ -3779,11 +4739,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           buckets.set(node.layer, bucket);
         });
 
-        const columns = EA_LAYERS
-          .map((layer) => ({
-            layer,
-            nodes: (buckets.get(layer) ?? []).slice().sort(sortNodes),
-          }))
+        const columns = EA_LAYERS.map((layer) => ({
+          layer,
+          nodes: (buckets.get(layer) ?? []).slice().sort(sortNodes),
+        }))
           .filter((entry) => entry.nodes.length > 0)
           .map((entry) => ({ groups: [{ nodes: entry.nodes }] }));
 
@@ -3814,7 +4773,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const processed = new Set<string>();
       let maxRank = 0;
 
-      const enqueue = (node: typeof nodes[number]) => {
+      const enqueue = (node: (typeof nodes)[number]) => {
         sortedQueue.push(node);
         sortedQueue.sort(sortNodes);
       };
@@ -3857,14 +4816,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
         .map(([, bucket]) => {
           const groups = EA_LAYERS.map((layer) => ({
             layer,
-            nodes: bucket.filter((node) => node.layer === layer).sort(sortNodes),
+            nodes: bucket
+              .filter((node) => node.layer === layer)
+              .sort(sortNodes),
           })).filter((group) => group.nodes.length > 0);
           return { groups: groups.map((group) => ({ nodes: group.nodes })) };
         });
 
       placeColumns(columns);
     },
-    [getCanvasCenter, gridSize, isNodeEditable, presentationReadOnly, recordLayoutUndoSnapshot, stagedElementById],
+    [
+      getCanvasCenter,
+      gridSize,
+      isNodeEditable,
+      presentationReadOnly,
+      recordLayoutUndoSnapshot,
+      stagedElementById,
+    ],
   );
 
   const buildFreeShapesFromCanvas = React.useCallback((): FreeShape[] => {
@@ -3887,22 +4855,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       });
   }, [repositoryOnlyCanvas]);
 
-  const buildFreeConnectorsFromCanvas = React.useCallback((): FreeConnector[] => {
-    if (repositoryOnlyCanvas) return [];
-    if (!cyRef.current) return [];
-    return cyRef.current
-      .edges('[freeConnector]')
-      .toArray()
-      .map((edge) => {
-        const data = edge.data();
-        return {
-          id: String(edge.id()),
-          source: String(data.source ?? edge.source().id()),
-          target: String(data.target ?? edge.target().id()),
-          kind: (data.freeConnectorKind as FreeConnectorKind) ?? 'arrow',
-        };
-      });
-  }, [repositoryOnlyCanvas]);
+  const buildFreeConnectorsFromCanvas =
+    React.useCallback((): FreeConnector[] => {
+      if (repositoryOnlyCanvas) return [];
+      if (!cyRef.current) return [];
+      return cyRef.current
+        .edges('[freeConnector]')
+        .toArray()
+        .map((edge) => {
+          const data = edge.data();
+          return {
+            id: String(edge.id()),
+            source: String(data.source ?? edge.source().id()),
+            target: String(data.target ?? edge.target().id()),
+            kind: (data.freeConnectorKind as FreeConnectorKind) ?? 'arrow',
+          };
+        });
+    }, [repositoryOnlyCanvas]);
 
   const buildLayoutFromCanvas = React.useCallback((): DesignWorkspaceLayout => {
     if (!cyRef.current) return { nodes: [], edges: [] };
@@ -3936,7 +4905,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
           id,
           source: String(data?.source ?? fallback?.fromId ?? ''),
           target: String(data?.target ?? fallback?.toId ?? ''),
-          relationshipType: (data?.relationshipType ?? fallback?.type) as RelationshipType,
+          relationshipType: (data?.relationshipType ??
+            fallback?.type) as RelationshipType,
         };
       })
       .filter((e) => e.source && e.target && e.relationshipType);
@@ -3946,7 +4916,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const buildViewPositionsFromCanvas = React.useCallback(() => {
     const layout = buildLayoutFromCanvas();
-    const positions = layout.nodes.reduce<Record<string, { x: number; y: number }>>((acc, node) => {
+    const positions = layout.nodes.reduce<
+      Record<string, { x: number; y: number }>
+    >((acc, node) => {
       acc[node.id] = { x: node.x, y: node.y };
       return acc;
     }, {});
@@ -3960,7 +4932,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
   // close/reopen. Cytoscape is VIEW-ONLY — the repository is the single source
   // of truth.
   // ---------------------------------------------------------------------------
-  const persistWorkspaceDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistWorkspaceDebounceRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const persistWorkspaceNowRef = React.useRef<() => void>(() => {});
 
   const persistWorkspaceNow = React.useCallback(() => {
@@ -3969,7 +4943,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const layout = buildLayoutFromCanvas();
       // Guard: never persist an empty layout when Cytoscape has nodes — this
       // prevents accidental data loss during transitions / unmount cycles.
-      if (layout.nodes.length === 0 && cyRef.current && cyRef.current.nodes().filter((n: any) => !n.data('freeShape')).length > 0) {
+      if (
+        layout.nodes.length === 0 &&
+        cyRef.current &&
+        cyRef.current.nodes().filter((n: any) => !n.data('freeShape')).length >
+          0
+      ) {
         return;
       }
       const next: DesignWorkspace = {
@@ -3988,7 +4967,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
         message: `Workspace persist failed: ${err?.message ?? 'Unknown error'}. Your changes may not be saved.`,
       });
     }
-  }, [buildLayoutFromCanvas, designWorkspace, onUpdateWorkspace, stagedElements, stagedRelationships]);
+  }, [
+    buildLayoutFromCanvas,
+    designWorkspace,
+    onUpdateWorkspace,
+    stagedElements,
+    stagedRelationships,
+  ]);
 
   // Keep the ref always in sync with the latest persistWorkspaceNow callback
   // to avoid stale closures in debounced/deferred calls.
@@ -3996,26 +4981,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
     persistWorkspaceNowRef.current = persistWorkspaceNow;
   }, [persistWorkspaceNow]);
 
-  const persistWorkspaceDebounced = React.useCallback(
-    (delayMs = 300) => {
-      if (persistWorkspaceDebounceRef.current) {
-        clearTimeout(persistWorkspaceDebounceRef.current);
+  const persistWorkspaceDebounced = React.useCallback((delayMs = 300) => {
+    if (persistWorkspaceDebounceRef.current) {
+      clearTimeout(persistWorkspaceDebounceRef.current);
+    }
+    workspaceAutosavePendingRef.current = true;
+    const attemptPersist = () => {
+      persistWorkspaceDebounceRef.current = null;
+      if (draggingRef.current || panningActiveRef.current) {
+        // Defer until interaction settles to avoid a hitch at drag/pan start.
+        persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, 300);
+        return;
       }
-      workspaceAutosavePendingRef.current = true;
-      const attemptPersist = () => {
-        persistWorkspaceDebounceRef.current = null;
-        if (draggingRef.current || panningActiveRef.current) {
-          // Defer until interaction settles to avoid a hitch at drag/pan start.
-          persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, 300);
-          return;
-        }
-        // Call via ref to get the latest closure (avoids stale stagedElements)
-        persistWorkspaceNowRef.current();
-      };
-      persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, delayMs);
-    },
-    [],
-  );
+      // Call via ref to get the latest closure (avoids stale stagedElements)
+      persistWorkspaceNowRef.current();
+    };
+    persistWorkspaceDebounceRef.current = setTimeout(attemptPersist, delayMs);
+  }, []);
 
   // Keep ref in sync so Cytoscape event handlers can call persist without stale closures.
   React.useEffect(() => {
@@ -4053,7 +5035,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const autosaveActiveView = React.useCallback(
     (opts?: { silent?: boolean }) => {
-      if (!activeViewId || !activeView || viewReadOnly || activeTabKey === WORKSPACE_TAB_KEY) {
+      if (
+        !activeViewId ||
+        !activeView ||
+        viewReadOnly ||
+        activeTabKey === WORKSPACE_TAB_KEY
+      ) {
         return { ok: false, skipped: true } as const;
       }
       setValidationGateOpen(true);
@@ -4062,11 +5049,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const visibleRelationshipIds = layout.edges.map((e) => e.id);
       const nextFreeShapes = buildFreeShapesFromCanvas();
       const nextFreeConnectors = buildFreeConnectorsFromCanvas();
-      const viewport = cyRef.current ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() } : null;
-      const signature = stableStringify({ positions, freeShapes: nextFreeShapes, freeConnectors: nextFreeConnectors, viewport });
-      const lastSignature = viewTabStateById[activeTabKey]?.lastSavedSignature ?? '';
+      const viewport = cyRef.current
+        ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() }
+        : null;
+      const signature = stableStringify({
+        positions,
+        freeShapes: nextFreeShapes,
+        freeConnectors: nextFreeConnectors,
+        viewport,
+      });
+      const lastSignature =
+        viewTabStateById[activeTabKey]?.lastSavedSignature ?? '';
 
-      if (signature === lastSignature && viewTabStateById[activeTabKey]?.saveStatus === 'saved') {
+      if (
+        signature === lastSignature &&
+        viewTabStateById[activeTabKey]?.saveStatus === 'saved'
+      ) {
         return { ok: true, skipped: true } as const;
       }
 
@@ -4082,7 +5080,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }));
 
       const now = new Date().toISOString();
-      const nextScope = { kind: 'ManualSelection' as const, elementIds: visibleElementIds };
+      const nextScope = {
+        kind: 'ManualSelection' as const,
+        elementIds: visibleElementIds,
+      };
       const next: ViewInstance = {
         ...activeView,
         scope: nextScope,
@@ -4140,7 +5141,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
       return { ok: true } as const;
     },
-    [activeTabKey, activeView, activeViewId, activeViewIsWorking, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, viewReadOnly, viewTabStateById],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      activeViewIsWorking,
+      buildFreeConnectorsFromCanvas,
+      buildFreeShapesFromCanvas,
+      buildViewPositionsFromCanvas,
+      viewReadOnly,
+      viewTabStateById,
+    ],
   );
 
   const openSaveAsDialog = React.useCallback(() => {
@@ -4174,10 +5185,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const { layout, positions } = buildViewPositionsFromCanvas();
       const visibleElementIds = layout.nodes.map((n) => n.id);
       const visibleRelationshipIds = layout.edges.map((e) => e.id);
-      const viewpointId = String(values.viewpointId || activeView.viewpointId || defaultViewpointId);
+      const viewpointId = String(
+        values.viewpointId || activeView.viewpointId || defaultViewpointId,
+      );
       const description = String(values.description || '').trim();
       const summary = (activeView.layoutMetadata as any)?.summary ?? {};
-      const viewport = cyRef.current ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() } : null;
+      const viewport = cyRef.current
+        ? { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() }
+        : null;
       const nextFreeShapes = buildFreeShapesFromCanvas();
       const nextFreeConnectors = buildFreeConnectorsFromCanvas();
       const next: ViewInstance = {
@@ -4186,7 +5201,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
         name,
         description: description || activeView.description || '',
         viewpointId,
-        scope: { kind: 'ManualSelection' as const, elementIds: visibleElementIds },
+        scope: {
+          kind: 'ManualSelection' as const,
+          elementIds: visibleElementIds,
+        },
         visibleRelationshipIds,
         createdAt: now,
         createdBy: actor,
@@ -4217,12 +5235,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // SAVE AS: Replace the CURRENT tab in-place with the newly saved view.
       // The canvas must NOT change — the user's work simply transitions from
       // working/draft to a persisted saved view. No new tab is opened.
-      const signature = stableStringify({ positions, freeShapes: nextFreeShapes, freeConnectors: nextFreeConnectors, viewport });
+      const signature = stableStringify({
+        positions,
+        freeShapes: nextFreeShapes,
+        freeConnectors: nextFreeConnectors,
+        viewport,
+      });
       setActiveView(next);
       setViewTabs((prev) =>
         prev.map((tab) =>
           tab.key === activeTabKey
-            ? { ...tab, viewId: next.id, name: next.name, isWorking: false, readOnly: false }
+            ? {
+                ...tab,
+                viewId: next.id,
+                name: next.name,
+                isWorking: false,
+                readOnly: false,
+              }
             : tab,
         ),
       );
@@ -4242,15 +5271,28 @@ const StudioShell: React.FC<StudioShellProps> = ({
     } catch {
       // validation handled by Form
     }
-  }, [activeTabKey, activeView, actor, buildFreeConnectorsFromCanvas, buildFreeShapesFromCanvas, buildViewPositionsFromCanvas, defaultViewpointId, saveViewForm]);
+  }, [
+    activeTabKey,
+    activeView,
+    actor,
+    buildFreeConnectorsFromCanvas,
+    buildFreeShapesFromCanvas,
+    buildViewPositionsFromCanvas,
+    defaultViewpointId,
+    saveViewForm,
+  ]);
 
   const buildLayoutFromView = React.useCallback(
     (view: ViewInstance): DesignWorkspaceLayout | null => {
       if (!eaRepository) return null;
       const isWorkingView = Boolean((view.layoutMetadata as any)?.workingView);
-      const positions = ((view.layoutMetadata as any)?.positions as Record<string, { x: number; y: number }> | undefined)
-        ?? (isWorkingView ? {} : ViewLayoutStore.get(view.id));
-      const existingNodeMap = new Map((designWorkspace.layout?.nodes ?? []).map((n) => [n.id, n] as const));
+      const positions =
+        ((view.layoutMetadata as any)?.positions as
+          | Record<string, { x: number; y: number }>
+          | undefined) ?? (isWorkingView ? {} : ViewLayoutStore.get(view.id));
+      const existingNodeMap = new Map(
+        (designWorkspace.layout?.nodes ?? []).map((n) => [n.id, n] as const),
+      );
 
       // =====================================================================
       // VIEW REHYDRATION — direct element resolution for ManualSelection.
@@ -4272,18 +5314,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const resolution = (() => {
         if (view.scope.kind === 'ManualSelection') {
-          const ids = new Set((view.scope.elementIds ?? []).map((id) => String(id).trim()).filter(Boolean));
-          const elements = Array.from(eaRepository.objects.values()).filter((obj) => ids.has(String(obj.id).trim()));
+          const ids = new Set(
+            (view.scope.elementIds ?? [])
+              .map((id) => String(id).trim())
+              .filter(Boolean),
+          );
+          const elements = Array.from(eaRepository.objects.values()).filter(
+            (obj) => ids.has(String(obj.id).trim()),
+          );
           const allowedIds = new Set(elements.map((e) => String(e.id).trim()));
           const viewRelIds = view.visibleRelationshipIds;
-          const hasExplicitRels = Array.isArray(viewRelIds) && viewRelIds.length > 0;
-          const viewRelIdSet = hasExplicitRels ? new Set(viewRelIds!.map((id) => String(id).trim())) : null;
+          const hasExplicitRels =
+            Array.isArray(viewRelIds) && viewRelIds.length > 0;
+          const viewRelIdSet = hasExplicitRels
+            ? new Set(viewRelIds!.map((id) => String(id).trim()))
+            : null;
           const relationships = eaRepository.relationships.filter((rel) => {
             const fromId = String(rel.fromId).trim();
             const toId = String(rel.toId).trim();
             if (!allowedIds.has(fromId) || !allowedIds.has(toId)) return false;
             if (viewRelIdSet) {
-              const relId = String(rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`).trim();
+              const relId = String(
+                rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
+              ).trim();
               return viewRelIdSet.has(relId);
             }
             return true;
@@ -4293,19 +5346,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
         return resolveViewScope({ view, repository: eaRepository });
       })();
 
-      const nodes: DesignWorkspaceLayoutNode[] = resolution.elements.map((el, index) => {
-        const saved = positions[el.id] ?? existingNodeMap.get(el.id);
-        const fallbackX = 80 + (index % 4) * 180;
-        const fallbackY = 80 + Math.floor(index / 4) * 140;
-        return {
-          id: el.id,
-          label: ((el.attributes as any)?.name as string) || el.id,
-          elementType: el.type,
-          x: saved?.x ?? fallbackX,
-          y: saved?.y ?? fallbackY,
-          viewInstance: true,
-        };
-      });
+      const nodes: DesignWorkspaceLayoutNode[] = resolution.elements.map(
+        (el, index) => {
+          const saved = positions[el.id] ?? existingNodeMap.get(el.id);
+          const fallbackX = 80 + (index % 4) * 180;
+          const fallbackY = 80 + Math.floor(index / 4) * 140;
+          return {
+            id: el.id,
+            label: ((el.attributes as any)?.name as string) || el.id,
+            elementType: el.type,
+            x: saved?.x ?? fallbackX,
+            y: saved?.y ?? fallbackY,
+            viewInstance: true,
+          };
+        },
+      );
 
       // VIEW ISOLATION: Do NOT append global stagedElements here.
       // Each view is an isolated projection — only elements explicitly in the
@@ -4313,12 +5368,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // stageElement() already adds new elements to the active view's scope,
       // so they will appear via resolveViewScope on the next rebuild.
 
-      const edges: DesignWorkspaceLayoutEdge[] = resolution.relationships.map((rel) => ({
-        id: rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
-        source: rel.fromId,
-        target: rel.toId,
-        relationshipType: rel.type,
-      }));
+      const edges: DesignWorkspaceLayoutEdge[] = resolution.relationships.map(
+        (rel) => ({
+          id: rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`,
+          source: rel.fromId,
+          target: rel.toId,
+          relationshipType: rel.type,
+        }),
+      );
 
       // VIEW ISOLATION: Do NOT append global stagedRelationships here.
       // Each view tracks its own visibleRelationshipIds. stageRelationship()
@@ -4331,19 +5388,36 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   React.useEffect(() => {
     if (pendingRelationshipType) return;
-    setRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+    setRelationshipDraft({
+      sourceId: null,
+      targetId: null,
+      valid: null,
+      message: null,
+      dragging: false,
+    });
   }, [pendingRelationshipType]);
 
   React.useEffect(() => {
-    if (!activeViewId || !activeView || activeTabKey === WORKSPACE_TAB_KEY) return;
+    if (!activeViewId || !activeView || activeTabKey === WORKSPACE_TAB_KEY)
+      return;
     if (viewTabStateById[activeTabKey]?.isWorking) return;
     const positions = (activeView.layoutMetadata as any)?.positions ?? {};
     const freeShapes = (activeView.layoutMetadata as any)?.freeShapes ?? [];
-    const freeConnectors = (activeView.layoutMetadata as any)?.freeConnectors ?? [];
-    const signature = stableStringify({ positions, freeShapes, freeConnectors, viewport: (activeView.layoutMetadata as any)?.viewport ?? null });
+    const freeConnectors =
+      (activeView.layoutMetadata as any)?.freeConnectors ?? [];
+    const signature = stableStringify({
+      positions,
+      freeShapes,
+      freeConnectors,
+      viewport: (activeView.layoutMetadata as any)?.viewport ?? null,
+    });
     setViewTabStateById((prev) => {
       const existing = prev[activeTabKey];
-      if (existing?.lastSavedSignature === signature && existing?.saveStatus === 'saved' && existing?.view === activeView) {
+      if (
+        existing?.lastSavedSignature === signature &&
+        existing?.saveStatus === 'saved' &&
+        existing?.view === activeView
+      ) {
         return prev;
       }
       return {
@@ -4442,7 +5516,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
           [activeTabKey]: {
             ...existing,
             viewport,
-            saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+            saveStatus:
+              existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
           },
         };
       });
@@ -4464,11 +5539,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     scheduleAutosave();
   }, [scheduleAutosave, viewSaveStatus]);
 
-
-
   const applyRepositoryTransaction = React.useCallback(
-    (mutator: (repo: EaRepository) => { ok: true } | { ok: false; error: string }) => {
-      if (!eaRepository) return { ok: false, error: 'No repository loaded.' } as const;
+    (
+      mutator: (
+        repo: EaRepository,
+      ) => { ok: true } | { ok: false; error: string },
+    ) => {
+      if (!eaRepository)
+        return { ok: false, error: 'No repository loaded.' } as const;
       const nextRepo = eaRepository.clone();
       const result = mutator(nextRepo);
       if (!result.ok) return result;
@@ -4511,15 +5589,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const findRelationshipInRepo = (
         rel: DesignWorkspaceStagedRelationship,
         relationships: typeof nextRepo.relationships,
-      ) => (
+      ) =>
         relationships.find((r) => r.id === rel.id) ??
-        relationships.find((r) => r.fromId === rel.fromId && r.toId === rel.toId && r.type === rel.type)
-      );
+        relationships.find(
+          (r) =>
+            r.fromId === rel.fromId &&
+            r.toId === rel.toId &&
+            r.type === rel.type,
+        );
 
       const removeElementFromRepo = (elementId: string) => {
         if (!nextRepo.objects.has(elementId)) return;
         nextRepo.objects.delete(elementId);
-        nextRepo.relationships = nextRepo.relationships.filter((r) => r.fromId !== elementId && r.toId !== elementId);
+        nextRepo.relationships = nextRepo.relationships.filter(
+          (r) => r.fromId !== elementId && r.toId !== elementId,
+        );
       };
 
       for (const el of stagedElements) {
@@ -4534,8 +5618,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
         const attrs: Record<string, unknown> = { ...(el.attributes ?? {}) };
         if (typeof el.name === 'string') attrs.name = el.name.trim();
-        if (typeof el.description === 'string') attrs.description = el.description;
-        if (!attrs.modelingState) attrs.modelingState = el.modelingState ?? defaultModelingState;
+        if (typeof el.description === 'string')
+          attrs.description = el.description;
+        if (!attrs.modelingState)
+          attrs.modelingState = el.modelingState ?? defaultModelingState;
 
         if (!exists) {
           if (!attrs.createdAt) attrs.createdAt = el.createdAt || nowIso;
@@ -4543,7 +5629,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
           if (!attrs.lastModifiedAt) attrs.lastModifiedAt = attrs.createdAt;
           if (!attrs.lastModifiedBy) attrs.lastModifiedBy = attrs.createdBy;
 
-          const res = nextRepo.addObject({ id: el.id, type: el.type, attributes: attrs });
+          const res = nextRepo.addObject({
+            id: el.id,
+            type: el.type,
+            attributes: attrs,
+          });
           if (!res.ok) {
             if (!options?.silent) message.error(res.error);
             return;
@@ -4553,12 +5643,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
 
         const existingAttrs = exists.attributes ?? {};
-        const createdAt = typeof (existingAttrs as any)?.createdAt === 'string'
-          ? (existingAttrs as any).createdAt
-          : (attrs.createdAt ?? el.createdAt ?? nowIso);
-        const createdBy = typeof (existingAttrs as any)?.createdBy === 'string'
-          ? (existingAttrs as any).createdBy
-          : (attrs.createdBy ?? el.createdBy ?? actor);
+        const createdAt =
+          typeof (existingAttrs as any)?.createdAt === 'string'
+            ? (existingAttrs as any).createdAt
+            : (attrs.createdAt ?? el.createdAt ?? nowIso);
+        const createdBy =
+          typeof (existingAttrs as any)?.createdBy === 'string'
+            ? (existingAttrs as any).createdBy
+            : (attrs.createdBy ?? el.createdBy ?? actor);
         attrs.createdAt = createdAt;
         attrs.createdBy = createdBy;
 
@@ -4575,15 +5667,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       const removedElementIds = new Set(
-        stagedElements.filter((el) => isMarkedForRemoval(el.attributes)).map((el) => el.id),
+        stagedElements
+          .filter((el) => isMarkedForRemoval(el.attributes))
+          .map((el) => el.id),
       );
 
       for (const rel of stagedRelationships) {
-        if (removedElementIds.has(rel.fromId) || removedElementIds.has(rel.toId)) continue;
+        if (
+          removedElementIds.has(rel.fromId) ||
+          removedElementIds.has(rel.toId)
+        )
+          continue;
         if (isMarkedForRemoval(rel.attributes)) {
           const existing = findRelationshipInRepo(rel, nextRepo.relationships);
           if (existing) {
-            nextRepo.relationships = nextRepo.relationships.filter((r) => r.id !== existing.id);
+            nextRepo.relationships = nextRepo.relationships.filter(
+              (r) => r.id !== existing.id,
+            );
             changeCount += 1;
           }
           continue;
@@ -4591,7 +5691,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
         const existing = findRelationshipInRepo(rel, nextRepo.relationships);
         const attrs: Record<string, unknown> = { ...(rel.attributes ?? {}) };
-        if (!attrs.modelingState) attrs.modelingState = rel.modelingState ?? defaultModelingState;
+        if (!attrs.modelingState)
+          attrs.modelingState = rel.modelingState ?? defaultModelingState;
 
         if (!existing) {
           if (!attrs.createdAt) attrs.createdAt = rel.createdAt || nowIso;
@@ -4615,12 +5716,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
 
         const existingAttrs = existing.attributes ?? {};
-        const createdAt = typeof (existingAttrs as any)?.createdAt === 'string'
-          ? (existingAttrs as any).createdAt
-          : (attrs.createdAt ?? rel.createdAt ?? nowIso);
-        const createdBy = typeof (existingAttrs as any)?.createdBy === 'string'
-          ? (existingAttrs as any).createdBy
-          : (attrs.createdBy ?? rel.createdBy ?? actor);
+        const createdAt =
+          typeof (existingAttrs as any)?.createdAt === 'string'
+            ? (existingAttrs as any).createdAt
+            : (attrs.createdAt ?? rel.createdAt ?? nowIso);
+        const createdBy =
+          typeof (existingAttrs as any)?.createdBy === 'string'
+            ? (existingAttrs as any).createdBy
+            : (attrs.createdBy ?? rel.createdBy ?? actor);
         attrs.createdAt = createdAt;
         attrs.createdBy = createdBy;
 
@@ -4631,7 +5734,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             ...existing,
             attributes: { ...attrs },
           };
-          const index = nextRepo.relationships.findIndex((r) => r.id === existing.id);
+          const index = nextRepo.relationships.findIndex(
+            (r) => r.id === existing.id,
+          );
           if (index >= 0) nextRepo.relationships[index] = nextRel;
           changeCount += 1;
         }
@@ -4650,7 +5755,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       stagedSyncSignatureRef.current = signature;
     },
-    [actor, commitContextLocked, eaRepository, hasModelingAccess, stagedElements, stagedRelationships, trySetEaRepository],
+    [
+      actor,
+      commitContextLocked,
+      eaRepository,
+      hasModelingAccess,
+      stagedElements,
+      stagedRelationships,
+      trySetEaRepository,
+    ],
   );
 
   React.useEffect(() => {
@@ -4667,7 +5780,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
       visualKind?: string | null;
       source?: CanvasModelingSource;
     }) => {
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       setValidationGateOpen(true);
       const modelingState: ModelingState = 'COMMITTED';
       const id = input.id ?? generateElementId(input.type);
@@ -4719,7 +5834,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setStagedElements((prev) => [...prev, staged]);
 
       if (cyRef.current) {
-        const visualData = buildEaVisualData({ type: input.type, visualKindOverride: input.visualKind ?? undefined });
+        const visualData = buildEaVisualData({
+          type: input.type,
+          visualKindOverride: input.visualKind ?? undefined,
+        });
         cyRef.current.add({
           data: {
             id,
@@ -4729,7 +5847,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             viewInstance: isViewCanvas,
             ...visualData,
           },
-          position: input.placement ? { x: input.placement.x, y: input.placement.y } : undefined,
+          position: input.placement
+            ? { x: input.placement.x, y: input.placement.y }
+            : undefined,
         });
         const node = cyRef.current.getElementById(id);
         if (node && !node.empty()) {
@@ -4758,18 +5878,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
         // If the view uses EntireRepository scope, convert it to ManualSelection
         // with the current visible elements plus the new one.
         if (nextView.scope.kind === 'ManualSelection') {
-          const currentIds = Array.isArray(nextView.scope.elementIds) ? nextView.scope.elementIds : [];
+          const currentIds = Array.isArray(nextView.scope.elementIds)
+            ? nextView.scope.elementIds
+            : [];
           if (!currentIds.includes(id)) {
             nextView = {
               ...nextView,
-              scope: { kind: 'ManualSelection', elementIds: [...currentIds, id] },
+              scope: {
+                kind: 'ManualSelection',
+                elementIds: [...currentIds, id],
+              },
             };
             didUpdateView = true;
           }
         } else {
           // Convert EntireRepository → ManualSelection with existing visible elements + new one
-          const existingVisible = ((nextView.layoutMetadata as any)?.visibleElementIds as string[]) ?? [];
-          const newElementIds = existingVisible.includes(id) ? existingVisible : [...existingVisible, id];
+          const existingVisible =
+            ((nextView.layoutMetadata as any)?.visibleElementIds as string[]) ??
+            [];
+          const newElementIds = existingVisible.includes(id)
+            ? existingVisible
+            : [...existingVisible, id];
           nextView = {
             ...nextView,
             scope: { kind: 'ManualSelection', elementIds: newElementIds },
@@ -4778,22 +5907,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
 
         const layoutMetadata = nextView.layoutMetadata ?? {};
-        const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as string[] | undefined;
-        const nextVisible = Array.isArray(visibleElementIds) ? visibleElementIds : [];
+        const visibleElementIds = (layoutMetadata as any)?.visibleElementIds as
+          | string[]
+          | undefined;
+        const nextVisible = Array.isArray(visibleElementIds)
+          ? visibleElementIds
+          : [];
         if (!nextVisible.includes(id)) {
           nextView = {
             ...nextView,
-            layoutMetadata: { ...layoutMetadata, visibleElementIds: [...nextVisible, id] },
+            layoutMetadata: {
+              ...layoutMetadata,
+              visibleElementIds: [...nextVisible, id],
+            },
           };
           didUpdateView = true;
         }
 
         if (input.placement) {
           const basePositions = layoutPositionsForView(nextView);
-          const nextPositions = { ...basePositions, [id]: { x: input.placement.x, y: input.placement.y } };
+          const nextPositions = {
+            ...basePositions,
+            [id]: { x: input.placement.x, y: input.placement.y },
+          };
           nextView = {
             ...nextView,
-            layoutMetadata: { ...(nextView.layoutMetadata ?? {}), positions: nextPositions },
+            layoutMetadata: {
+              ...(nextView.layoutMetadata ?? {}),
+              positions: nextPositions,
+            },
           };
           didUpdateView = true;
         }
@@ -4835,12 +5977,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       if (activeViewIsWorkingRef.current && input.placement) {
-        const posUpdate = { [id]: { x: input.placement.x, y: input.placement.y } };
+        const posUpdate = {
+          [id]: { x: input.placement.x, y: input.placement.y },
+        };
         setActiveView((prev) => {
           if (!prev) return prev;
           const layoutMetadata = prev.layoutMetadata ?? {};
-          const existing = (layoutMetadata as any)?.positions as Record<string, { x: number; y: number }> | undefined;
-          return { ...prev, layoutMetadata: { ...layoutMetadata, positions: { ...(existing ?? {}), ...posUpdate }, workingView: true } };
+          const existing = (layoutMetadata as any)?.positions as
+            | Record<string, { x: number; y: number }>
+            | undefined;
+          return {
+            ...prev,
+            layoutMetadata: {
+              ...layoutMetadata,
+              positions: { ...(existing ?? {}), ...posUpdate },
+              workingView: true,
+            },
+          };
         });
         setViewTabStateById((prev) => {
           const existing = prev[activeTabKey];
@@ -4855,7 +6008,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     layoutMetadata: {
                       ...(existing.view.layoutMetadata ?? {}),
                       positions: {
-                        ...((existing.view.layoutMetadata as any)?.positions ?? {}),
+                        ...((existing.view.layoutMetadata as any)?.positions ??
+                          {}),
                         ...posUpdate,
                       },
                       workingView: true,
@@ -4873,8 +6027,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       return id;
     },
-      [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, layoutPositionsForView, persistWorkspaceDebounced, relationshipStyleForType, setViewTabStateById, viewTabStateById],
-    );
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      actor,
+      applyRepositoryTransaction,
+      declareModelingAction,
+      iterativeModeling,
+      layoutPositionsForView,
+      persistWorkspaceDebounced,
+      relationshipStyleForType,
+      setViewTabStateById,
+      viewTabStateById,
+    ],
+  );
 
   const updateElementName = React.useCallback(
     (elementId: string, name: string) => {
@@ -4887,8 +6054,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const nowIso = new Date().toISOString();
       const applied = applyRepositoryTransaction((repo) => {
         const existing = repo.objects.get(elementId);
-        if (!existing) return { ok: false, error: 'Element not found in repository.' } as const;
-        const attrs: Record<string, unknown> = { ...(existing.attributes ?? {}) };
+        if (!existing)
+          return {
+            ok: false,
+            error: 'Element not found in repository.',
+          } as const;
+        const attrs: Record<string, unknown> = {
+          ...(existing.attributes ?? {}),
+        };
         attrs.name = trimmed;
         attrs.lastModifiedAt = nowIso;
         attrs.lastModifiedBy = actor;
@@ -4949,7 +6122,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
         source: 'toolbox',
       });
       if (!id) return;
-      openPropertiesPanel({ elementId: id, elementType: inlineNamePrompt.type, dock: 'right', readOnly: false });
+      openPropertiesPanel({
+        elementId: id,
+        elementType: inlineNamePrompt.type,
+        dock: 'right',
+        readOnly: false,
+      });
       message.success(`${inlineNamePrompt.type} created in repository.`);
     } else if (inlineNamePrompt.mode === 'rename' && inlineNamePrompt.nodeId) {
       updateElementName(inlineNamePrompt.nodeId, name);
@@ -4957,11 +6135,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     setInlineNamePrompt(null);
     setInlineNameValue('');
-  }, [inlineNamePrompt, inlineNameValue, openPropertiesPanel, stageElement, updateElementName]);
+  }, [
+    inlineNamePrompt,
+    inlineNameValue,
+    openPropertiesPanel,
+    stageElement,
+    updateElementName,
+  ]);
 
   const stageRelationship = React.useCallback(
-    (input: { fromId: string; toId: string; type: RelationshipType; source?: CanvasModelingSource }) => {
-      const validation = validateRelationshipCreation(input.fromId, input.toId, input.type);
+    (input: {
+      fromId: string;
+      toId: string;
+      type: RelationshipType;
+      source?: CanvasModelingSource;
+    }) => {
+      const validation = validateRelationshipCreation(
+        input.fromId,
+        input.toId,
+        input.type,
+      );
       if (!validation.valid) {
         message.warning(validation.message ?? 'Invalid relationship.');
         return '';
@@ -5039,23 +6232,32 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       // VIEW ISOLATION: Add the relationship ID to the active view's
       // visibleRelationshipIds so it is scoped to this view only.
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       if (isViewCanvas && activeView) {
         let nextView: ViewInstance = activeView;
-        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds)
+          ? [...nextView.visibleRelationshipIds]
+          : [];
         if (!currentRelIds.includes(relationshipId)) {
           currentRelIds.push(relationshipId);
           nextView = { ...nextView, visibleRelationshipIds: currentRelIds };
         }
         // Also store in layoutMetadata for persistence
         const layoutMetadata = nextView.layoutMetadata ?? {};
-        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as string[] | undefined;
+        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as
+          | string[]
+          | undefined;
         const nextMetaRelIds = Array.isArray(metaRelIds) ? [...metaRelIds] : [];
         if (!nextMetaRelIds.includes(relationshipId)) {
           nextMetaRelIds.push(relationshipId);
           nextView = {
             ...nextView,
-            layoutMetadata: { ...nextView.layoutMetadata, visibleRelationshipIds: nextMetaRelIds },
+            layoutMetadata: {
+              ...nextView.layoutMetadata,
+              visibleRelationshipIds: nextMetaRelIds,
+            },
           };
         }
         const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
@@ -5064,14 +6266,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
           setViewTabStateById((prev) => {
             const existing = prev[activeTabKey];
             if (!existing) return prev;
-            return { ...prev, [activeTabKey]: { ...existing, view: nextView, saveStatus: 'dirty' } };
+            return {
+              ...prev,
+              [activeTabKey]: {
+                ...existing,
+                view: nextView,
+                saveStatus: 'dirty',
+              },
+            };
           });
         } else {
           ViewStore.save(nextView);
           setActiveView(nextView);
           try {
             window.dispatchEvent(new Event('ea:viewsChanged'));
-          } catch { /* best-effort */ }
+          } catch {
+            /* best-effort */
+          }
         }
       }
 
@@ -5080,13 +6291,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       return relationshipId;
     },
-    [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, declareModelingAction, iterativeModeling, persistWorkspaceDebounced, setViewTabStateById, validateRelationshipCreation, viewTabStateById],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      actor,
+      applyRepositoryTransaction,
+      declareModelingAction,
+      iterativeModeling,
+      persistWorkspaceDebounced,
+      setViewTabStateById,
+      validateRelationshipCreation,
+      viewTabStateById,
+    ],
   );
 
   const formatInlineWarningLabel = React.useCallback((message?: string) => {
-    const base = (message ?? 'Invalid relationship').trim() || 'Invalid relationship';
+    const base =
+      (message ?? 'Invalid relationship').trim() || 'Invalid relationship';
     const max = 48;
-    const truncated = base.length > max ? `${base.slice(0, Math.max(0, max - 1))}…` : base;
+    const truncated =
+      base.length > max ? `${base.slice(0, Math.max(0, max - 1))}…` : base;
     return `⚠ ${truncated}`;
   }, []);
 
@@ -5095,11 +6320,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (!cyRef.current) return;
       const cy = cyRef.current;
       cy.edges()
-        .filter((e) =>
-          Boolean(e.data('governanceWarning')) &&
-          String(e.data('relationshipType') ?? '') === input.type &&
-          String(e.data('source') ?? e.source().id()) === input.fromId &&
-          String(e.data('target') ?? e.target().id()) === input.toId,
+        .filter(
+          (e) =>
+            Boolean(e.data('governanceWarning')) &&
+            String(e.data('relationshipType') ?? '') === input.type &&
+            String(e.data('source') ?? e.source().id()) === input.fromId &&
+            String(e.data('target') ?? e.target().id()) === input.toId,
         )
         .remove();
     },
@@ -5107,9 +6333,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
   );
 
   const addGovernanceWarningEdge = React.useCallback(
-    (input: { fromId: string; toId: string; type: RelationshipType; message?: string }) => {
+    (input: {
+      fromId: string;
+      toId: string;
+      type: RelationshipType;
+      message?: string;
+    }) => {
       if (!cyRef.current) return '';
-      clearGovernanceWarningEdges({ fromId: input.fromId, toId: input.toId, type: input.type });
+      clearGovernanceWarningEdges({
+        fromId: input.fromId,
+        toId: input.toId,
+        type: input.type,
+      });
       const warningId = `warn-rel-${generateUUID()}`;
       const warningLabel = formatInlineWarningLabel(input.message);
       cyRef.current.add({
@@ -5126,14 +6361,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
       });
       return warningId;
     },
-    [clearGovernanceWarningEdges, formatInlineWarningLabel, relationshipStyleForType],
+    [
+      clearGovernanceWarningEdges,
+      formatInlineWarningLabel,
+      relationshipStyleForType,
+    ],
   );
 
   const createRelationshipFromCanvas = React.useCallback(
     (input: { fromId: string; toId: string; type: RelationshipType }) => {
-      const validation = validateRelationshipCreation(input.fromId, input.toId, input.type);
+      const validation = validateRelationshipCreation(
+        input.fromId,
+        input.toId,
+        input.type,
+      );
       if (!validation.valid) {
-        return { ok: false, error: validation.message ?? 'Invalid relationship.' } as const;
+        return {
+          ok: false,
+          error: validation.message ?? 'Invalid relationship.',
+        } as const;
       }
       setValidationGateOpen(true);
       const modelingState: ModelingState = 'COMMITTED';
@@ -5205,23 +6451,36 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setSelectedEdgeId(relationshipId);
       setSelectedFreeShapeId(null);
       setSelectedFreeConnectorId(null);
-      clearGovernanceWarningEdges({ fromId: input.fromId, toId: input.toId, type: input.type });
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      clearGovernanceWarningEdges({
+        fromId: input.fromId,
+        toId: input.toId,
+        type: input.type,
+      });
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       if (isViewCanvas && activeView) {
         let nextView: ViewInstance = activeView;
-        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds) ? [...nextView.visibleRelationshipIds] : [];
+        const currentRelIds = Array.isArray(nextView.visibleRelationshipIds)
+          ? [...nextView.visibleRelationshipIds]
+          : [];
         if (!currentRelIds.includes(relationshipId)) {
           currentRelIds.push(relationshipId);
           nextView = { ...nextView, visibleRelationshipIds: currentRelIds };
         }
         const layoutMetadata = nextView.layoutMetadata ?? {};
-        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as string[] | undefined;
+        const metaRelIds = (layoutMetadata as any)?.visibleRelationshipIds as
+          | string[]
+          | undefined;
         const nextMetaRelIds = Array.isArray(metaRelIds) ? [...metaRelIds] : [];
         if (!nextMetaRelIds.includes(relationshipId)) {
           nextMetaRelIds.push(relationshipId);
           nextView = {
             ...nextView,
-            layoutMetadata: { ...nextView.layoutMetadata, visibleRelationshipIds: nextMetaRelIds },
+            layoutMetadata: {
+              ...nextView.layoutMetadata,
+              visibleRelationshipIds: nextMetaRelIds,
+            },
           };
         }
         setActiveView(nextView);
@@ -5242,7 +6501,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       persistWorkspaceDebounced(100);
       return { ok: true, id: relationshipId } as const;
     },
-    [activeTabKey, activeView, activeViewId, actor, applyRepositoryTransaction, clearGovernanceWarningEdges, declareModelingAction, persistWorkspaceDebounced, relationshipStyleForType, setViewTabStateById, validateRelationshipCreation],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      actor,
+      applyRepositoryTransaction,
+      clearGovernanceWarningEdges,
+      declareModelingAction,
+      persistWorkspaceDebounced,
+      relationshipStyleForType,
+      setViewTabStateById,
+      validateRelationshipCreation,
+    ],
   );
 
   const confirmRelationshipChoice = React.useCallback(
@@ -5258,7 +6529,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'error',
           domain: 'relationship',
           message: creation.error ?? 'Failed to create connection.',
-          context: { elementId: relationshipChooser.sourceId, relationshipType: type },
+          context: {
+            elementId: relationshipChooser.sourceId,
+            relationshipType: type,
+          },
         });
       }
       setRelationshipChooser(null);
@@ -5284,7 +6558,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
             level: 'error',
             domain: 'relationship',
             message: creation.error ?? 'Failed to create connection.',
-            context: { elementId: resolution.sourceId, relationshipType: selection.type },
+            context: {
+              elementId: resolution.sourceId,
+              relationshipType: selection.type,
+            },
           });
         } else if (creation.id) {
           createdConnectionsRef.current.set(creation.id, {
@@ -5326,12 +6603,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
           // Add to canvas at midpoint
           if (cyRef.current) {
-            const sourceNode = cyRef.current.getElementById(resolution.sourceId);
-            const targetNode = cyRef.current.getElementById(resolution.targetId);
-            const sPos = sourceNode && !sourceNode.empty() ? sourceNode.position() : { x: 0, y: 0 };
-            const tPos = targetNode && !targetNode.empty() ? targetNode.position() : { x: 0, y: 0 };
+            const sourceNode = cyRef.current.getElementById(
+              resolution.sourceId,
+            );
+            const targetNode = cyRef.current.getElementById(
+              resolution.targetId,
+            );
+            const sPos =
+              sourceNode && !sourceNode.empty()
+                ? sourceNode.position()
+                : { x: 0, y: 0 };
+            const tPos =
+              targetNode && !targetNode.empty()
+                ? targetNode.position()
+                : { x: 0, y: 0 };
             const midX = (sPos.x + tPos.x) / 2;
-            const midY = (sPos.y + tPos.y) / 2 + (intermediateIds.length * 60);
+            const midY = (sPos.y + tPos.y) / 2 + intermediateIds.length * 60;
 
             cyRef.current.add({
               data: {
@@ -5348,7 +6635,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
 
         // Step 2: Create relationships along the path
-        const nodeChain = [resolution.sourceId, ...intermediateIds, resolution.targetId];
+        const nodeChain = [
+          resolution.sourceId,
+          ...intermediateIds,
+          resolution.targetId,
+        ];
         for (let i = 0; i < path.hops.length; i++) {
           const hop = path.hops[i];
           const fromId = nodeChain[i];
@@ -5363,7 +6654,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
               level: 'warn',
               domain: 'relationship',
               message: `Failed to create segment ${hop.fromType} → ${hop.toType}: ${creation.error}`,
-              context: { elementId: fromId, relationshipType: hop.relationshipType },
+              context: {
+                elementId: fromId,
+                relationshipType: hop.relationshipType,
+              },
             });
             success = false;
             break;
@@ -5396,14 +6690,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
   );
 
   const stageExistingElement = React.useCallback(
-    (elementId: string, placement?: { x: number; y: number }, source: CanvasModelingSource = 'explorer') => {
+    (
+      elementId: string,
+      placement?: { x: number; y: number },
+      source: CanvasModelingSource = 'explorer',
+    ) => {
       if (!eaRepository) return;
       const existing = eaRepository.objects.get(elementId);
       if (!existing) {
         message.error('Selected element no longer exists in the repository.');
         return;
       }
-      const isViewCanvas = Boolean(activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY);
+      const isViewCanvas = Boolean(
+        activeViewId && activeView && activeTabKey !== WORKSPACE_TAB_KEY,
+      );
       if (isViewCanvas && viewReadOnly) {
         message.warning('This view is read-only.');
         return;
@@ -5417,39 +6717,66 @@ const StudioShell: React.FC<StudioShellProps> = ({
         source,
       });
       setValidationGateOpen(true);
-      const attrs = { ...(existing.attributes ?? {}) } as Record<string, unknown>;
-      const name = typeof attrs.name === 'string' && attrs.name.trim() ? attrs.name.trim() : existing.id;
-      const description = typeof attrs.description === 'string' ? attrs.description : '';
-      const createdAt = typeof attrs.createdAt === 'string' ? attrs.createdAt : new Date().toISOString();
-      const createdBy = typeof attrs.createdBy === 'string' ? attrs.createdBy : actor;
+      const attrs = { ...(existing.attributes ?? {}) } as Record<
+        string,
+        unknown
+      >;
+      const name =
+        typeof attrs.name === 'string' && attrs.name.trim()
+          ? attrs.name.trim()
+          : existing.id;
+      const description =
+        typeof attrs.description === 'string' ? attrs.description : '';
+      const createdAt =
+        typeof attrs.createdAt === 'string'
+          ? attrs.createdAt
+          : new Date().toISOString();
+      const createdBy =
+        typeof attrs.createdBy === 'string' ? attrs.createdBy : actor;
       const modelingState = (attrs.modelingState as any) ?? 'COMMITTED';
 
       if (isViewCanvas) {
-        const visualData = buildEaVisualData({ type: existing.type as ObjectType, attributes: attrs });
+        const visualData = buildEaVisualData({
+          type: existing.type as ObjectType,
+          attributes: attrs,
+        });
         if (activeView) {
           let nextView: ViewInstance = activeView;
           let didUpdateView = false;
           if (activeView.scope.kind === 'ManualSelection') {
-            const currentIds = Array.isArray(activeView.scope.elementIds) ? activeView.scope.elementIds : [];
+            const currentIds = Array.isArray(activeView.scope.elementIds)
+              ? activeView.scope.elementIds
+              : [];
             if (!currentIds.includes(existing.id)) {
               nextView = {
                 ...nextView,
-                scope: { kind: 'ManualSelection', elementIds: [...currentIds, existing.id] },
+                scope: {
+                  kind: 'ManualSelection',
+                  elementIds: [...currentIds, existing.id],
+                },
               };
               didUpdateView = true;
             }
           }
           if (placement) {
             const basePositions = layoutPositionsForView(activeView);
-            const nextPositions = { ...basePositions, [existing.id]: { x: placement.x, y: placement.y } };
+            const nextPositions = {
+              ...basePositions,
+              [existing.id]: { x: placement.x, y: placement.y },
+            };
             nextView = {
               ...nextView,
-              layoutMetadata: { ...(nextView.layoutMetadata ?? {}), positions: nextPositions },
+              layoutMetadata: {
+                ...(nextView.layoutMetadata ?? {}),
+                positions: nextPositions,
+              },
             };
             didUpdateView = true;
           }
           if (didUpdateView) {
-            const isWorking = Boolean(viewTabStateById[activeTabKey]?.isWorking);
+            const isWorking = Boolean(
+              viewTabStateById[activeTabKey]?.isWorking,
+            );
             if (isWorking) {
               setActiveView(nextView);
               setViewTabStateById((prev) => {
@@ -5488,7 +6815,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             node.data('eaColor', visualData.eaColor);
             node.data('eaBorder', visualData.eaBorder);
             node.data('eaVisualKind', visualData.eaVisualKind);
-            node.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(node));
+            node.grabbable(
+              !viewReadOnly && !viewLayoutLocked && isNodeEditable(node),
+            );
             if (placement) {
               node.position({ x: placement.x, y: placement.y });
             }
@@ -5502,7 +6831,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 viewInstance: true,
                 ...visualData,
               },
-              position: placement ? { x: placement.x, y: placement.y } : undefined,
+              position: placement
+                ? { x: placement.x, y: placement.y }
+                : undefined,
             });
             const added = cy.getElementById(existing.id);
             if (added && !added.empty()) {
@@ -5514,7 +6845,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
               added.data('eaColor', visualData.eaColor);
               added.data('eaBorder', visualData.eaBorder);
               added.data('eaVisualKind', visualData.eaVisualKind);
-              added.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(added));
+              added.grabbable(
+                !viewReadOnly && !viewLayoutLocked && isNodeEditable(added),
+              );
               added.select();
             }
           }
@@ -5549,7 +6882,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (cyRef.current) {
         const cy = cyRef.current;
         const node = cy.getElementById(existing.id);
-        const visualData = buildEaVisualData({ type: existing.type as ObjectType, attributes: attrs });
+        const visualData = buildEaVisualData({
+          type: existing.type as ObjectType,
+          attributes: attrs,
+        });
         if (node && !node.empty()) {
           node.data('staged', true);
           node.data('label', name);
@@ -5573,7 +6909,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
               staged: true,
               ...visualData,
             },
-            position: placement ? { x: placement.x, y: placement.y } : undefined,
+            position: placement
+              ? { x: placement.x, y: placement.y }
+              : undefined,
           });
           const added = cy.getElementById(existing.id);
           if (added && !added.empty()) {
@@ -5595,11 +6933,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
       setSelectedNodeIds([existing.id]);
       setSelectedFreeShapeId(null);
       setSelectedFreeConnectorId(null);
-      message.success(placement ? 'Element added to canvas.' : 'Element staged for editing.');
+      message.success(
+        placement ? 'Element added to canvas.' : 'Element staged for editing.',
+      );
       // WRITE-THROUGH: persist workspace immediately after staging existing element
       persistWorkspaceDebounced(100);
     },
-    [activeTabKey, activeView, activeViewId, actor, declareModelingAction, eaRepository, isNodeEditable, persistWorkspaceDebounced, stagedElementById, viewReadOnly, viewTabStateById],
+    [
+      activeTabKey,
+      activeView,
+      activeViewId,
+      actor,
+      declareModelingAction,
+      eaRepository,
+      isNodeEditable,
+      persistWorkspaceDebounced,
+      stagedElementById,
+      viewReadOnly,
+      viewTabStateById,
+    ],
   );
 
   const stageExistingRelationship = React.useCallback(
@@ -5622,9 +6974,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
         source: 'canvas',
       });
       setValidationGateOpen(true);
-      const attrs = { ...(resolved.attributes ?? {}) } as Record<string, unknown>;
-      const createdAt = typeof attrs.createdAt === 'string' ? attrs.createdAt : new Date().toISOString();
-      const createdBy = typeof attrs.createdBy === 'string' ? attrs.createdBy : actor;
+      const attrs = { ...(resolved.attributes ?? {}) } as Record<
+        string,
+        unknown
+      >;
+      const createdAt =
+        typeof attrs.createdAt === 'string'
+          ? attrs.createdAt
+          : new Date().toISOString();
+      const createdBy =
+        typeof attrs.createdBy === 'string' ? attrs.createdBy : actor;
       const modelingState = (attrs.modelingState as any) ?? 'COMMITTED';
 
       const staged: DesignWorkspaceStagedRelationship = {
@@ -5647,7 +7006,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const edge = cyRef.current.getElementById(edgeId);
         if (edge && !edge.empty()) {
           edge.data('staged', true);
-          edge.data('relationshipStyle', relationshipStyleForType(resolved.type as RelationshipType));
+          edge.data(
+            'relationshipStyle',
+            relationshipStyleForType(resolved.type as RelationshipType),
+          );
           edge.select();
         }
       }
@@ -5658,11 +7020,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
       // WRITE-THROUGH: persist workspace immediately after staging existing relationship
       persistWorkspaceDebounced(100);
     },
-    [actor, declareModelingAction, persistWorkspaceDebounced, relationshipStyleForType, resolveExistingRelationship, stagedRelationships],
+    [
+      actor,
+      declareModelingAction,
+      persistWorkspaceDebounced,
+      relationshipStyleForType,
+      resolveExistingRelationship,
+      stagedRelationships,
+    ],
   );
 
   const confirmRelationshipDraft = React.useCallback(() => {
-    if (!pendingRelationshipType || !relationshipSourceId || !relationshipTargetId) return;
+    if (
+      !pendingRelationshipType ||
+      !relationshipSourceId ||
+      !relationshipTargetId
+    )
+      return;
     setValidationGateOpen(true);
     const relationshipId = stageRelationship({
       fromId: relationshipSourceId,
@@ -5690,23 +7064,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
     setSelectedEdgeId(relationshipId);
     setRelationshipSourceId(null);
     setRelationshipTargetId(null);
-    setRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+    setRelationshipDraft({
+      sourceId: null,
+      targetId: null,
+      valid: null,
+      message: null,
+      dragging: false,
+    });
     // Relationship properties can be edited later via Inspector.
-  }, [pendingRelationshipType, relationshipSourceId, relationshipTargetId, stageRelationship]);
+  }, [
+    pendingRelationshipType,
+    relationshipSourceId,
+    relationshipTargetId,
+    stageRelationship,
+  ]);
 
-  const startChildCreation = React.useCallback(
-    (parentId: string) => {
-      message.info('Create new elements from the EA Toolbox, then connect them to create child relationships.');
-      return;
-    },
-    [],
-  );
+  const startChildCreation = React.useCallback((parentId: string) => {
+    message.info(
+      'Create new elements from the EA Toolbox, then connect them to create child relationships.',
+    );
+    return;
+  }, []);
 
   const handleQuickCreate = React.useCallback(
     async (keepOpen: boolean) => {
       try {
         if (designWorkspace.status !== 'DRAFT') {
-          message.warning('Workspace is read-only. Reopen draft to create elements.');
+          message.warning(
+            'Workspace is read-only. Reopen draft to create elements.',
+          );
           return;
         }
         const values = await quickCreateForm.validateFields();
@@ -5727,7 +7113,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
           source: 'toolbox',
         });
         if (!id) return;
-        openPropertiesPanel({ elementId: id, elementType: type, dock: 'right', readOnly: false });
+        openPropertiesPanel({
+          elementId: id,
+          elementType: type,
+          dock: 'right',
+          readOnly: false,
+        });
         message.success(`${type} created in repository.`);
 
         if (pendingChildCreation) {
@@ -5737,7 +7128,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             pendingChildCreation.relationshipType,
           );
           if (!validation.valid) {
-            message.warning(validation.message || 'Child relationship not created.');
+            message.warning(
+              validation.message || 'Child relationship not created.',
+            );
           } else {
             const relId = stageRelationship({
               fromId: pendingChildCreation.parentId,
@@ -5763,7 +7156,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
         // validation handled by Form
       }
     },
-    [designWorkspace.status, openPropertiesPanel, pendingChildCreation, quickCreateForm, quickCreatePlacement, stageElement, stageRelationship, validateRelationshipCreation, validateStudioElementType],
+    [
+      designWorkspace.status,
+      openPropertiesPanel,
+      pendingChildCreation,
+      quickCreateForm,
+      quickCreatePlacement,
+      stageElement,
+      stageRelationship,
+      validateRelationshipCreation,
+      validateStudioElementType,
+    ],
   );
 
   const updateWorkspaceStatus = React.useCallback(
@@ -5779,7 +7182,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
       };
       onUpdateWorkspace(next);
     },
-    [buildLayoutFromCanvas, designWorkspace, onUpdateWorkspace, stagedElements, stagedRelationships],
+    [
+      buildLayoutFromCanvas,
+      designWorkspace,
+      onUpdateWorkspace,
+      stagedElements,
+      stagedRelationships,
+    ],
   );
 
   const discardWorkspaceNow = React.useCallback(() => {
@@ -5795,7 +7204,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     onUpdateWorkspace(nextWorkspace);
     recordAuditEvent({
       userId: actor,
-      repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+      repositoryName:
+        metadata?.repositoryName ?? designWorkspace.repositoryName,
       timestamp: nowIso,
       action: `workspace.discard name="${designWorkspace.name}"`,
     });
@@ -5805,18 +7215,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
     setDiscardOpen(false);
     message.success('Workspace discarded. View unchanged.');
     onExit({ suppressRefresh: true });
-  }, [actor, designWorkspace, metadata?.repositoryName, onExit, onUpdateWorkspace]);
+  }, [
+    actor,
+    designWorkspace,
+    metadata?.repositoryName,
+    onExit,
+    onUpdateWorkspace,
+  ]);
 
   const saveWorkspaceDraft = React.useCallback(() => {
     if (designWorkspace.status === 'COMMITTED') {
-      message.warning('Workspace is committed. Reopen draft to save new changes.');
+      message.warning(
+        'Workspace is committed. Reopen draft to save new changes.',
+      );
       return;
     }
     setValidationGateOpen(true);
     setValidationMode('hard');
-    const blockingIssues = [...stagedValidationIssues, ...mandatoryCommitRelationshipIssues].filter(
-      (issue) => issue.severity === 'error',
-    );
+    const blockingIssues = [
+      ...stagedValidationIssues,
+      ...mandatoryCommitRelationshipIssues,
+    ].filter((issue) => issue.severity === 'error');
     if (blockingIssues.length > 0) {
       eaConsole.push({
         level: 'error',
@@ -5830,7 +7249,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
       ...designWorkspace,
       status: 'DRAFT',
       updatedAt: new Date().toISOString(),
-      repositoryUpdatedAt: currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt,
+      repositoryUpdatedAt:
+        currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt,
       layout,
       stagedElements,
       stagedRelationships,
@@ -5838,11 +7258,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
     onUpdateWorkspace(next);
     message.success('Workspace saved (draft).');
     setValidationMode('soft');
-  }, [buildLayoutFromCanvas, currentRepositoryUpdatedAt, designWorkspace, mandatoryCommitRelationshipIssues, onUpdateWorkspace, stagedElements, stagedRelationships, stagedValidationIssues]);
+  }, [
+    buildLayoutFromCanvas,
+    currentRepositoryUpdatedAt,
+    designWorkspace,
+    mandatoryCommitRelationshipIssues,
+    onUpdateWorkspace,
+    stagedElements,
+    stagedRelationships,
+    stagedValidationIssues,
+  ]);
 
   React.useEffect(() => {
     const onAction = (ev: Event) => {
-      const e = ev as CustomEvent<{ requestId?: string; action?: 'save' | 'discard' }>;
+      const e = ev as CustomEvent<{
+        requestId?: string;
+        action?: 'save' | 'discard';
+      }>;
       const requestId = e.detail?.requestId ?? '';
       const action = e.detail?.action;
       if (!action) return;
@@ -5857,14 +7289,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       try {
-        window.dispatchEvent(new CustomEvent('ea:studio.action.completed', { detail: { requestId, action } }));
+        window.dispatchEvent(
+          new CustomEvent('ea:studio.action.completed', {
+            detail: { requestId, action },
+          }),
+        );
       } catch {
         // ignore
       }
     };
 
     window.addEventListener('ea:studio.action', onAction as EventListener);
-    return () => window.removeEventListener('ea:studio.action', onAction as EventListener);
+    return () =>
+      window.removeEventListener('ea:studio.action', onAction as EventListener);
   }, [discardWorkspaceNow, onExit, saveWorkspaceDraft]);
 
   const autoSaveWorkspace = React.useCallback(() => {
@@ -5874,7 +7311,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const next: DesignWorkspace = {
       ...designWorkspace,
       updatedAt: new Date().toISOString(),
-      repositoryUpdatedAt: currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt,
+      repositoryUpdatedAt:
+        currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt,
       layout,
       stagedElements,
       stagedRelationships,
@@ -5882,7 +7320,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     onUpdateWorkspace(next);
     setLastAutoSaveAt(next.updatedAt);
     workspaceAutosavePendingRef.current = false;
-  }, [buildLayoutFromCanvas, currentRepositoryUpdatedAt, designWorkspace, onUpdateWorkspace, stagedElements, stagedRelationships]);
+  }, [
+    buildLayoutFromCanvas,
+    currentRepositoryUpdatedAt,
+    designWorkspace,
+    onUpdateWorkspace,
+    stagedElements,
+    stagedRelationships,
+  ]);
 
   React.useEffect(() => {
     const interval = window.setInterval(() => {
@@ -5895,7 +7340,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase() ?? '';
-      const isEditable = tag === 'input' || tag === 'textarea' || target?.isContentEditable;
+      const isEditable =
+        tag === 'input' || tag === 'textarea' || target?.isContentEditable;
       if (isEditable && event.key !== 'Escape') return;
 
       if (event.key === 'Alt') {
@@ -5961,7 +7407,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       if (event.key.toLowerCase() === 'c') {
         event.preventDefault();
-        message.info('Create new elements from the EA Toolbox. Drag from Explorer to reuse existing elements.');
+        message.info(
+          'Create new elements from the EA Toolbox. Drag from Explorer to reuse existing elements.',
+        );
         return;
       }
 
@@ -5994,7 +7442,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [cancelCreation, canRedo, canUndo, deleteStagedRelationship, gridSize, isNodeEditable, promptRemoveOrDeleteElements, recordLayoutUndoSnapshot, redo, redoLayoutMove, refreshConnectionPositionSnapshot, resetToolDrafts, selectedNodeIds, stagedSelectedRelationship, undo, undoLayoutMove, viewReadOnly]);
+  }, [
+    cancelCreation,
+    canRedo,
+    canUndo,
+    deleteStagedRelationship,
+    gridSize,
+    isNodeEditable,
+    promptRemoveOrDeleteElements,
+    recordLayoutUndoSnapshot,
+    redo,
+    redoLayoutMove,
+    refreshConnectionPositionSnapshot,
+    resetToolDrafts,
+    selectedNodeIds,
+    stagedSelectedRelationship,
+    undo,
+    undoLayoutMove,
+    viewReadOnly,
+  ]);
 
   const commitWorkspace = React.useCallback(() => {
     setValidationGateOpen(true);
@@ -6010,18 +7476,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
 
     if (!hasModelingAccess) {
-      message.error('Commit blocked: repository is read-only or you lack modeling permission.');
+      message.error(
+        'Commit blocked: repository is read-only or you lack modeling permission.',
+      );
       return;
     }
 
     if (commitContextLocked) {
-      message.error('Commit blocked: Baseline, Plateau, and Roadmap contexts are read-only.');
+      message.error(
+        'Commit blocked: Baseline, Plateau, and Roadmap contexts are read-only.',
+      );
       return;
     }
 
-    const blockingIssues = [...stagedValidationIssues, ...mandatoryCommitRelationshipIssues].filter(
-      (issue) => issue.severity === 'error',
-    );
+    const blockingIssues = [
+      ...stagedValidationIssues,
+      ...mandatoryCommitRelationshipIssues,
+    ].filter((issue) => issue.severity === 'error');
     if (blockingIssues.length > 0) {
       eaConsole.push({
         level: 'error',
@@ -6047,13 +7518,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
     ) => {
       return (
         relationships.find((r) => r.id === rel.id) ??
-        relationships.find((r) => r.fromId === rel.fromId && r.toId === rel.toId && r.type === rel.type)
+        relationships.find(
+          (r) =>
+            r.fromId === rel.fromId &&
+            r.toId === rel.toId &&
+            r.type === rel.type,
+        )
       );
     };
 
     const removeElementFromRepo = (elementId: string) => {
       nextRepo.objects.delete(elementId);
-      nextRepo.relationships = nextRepo.relationships.filter((r) => r.fromId !== elementId && r.toId !== elementId);
+      nextRepo.relationships = nextRepo.relationships.filter(
+        (r) => r.fromId !== elementId && r.toId !== elementId,
+      );
     };
 
     for (const el of stagedElements) {
@@ -6068,8 +7546,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const attrs: Record<string, unknown> = { ...(el.attributes ?? {}) };
       if (typeof el.name === 'string') attrs.name = el.name.trim();
-      if (typeof el.description === 'string') attrs.description = el.description;
-      if (!attrs.modelingState) attrs.modelingState = el.modelingState ?? 'COMMITTED';
+      if (typeof el.description === 'string')
+        attrs.description = el.description;
+      if (!attrs.modelingState)
+        attrs.modelingState = el.modelingState ?? 'COMMITTED';
 
       if (!exists) {
         if (!attrs.createdAt) attrs.createdAt = el.createdAt || nowIso;
@@ -6077,7 +7557,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (!attrs.lastModifiedAt) attrs.lastModifiedAt = attrs.createdAt;
         if (!attrs.lastModifiedBy) attrs.lastModifiedBy = attrs.createdBy;
 
-        const res = nextRepo.addObject({ id: el.id, type: el.type, attributes: attrs });
+        const res = nextRepo.addObject({
+          id: el.id,
+          type: el.type,
+          attributes: attrs,
+        });
         if (!res.ok) {
           Modal.error({
             title: 'Commit failed',
@@ -6090,8 +7574,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       const existingAttrs = exists.attributes ?? {};
-      const createdAt = typeof (existingAttrs as any)?.createdAt === 'string' ? (existingAttrs as any).createdAt : (attrs.createdAt ?? el.createdAt ?? nowIso);
-      const createdBy = typeof (existingAttrs as any)?.createdBy === 'string' ? (existingAttrs as any).createdBy : (attrs.createdBy ?? el.createdBy ?? actor);
+      const createdAt =
+        typeof (existingAttrs as any)?.createdAt === 'string'
+          ? (existingAttrs as any).createdAt
+          : (attrs.createdAt ?? el.createdAt ?? nowIso);
+      const createdBy =
+        typeof (existingAttrs as any)?.createdBy === 'string'
+          ? (existingAttrs as any).createdBy
+          : (attrs.createdBy ?? el.createdBy ?? actor);
       attrs.createdAt = createdAt;
       attrs.createdBy = createdBy;
 
@@ -6113,13 +7603,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const removedElementIds = new Set(removedElements.map((el) => el.id));
 
     for (const rel of stagedRelationships) {
-      if (removedElementIds.has(rel.fromId) || removedElementIds.has(rel.toId)) {
+      if (
+        removedElementIds.has(rel.fromId) ||
+        removedElementIds.has(rel.toId)
+      ) {
         continue;
       }
       if (isMarkedForRemoval(rel.attributes)) {
         const existing = findRelationshipInRepo(rel, nextRepo.relationships);
         if (existing) {
-          nextRepo.relationships = nextRepo.relationships.filter((r) => r.id !== existing.id);
+          nextRepo.relationships = nextRepo.relationships.filter(
+            (r) => r.id !== existing.id,
+          );
           removedRelationships.push(rel);
         }
         continue;
@@ -6127,7 +7622,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const existing = findRelationshipInRepo(rel, nextRepo.relationships);
       const attrs: Record<string, unknown> = { ...(rel.attributes ?? {}) };
-      if (!attrs.modelingState) attrs.modelingState = rel.modelingState ?? 'COMMITTED';
+      if (!attrs.modelingState)
+        attrs.modelingState = rel.modelingState ?? 'COMMITTED';
 
       if (!existing) {
         if (!attrs.createdAt) attrs.createdAt = rel.createdAt || nowIso;
@@ -6154,8 +7650,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       const existingAttrs = existing.attributes ?? {};
-      const createdAt = typeof (existingAttrs as any)?.createdAt === 'string' ? (existingAttrs as any).createdAt : (attrs.createdAt ?? rel.createdAt ?? nowIso);
-      const createdBy = typeof (existingAttrs as any)?.createdBy === 'string' ? (existingAttrs as any).createdBy : (attrs.createdBy ?? rel.createdBy ?? actor);
+      const createdAt =
+        typeof (existingAttrs as any)?.createdAt === 'string'
+          ? (existingAttrs as any).createdAt
+          : (attrs.createdAt ?? rel.createdAt ?? nowIso);
+      const createdBy =
+        typeof (existingAttrs as any)?.createdBy === 'string'
+          ? (existingAttrs as any).createdBy
+          : (attrs.createdBy ?? rel.createdBy ?? actor);
       attrs.createdAt = createdAt;
       attrs.createdBy = createdBy;
 
@@ -6166,7 +7668,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
           ...existing,
           attributes: { ...attrs },
         };
-        const index = nextRepo.relationships.findIndex((r) => r.id === existing.id);
+        const index = nextRepo.relationships.findIndex(
+          (r) => r.id === existing.id,
+        );
         if (index >= 0) {
           nextRepo.relationships[index] = nextRel;
         }
@@ -6195,7 +7699,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     recordAuditEvent({
       userId: actor,
-      repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+      repositoryName:
+        metadata?.repositoryName ?? designWorkspace.repositoryName,
       timestamp: nowIso,
       action: `workspace.commit name="${designWorkspace.name}" added=${addedElements.length + addedRelationships.length} modified=${modifiedElements.length + modifiedRelationships.length} removed=${removedElements.length + removedRelationships.length}`,
     });
@@ -6203,7 +7708,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     addedElements.forEach((el) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.add element id="${el.id}" type="${el.type}"`,
       });
@@ -6212,7 +7718,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     modifiedElements.forEach((el) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.modify element id="${el.id}" type="${el.type}"`,
       });
@@ -6221,7 +7728,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     removedElements.forEach((el) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.remove element id="${el.id}" type="${el.type}"`,
       });
@@ -6230,7 +7738,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     addedRelationships.forEach((rel) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.add relationship id="${rel.id}" type="${rel.type}" from="${rel.fromId}" to="${rel.toId}"`,
       });
@@ -6239,7 +7748,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     modifiedRelationships.forEach((rel) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.modify relationship id="${rel.id}" type="${rel.type}" from="${rel.fromId}" to="${rel.toId}"`,
       });
@@ -6248,7 +7758,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     removedRelationships.forEach((rel) => {
       recordAuditEvent({
         userId: actor,
-        repositoryName: metadata?.repositoryName ?? designWorkspace.repositoryName,
+        repositoryName:
+          metadata?.repositoryName ?? designWorkspace.repositoryName,
         timestamp: nowIso,
         action: `workspace.commit.remove relationship id="${rel.id}" type="${rel.type}" from="${rel.fromId}" to="${rel.toId}"`,
       });
@@ -6272,10 +7783,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       ...designWorkspace,
       status: 'COMMITTED',
       updatedAt: nowIso,
-      repositoryUpdatedAt: changeCount > 0 ? nowIso : (currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt),
+      repositoryUpdatedAt:
+        changeCount > 0
+          ? nowIso
+          : (currentRepositoryUpdatedAt ?? designWorkspace.repositoryUpdatedAt),
       layout,
-      stagedElements: stagedElements.map((el) => ({ ...el, status: 'COMMITTED' })),
-      stagedRelationships: stagedRelationships.map((rel) => ({ ...rel, status: 'COMMITTED' })),
+      stagedElements: stagedElements.map((el) => ({
+        ...el,
+        status: 'COMMITTED',
+      })),
+      stagedRelationships: stagedRelationships.map((rel) => ({
+        ...rel,
+        status: 'COMMITTED',
+      })),
     };
 
     onUpdateWorkspace(nextWorkspace);
@@ -6289,17 +7809,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
     } catch {
       // Best-effort only.
     }
-  }, [actor, buildLayoutFromCanvas, commitContextLocked, designWorkspace, eaRepository, hasModelingAccess, hasStagedChanges, mandatoryCommitRelationshipIssues, metadata?.repositoryName, onUpdateWorkspace, stagedElements, stagedRelationships, stagedValidationIssues, trySetEaRepository]);
+  }, [
+    actor,
+    buildLayoutFromCanvas,
+    commitContextLocked,
+    designWorkspace,
+    eaRepository,
+    hasModelingAccess,
+    hasStagedChanges,
+    mandatoryCommitRelationshipIssues,
+    metadata?.repositoryName,
+    onUpdateWorkspace,
+    stagedElements,
+    stagedRelationships,
+    stagedValidationIssues,
+    trySetEaRepository,
+  ]);
 
   /** Restore a node to its original position recorded before a connection drag. */
-  const restoreDraggedNodePosition = React.useCallback((nodeId?: string | null) => {
-    if (!nodeId || !cyRef.current) return;
-    const origin = connectionDragOriginRef.current.get(nodeId);
-    if (!origin) return;
-    const node = cyRef.current.getElementById(nodeId);
-    if (node && !node.empty()) node.position({ x: origin.x, y: origin.y });
-    connectionDragOriginRef.current.delete(nodeId);
-  }, []);
+  const restoreDraggedNodePosition = React.useCallback(
+    (nodeId?: string | null) => {
+      if (!nodeId || !cyRef.current) return;
+      const origin = connectionDragOriginRef.current.get(nodeId);
+      if (!origin) return;
+      const node = cyRef.current.getElementById(nodeId);
+      if (node && !node.empty()) node.position({ x: origin.x, y: origin.y });
+      connectionDragOriginRef.current.delete(nodeId);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (!containerRef.current) return undefined;
@@ -6649,10 +8187,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const currentToolMode = toolModeRef.current;
       const panEnabled = currentToolMode === 'PAN';
       const selectEnabled = currentToolMode === 'SELECT';
-      const connectionMode = currentToolMode === 'CREATE_RELATIONSHIP' || currentToolMode === 'CREATE_FREE_CONNECTOR';
+      const connectionMode =
+        currentToolMode === 'CREATE_RELATIONSHIP' ||
+        currentToolMode === 'CREATE_FREE_CONNECTOR';
       cy.userPanningEnabled(panEnabled);
       cy.boxSelectionEnabled(selectEnabled);
-      cy.autoungrabify(panEnabled || connectionDragLockRef.current || connectionMode || viewLayoutLocked);
+      cy.autoungrabify(
+        panEnabled ||
+          connectionDragLockRef.current ||
+          connectionMode ||
+          viewLayoutLocked,
+      );
     };
 
     applyToolMode();
@@ -6661,7 +8206,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     // is in flight, capture pointer on the container to guarantee that
     // mousemove/mouseup continue reaching Cytoscape even if the cursor
     // leaves the container bounds.
-    if (draggingRef.current && containerRef.current && dragPointerIdRef.current !== null) {
+    if (
+      draggingRef.current &&
+      containerRef.current &&
+      dragPointerIdRef.current !== null
+    ) {
       try {
         containerRef.current.setPointerCapture(dragPointerIdRef.current);
       } catch {
@@ -6693,12 +8242,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
         return;
       }
 
-      if (currentToolMode === 'CREATE_FREE_CONNECTOR' && evt.target === cyRef.current) {
+      if (
+        currentToolMode === 'CREATE_FREE_CONNECTOR' &&
+        evt.target === cyRef.current
+      ) {
         setFreeConnectorSourceId(null);
         return;
       }
 
-      if (currentToolMode === 'CREATE_ELEMENT' && pendingElementType && placementModeActive && evt.target === cyRef.current) {
+      if (
+        currentToolMode === 'CREATE_ELEMENT' &&
+        pendingElementType &&
+        placementModeActive &&
+        evt.target === cyRef.current
+      ) {
         if (!validateStudioElementType(pendingElementType)) return;
         const pos = evt.position ?? evt.cyPosition ?? { x: 0, y: 0 };
         openInlineCreatePrompt({
@@ -6722,14 +8279,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (!relationshipSourceId) {
           setRelationshipSourceId(id);
           if (cyRef.current) {
-            cyRef.current.nodes().removeClass('connectionSource').removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+            cyRef.current
+              .nodes()
+              .removeClass('connectionSource')
+              .removeClass('validTarget')
+              .removeClass('invalidTarget')
+              .removeClass('validTargetCandidate');
             node.addClass('connectionSource');
-            const validTargets = getValidTargetsForSource(id, currentRelationshipType);
+            const validTargets = getValidTargetsForSource(
+              id,
+              currentRelationshipType,
+            );
             cyRef.current.nodes().forEach((n) => {
               const targetId = String(n.id());
               if (!targetId || targetId === id || n.data('draftTarget')) return;
               n.removeClass('validTargetCandidate');
-              if (validTargets.has(targetId)) n.addClass('validTargetCandidate');
+              if (validTargets.has(targetId))
+                n.addClass('validTargetCandidate');
             });
           }
           updateRelationshipDraft({
@@ -6743,14 +8309,21 @@ const StudioShell: React.FC<StudioShellProps> = ({
             level: 'info',
             domain: 'relationship',
             message: 'Select a target element.',
-            context: { elementId: id, relationshipType: currentRelationshipType },
+            context: {
+              elementId: id,
+              relationshipType: currentRelationshipType,
+            },
           });
           return;
         }
 
         if (relationshipSourceId === id) return;
 
-        const validation = validateRelationshipCreation(relationshipSourceId, id, currentRelationshipType);
+        const validation = validateRelationshipCreation(
+          relationshipSourceId,
+          id,
+          currentRelationshipType,
+        );
         if (!validation.valid) {
           addGovernanceWarningEdge({
             fromId: relationshipSourceId,
@@ -6760,7 +8333,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
           });
           setRelationshipSourceId(null);
           setRelationshipTargetId(null);
-          updateRelationshipDraft({ sourceId: null, targetId: null, valid: false, message: validation.message ?? null, dragging: false });
+          updateRelationshipDraft({
+            sourceId: null,
+            targetId: null,
+            valid: false,
+            message: validation.message ?? null,
+            dragging: false,
+          });
           clearRelationshipDraftArtifacts();
           return;
         }
@@ -6785,15 +8364,28 @@ const StudioShell: React.FC<StudioShellProps> = ({
             level: 'success',
             domain: 'relationship',
             message: 'Connection established.',
-            context: { elementId: relationshipSourceId ?? undefined, relationshipType: currentRelationshipType },
+            context: {
+              elementId: relationshipSourceId ?? undefined,
+              relationshipType: currentRelationshipType,
+            },
           });
         }
         setRelationshipSourceId(null);
         setRelationshipTargetId(null);
-        updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+        updateRelationshipDraft({
+          sourceId: null,
+          targetId: null,
+          valid: null,
+          message: null,
+          dragging: false,
+        });
       }
 
-      if (currentToolMode === 'CREATE_FREE_CONNECTOR' && currentFreeConnectorKind && evt.target !== cyRef.current) {
+      if (
+        currentToolMode === 'CREATE_FREE_CONNECTOR' &&
+        currentFreeConnectorKind &&
+        evt.target !== cyRef.current
+      ) {
         const node = evt.target;
         const id = String(node.id());
         if (!id) return;
@@ -6802,7 +8394,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           message.info({
             content: 'Free connector: choose a target node.',
             domain: 'relationship',
-            context: { elementId: id, relationshipType: currentFreeConnectorKind ?? undefined },
+            context: {
+              elementId: id,
+              relationshipType: currentFreeConnectorKind ?? undefined,
+            },
           });
           return;
         }
@@ -6817,7 +8412,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
             freeConnectorKind: currentFreeConnectorKind,
           },
         });
-        setFreeConnectors((prev) => [...prev, { id: edgeId, source: freeConnectorSourceId, target: id, kind: currentFreeConnectorKind }]);
+        setFreeConnectors((prev) => [
+          ...prev,
+          {
+            id: edgeId,
+            source: freeConnectorSourceId,
+            target: id,
+            kind: currentFreeConnectorKind,
+          },
+        ]);
         setFreeConnectorSourceId(null);
         setToolMode('SELECT');
         setPendingFreeConnectorKind(null);
@@ -6834,9 +8437,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (node.data('draftTarget')) return;
       const sourceId = String(node.id());
       if (!sourceId) return;
-      const isConnectionMode = currentToolMode === 'CREATE_RELATIONSHIP' || currentToolMode === 'CREATE_FREE_CONNECTOR';
+      const isConnectionMode =
+        currentToolMode === 'CREATE_RELATIONSHIP' ||
+        currentToolMode === 'CREATE_FREE_CONNECTOR';
       if (isConnectionMode && !connectionDragOriginRef.current.has(sourceId)) {
-        connectionDragOriginRef.current.set(sourceId, { x: node.position('x'), y: node.position('y') });
+        connectionDragOriginRef.current.set(sourceId, {
+          x: node.position('x'),
+          y: node.position('y'),
+        });
       }
       const cy = cyRef.current;
       const dragPos =
@@ -6847,9 +8455,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (currentToolMode === 'SELECT') {
         if (relationshipChooser) setRelationshipChooser(null);
         if (connectionPalette) setConnectionPalette(null);
-        if (viewReadOnly || !canDiagramMode || designWorkspace.status !== 'DRAFT') return;
+        if (
+          viewReadOnly ||
+          !canDiagramMode ||
+          designWorkspace.status !== 'DRAFT'
+        )
+          return;
         if (node.data('freeShape')) return;
-        const selected = cy.nodes(':selected').filter((n) => !n.data('freeShape'));
+        const selected = cy
+          .nodes(':selected')
+          .filter((n) => !n.data('freeShape'));
         if (selected.length > 1) return;
         intentConnectionRef.current = { sourceId, active: true };
 
@@ -6890,7 +8505,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
         setFreeConnectorSourceId(null);
         return;
       }
-      if (currentToolMode === 'CREATE_FREE_CONNECTOR' && currentFreeConnectorKind) {
+      if (
+        currentToolMode === 'CREATE_FREE_CONNECTOR' &&
+        currentFreeConnectorKind
+      ) {
         suppressConnectionTapRef.current = true;
         freeConnectorDragRef.current = { sourceId, dragging: true };
         setFreeConnectorSourceId(sourceId);
@@ -6915,7 +8533,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
       if (currentToolMode !== 'CREATE_RELATIONSHIP') return;
       if (!currentRelationshipType) return;
-      if (relationshipDraftRef.current.dragging && relationshipDraftRef.current.sourceId === sourceId) return;
+      if (
+        relationshipDraftRef.current.dragging &&
+        relationshipDraftRef.current.sourceId === sourceId
+      )
+        return;
       if (!cy.getElementById(DRAFT_EDGE_ID).empty()) {
         cy.getElementById(DRAFT_EDGE_ID).remove();
       }
@@ -6938,7 +8560,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }
       }
       suppressConnectionTapRef.current = true;
-      const validTargets = relationshipEligibilityRef.current.get(sourceId) || getValidTargetsForSource(sourceId, currentRelationshipType);
+      const validTargets =
+        relationshipEligibilityRef.current.get(sourceId) ||
+        getValidTargetsForSource(sourceId, currentRelationshipType);
 
       cy.nodes().forEach((n) => {
         const id = String(n.id());
@@ -6973,26 +8597,41 @@ const StudioShell: React.FC<StudioShellProps> = ({
         level: 'info',
         domain: 'relationship',
         message: 'Drag to target element.',
-        context: { elementId: sourceId, relationshipType: currentRelationshipType },
+        context: {
+          elementId: sourceId,
+          relationshipType: currentRelationshipType,
+        },
       });
     };
 
     const handleDragOverNode = (evt: any) => {
       const currentToolMode = toolModeRef.current;
       const currentRelationshipType = pendingRelationshipTypeRef.current;
-      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType) return;
+      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType)
+        return;
       const sourceId = relationshipDraftRef.current.sourceId;
       const isDragging = relationshipDraftRef.current.dragging;
       if (!sourceId) return;
       if (!cyRef.current) return;
-      if (isDragging && cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
+      if (isDragging && cyRef.current.getElementById(DRAFT_EDGE_ID).empty())
+        return;
       const node = evt.target;
       if (!node || node === cyRef.current) return;
       const targetId = String(node.id());
       if (!targetId || targetId === sourceId) return;
-      cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget');
-      const validation = validateRelationshipCreation(sourceId, targetId, currentRelationshipType);
-      cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget');
+      cyRef.current
+        ?.nodes()
+        .removeClass('validTarget')
+        .removeClass('invalidTarget');
+      const validation = validateRelationshipCreation(
+        sourceId,
+        targetId,
+        currentRelationshipType,
+      );
+      cyRef.current
+        ?.nodes()
+        .removeClass('validTarget')
+        .removeClass('invalidTarget');
       if (validation.valid) {
         node.addClass('validTarget');
       }
@@ -7018,7 +8657,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'info',
           domain: 'relationship',
           message: 'Release to create connection.',
-          context: { elementId: sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
       }
     };
@@ -7026,7 +8668,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const handleDragOutNode = (evt: any) => {
       const currentToolMode = toolModeRef.current;
       const currentRelationshipType = pendingRelationshipTypeRef.current;
-      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType) return;
+      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType)
+        return;
       if (!relationshipDraftRef.current.dragging) return;
       if (!cyRef.current) return;
       if (cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
@@ -7036,7 +8679,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       node.removeClass('invalidTarget');
       const edge = cyRef.current.getElementById(DRAFT_EDGE_ID);
       if (!edge.empty()) {
-        updateDraftEdgeTarget(getFallbackAnchorPos(relationshipDraftRef.current.sourceId), null, false, relationshipDraftRef.current.sourceId);
+        updateDraftEdgeTarget(
+          getFallbackAnchorPos(relationshipDraftRef.current.sourceId),
+          null,
+          false,
+          relationshipDraftRef.current.sourceId,
+        );
       }
     };
 
@@ -7049,14 +8697,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
           evt?.position ??
           evt?.cyPosition ??
           (evt?.originalEvent
-            ? toCanvasPosition(evt.originalEvent.clientX, evt.originalEvent.clientY)
+            ? toCanvasPosition(
+                evt.originalEvent.clientX,
+                evt.originalEvent.clientY,
+              )
             : null);
         if (!pos) return null;
         const hover = findNodeAtPosition(pos);
         if (!hover || hover.empty?.()) return null;
         return hover;
       };
-      if (currentToolMode === 'CREATE_FREE_CONNECTOR' && freeConnectorDragRef.current.dragging) {
+      if (
+        currentToolMode === 'CREATE_FREE_CONNECTOR' &&
+        freeConnectorDragRef.current.dragging
+      ) {
         const node = resolveDropNode();
         if (!node || node === cyRef.current) {
           restoreDraggedNodePosition(freeConnectorDragRef.current.sourceId);
@@ -7087,7 +8741,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
             freeConnectorKind: connectorKind,
           },
         });
-        setFreeConnectors((prev) => [...prev, { id: edgeId, source: sourceId, target: targetId, kind: connectorKind }]);
+        setFreeConnectors((prev) => [
+          ...prev,
+          {
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            kind: connectorKind,
+          },
+        ]);
         restoreDraggedNodePosition(sourceId);
         freeConnectorDragRef.current = { sourceId: null, dragging: false };
         setFreeConnectorSourceId(null);
@@ -7097,18 +8759,33 @@ const StudioShell: React.FC<StudioShellProps> = ({
         removeDraftTarget();
         return;
       }
-      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType) return;
-      if (!relationshipDraftRef.current.dragging || !relationshipDraftRef.current.sourceId) return;
+      if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType)
+        return;
+      if (
+        !relationshipDraftRef.current.dragging ||
+        !relationshipDraftRef.current.sourceId
+      )
+        return;
       eaConsole.remove('connection-hint');
       const node = resolveDropNode();
       if (!node || node === cyRef.current) {
         restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
-        updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+        updateRelationshipDraft({
+          sourceId: null,
+          targetId: null,
+          valid: null,
+          message: null,
+          dragging: false,
+        });
         setRelationshipSourceId(null);
         setRelationshipTargetId(null);
         cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
         removeDraftTarget();
-        cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+        cyRef.current
+          ?.nodes()
+          .removeClass('validTarget')
+          .removeClass('invalidTarget')
+          .removeClass('validTargetCandidate');
         releaseConnectionDragLock();
         setPendingRelationshipType(null);
         pendingRelationshipTypeRef.current = null;
@@ -7118,7 +8795,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'info',
           domain: 'relationship',
           message: 'Connection cancelled.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
         return;
       }
@@ -7126,12 +8806,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const targetId = String(node.id());
       if (!targetId || targetId === relationshipDraftRef.current.sourceId) {
         restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
-        updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+        updateRelationshipDraft({
+          sourceId: null,
+          targetId: null,
+          valid: null,
+          message: null,
+          dragging: false,
+        });
         setRelationshipSourceId(null);
         setRelationshipTargetId(null);
         cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
         removeDraftTarget();
-        cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+        cyRef.current
+          ?.nodes()
+          .removeClass('validTarget')
+          .removeClass('invalidTarget')
+          .removeClass('validTargetCandidate');
         releaseConnectionDragLock();
         setPendingRelationshipType(null);
         pendingRelationshipTypeRef.current = null;
@@ -7141,19 +8831,32 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'warning',
           domain: 'relationship',
           message: 'Invalid target — cannot connect to self.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
         return;
       }
 
       if (!allowAnyRelationship && !node.hasClass('validTargetCandidate')) {
         restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
-        updateRelationshipDraft({ sourceId: null, targetId: null, valid: false, message: null, dragging: false });
+        updateRelationshipDraft({
+          sourceId: null,
+          targetId: null,
+          valid: false,
+          message: null,
+          dragging: false,
+        });
         setRelationshipSourceId(null);
         setRelationshipTargetId(null);
         cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
         removeDraftTarget();
-        cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+        cyRef.current
+          ?.nodes()
+          .removeClass('validTarget')
+          .removeClass('invalidTarget')
+          .removeClass('validTargetCandidate');
         releaseConnectionDragLock();
         setPendingRelationshipType(null);
         pendingRelationshipTypeRef.current = null;
@@ -7163,20 +8866,37 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'warning',
           domain: 'relationship',
           message: 'Invalid target — connection not allowed.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
         return;
       }
 
-      const validation = validateRelationshipCreation(relationshipDraftRef.current.sourceId, targetId, currentRelationshipType);
+      const validation = validateRelationshipCreation(
+        relationshipDraftRef.current.sourceId,
+        targetId,
+        currentRelationshipType,
+      );
       if (!validation.valid) {
         restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
-        updateRelationshipDraft({ sourceId: null, targetId: null, valid: false, message: null, dragging: false });
+        updateRelationshipDraft({
+          sourceId: null,
+          targetId: null,
+          valid: false,
+          message: null,
+          dragging: false,
+        });
         setRelationshipSourceId(null);
         setRelationshipTargetId(null);
         cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
         removeDraftTarget();
-        cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+        cyRef.current
+          ?.nodes()
+          .removeClass('validTarget')
+          .removeClass('invalidTarget')
+          .removeClass('validTargetCandidate');
         releaseConnectionDragLock();
         setPendingRelationshipType(null);
         pendingRelationshipTypeRef.current = null;
@@ -7185,8 +8905,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
         eaConsole.push({
           level: 'warning',
           domain: 'relationship',
-          message: validation.message ?? 'Invalid relationship — connection not allowed.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          message:
+            validation.message ??
+            'Invalid relationship — connection not allowed.',
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
         return;
       }
@@ -7206,21 +8931,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
           level: 'error',
           domain: 'relationship',
           message: creation.error ?? 'Failed to create connection.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
       } else {
         eaConsole.push({
           level: 'success',
           domain: 'relationship',
           message: 'Connection established.',
-          context: { elementId: relationshipDraftRef.current.sourceId ?? undefined, relationshipType: currentRelationshipType },
+          context: {
+            elementId: relationshipDraftRef.current.sourceId ?? undefined,
+            relationshipType: currentRelationshipType,
+          },
         });
       }
 
       // 3. Clean up connection mode state
       restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
-      updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
-      cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+      updateRelationshipDraft({
+        sourceId: null,
+        targetId: null,
+        valid: null,
+        message: null,
+        dragging: false,
+      });
+      cyRef.current
+        ?.nodes()
+        .removeClass('validTarget')
+        .removeClass('invalidTarget')
+        .removeClass('validTargetCandidate')
+        .removeClass('connectionSource');
       setRelationshipSourceId(null);
       setRelationshipTargetId(null);
       setPendingRelationshipType(null);
@@ -7231,16 +8973,30 @@ const StudioShell: React.FC<StudioShellProps> = ({
     };
 
     const handleDragCancel = () => {
-      if (!relationshipDraftRef.current.dragging && !freeConnectorDragRef.current.dragging) return;
+      if (
+        !relationshipDraftRef.current.dragging &&
+        !freeConnectorDragRef.current.dragging
+      )
+        return;
       eaConsole.remove('connection-hint');
       restoreDraggedNodePosition(relationshipDraftRef.current.sourceId);
       restoreDraggedNodePosition(freeConnectorDragRef.current.sourceId);
-      updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+      updateRelationshipDraft({
+        sourceId: null,
+        targetId: null,
+        valid: null,
+        message: null,
+        dragging: false,
+      });
       freeConnectorDragRef.current = { sourceId: null, dragging: false };
       setFreeConnectorSourceId(null);
       cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
       removeDraftTarget();
-      cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate');
+      cyRef.current
+        ?.nodes()
+        .removeClass('validTarget')
+        .removeClass('invalidTarget')
+        .removeClass('validTargetCandidate');
       releaseConnectionDragLock();
       setPendingRelationshipType(null);
       pendingRelationshipTypeRef.current = null;
@@ -7250,33 +9006,63 @@ const StudioShell: React.FC<StudioShellProps> = ({
         level: 'info',
         domain: 'relationship',
         message: 'Connection cancelled.',
-        context: { elementId: relationshipDraftRef.current.sourceId ?? undefined },
+        context: {
+          elementId: relationshipDraftRef.current.sourceId ?? undefined,
+        },
       });
     };
 
     const handleMouseMove = (evt: any) => {
-      if (!relationshipDraftRef.current.dragging && !freeConnectorDragRef.current.dragging) return;
+      if (
+        !relationshipDraftRef.current.dragging &&
+        !freeConnectorDragRef.current.dragging
+      )
+        return;
       if (!cyRef.current) return;
-      if (relationshipDraftRef.current.dragging && cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
+      if (
+        relationshipDraftRef.current.dragging &&
+        cyRef.current.getElementById(DRAFT_EDGE_ID).empty()
+      )
+        return;
       const pos =
         evt.position ??
         evt.cyPosition ??
         (evt?.originalEvent
-          ? toCanvasPosition(evt.originalEvent.clientX, evt.originalEvent.clientY)
+          ? toCanvasPosition(
+              evt.originalEvent.clientX,
+              evt.originalEvent.clientY,
+            )
           : null);
       if (!pos) return;
       if (relationshipDraftRef.current.dragging) {
         const hoverNode = findNodeAtPosition(pos);
-        cyRef.current.nodes().removeClass('validTarget').removeClass('invalidTarget');
-        if (hoverNode && !hoverNode.empty() && hoverNode.hasClass('validTargetCandidate')) {
+        cyRef.current
+          .nodes()
+          .removeClass('validTarget')
+          .removeClass('invalidTarget');
+        if (
+          hoverNode &&
+          !hoverNode.empty() &&
+          hoverNode.hasClass('validTargetCandidate')
+        ) {
           hoverNode.addClass('validTarget');
           updateDraftEdgeTarget(pos, hoverNode);
         } else {
-          updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+          updateDraftEdgeTarget(
+            pos,
+            null,
+            false,
+            relationshipDraftRef.current.sourceId,
+          );
         }
       } else if (freeConnectorDragRef.current.dragging) {
         const hoverNode = findNodeAtPosition(pos);
-        updateDraftEdgeTarget(pos, hoverNode, true, freeConnectorDragRef.current.sourceId);
+        updateDraftEdgeTarget(
+          pos,
+          hoverNode,
+          true,
+          freeConnectorDragRef.current.sourceId,
+        );
       }
     };
 
@@ -7351,11 +9137,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
           if (!pos) return null;
           const nodesAt = cy.nodes().filter((n) => {
             if (n.data('draftTarget') || n.data('freeShape')) return false;
-            const bb = n.boundingBox({ includeNodes: true, includeLabels: false, includeShadows: false });
-            return pos.x >= bb.x1 && pos.x <= bb.x2 && pos.y >= bb.y1 && pos.y <= bb.y2;
+            const bb = n.boundingBox({
+              includeNodes: true,
+              includeLabels: false,
+              includeShadows: false,
+            });
+            return (
+              pos.x >= bb.x1 &&
+              pos.x <= bb.x2 &&
+              pos.y >= bb.y1 &&
+              pos.y <= bb.y2
+            );
           });
           if (!nodesAt.length) return null;
-          const fallback = nodesAt.filter((n) => String(n.id()) !== sourceId)[0];
+          const fallback = nodesAt.filter(
+            (n) => String(n.id()) !== sourceId,
+          )[0];
           return fallback ?? null;
         })();
 
@@ -7391,8 +9188,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       eaConsole.push({
                         level: 'error',
                         domain: 'relationship',
-                        message: creation.error ?? 'Failed to create connection.',
-                        context: { elementId: sourceId, relationshipType: choice.type },
+                        message:
+                          creation.error ?? 'Failed to create connection.',
+                        context: {
+                          elementId: sourceId,
+                          relationshipType: choice.type,
+                        },
                       });
                     } else if (creation.id) {
                       createdConnectionsRef.current.set(creation.id, {
@@ -7409,16 +9210,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   } else if (choice?.kind === 'indirect') {
                     // Single indirect path — show palette to confirm
                     const sourceNode = cy.getElementById(sourceId);
-                    const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                    const sourcePos =
+                      sourceNode && !sourceNode.empty()
+                        ? sourceNode.position()
+                        : node.position();
                     const targetPos = targetNode.position();
-                    const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                    const mid = {
+                      x: (sourcePos.x + targetPos.x) / 2,
+                      y: (sourcePos.y + targetPos.y) / 2,
+                    };
                     const rendered = toRenderedPosition(mid);
                     const rect = containerRef.current?.getBoundingClientRect();
                     const offsetX = rect?.left ?? 0;
                     const offsetY = rect?.top ?? 0;
                     setConnectionPalette({
                       resolution,
-                      position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                      position: {
+                        x: rendered.x + offsetX,
+                        y: rendered.y + offsetY,
+                      },
                     });
                   }
                   break;
@@ -7428,16 +9238,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 case 'choose-any': {
                   // Multiple options — show the inline connection palette
                   const sourceNode = cy.getElementById(sourceId);
-                  const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                  const sourcePos =
+                    sourceNode && !sourceNode.empty()
+                      ? sourceNode.position()
+                      : node.position();
                   const targetPos = targetNode.position();
-                  const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                  const mid = {
+                    x: (sourcePos.x + targetPos.x) / 2,
+                    y: (sourcePos.y + targetPos.y) / 2,
+                  };
                   const rendered = toRenderedPosition(mid);
                   const rect = containerRef.current?.getBoundingClientRect();
                   const offsetX = rect?.left ?? 0;
                   const offsetY = rect?.top ?? 0;
                   setConnectionPalette({
                     resolution,
-                    position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                    position: {
+                      x: rendered.x + offsetX,
+                      y: rendered.y + offsetY,
+                    },
                   });
                   break;
                 }
@@ -7448,7 +9267,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             } else {
               // ── Fallback: resolution cache miss or no-path —
               // Try legacy candidates or compute inline as the old flow did.
-              const validTypes = candidates.get(targetId) ?? getValidRelationshipTypesForPair(sourceId, targetId);
+              const validTypes =
+                candidates.get(targetId) ??
+                getValidRelationshipTypesForPair(sourceId, targetId);
               if (validTypes.length === 1) {
                 const creation = createRelationshipFromCanvas({
                   fromId: sourceId,
@@ -7460,14 +9281,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     level: 'error',
                     domain: 'relationship',
                     message: creation.error ?? 'Failed to create connection.',
-                    context: { elementId: sourceId, relationshipType: validTypes[0] },
+                    context: {
+                      elementId: sourceId,
+                      relationshipType: validTypes[0],
+                    },
                   });
                 }
               } else if (validTypes.length > 1) {
                 const sourceNode = cy.getElementById(sourceId);
-                const sourcePos = sourceNode && !sourceNode.empty() ? sourceNode.position() : node.position();
+                const sourcePos =
+                  sourceNode && !sourceNode.empty()
+                    ? sourceNode.position()
+                    : node.position();
                 const targetPos = targetNode.position();
-                const mid = { x: (sourcePos.x + targetPos.x) / 2, y: (sourcePos.y + targetPos.y) / 2 };
+                const mid = {
+                  x: (sourcePos.x + targetPos.x) / 2,
+                  y: (sourcePos.y + targetPos.y) / 2,
+                };
                 const rendered = toRenderedPosition(mid);
                 const rect = containerRef.current?.getBoundingClientRect();
                 const offsetX = rect?.left ?? 0;
@@ -7476,14 +9306,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   sourceId,
                   targetId,
                   types: validTypes,
-                  position: { x: rendered.x + offsetX, y: rendered.y + offsetY },
+                  position: {
+                    x: rendered.x + offsetX,
+                    y: rendered.y + offsetY,
+                  },
                 });
               } else {
                 // Truly no path — show actionable suggestion
                 const sourceType = resolveElementLabel(sourceId)?.type;
                 const targetType = resolveElementLabel(targetId)?.type;
-                const suggestion = resolution?.noPathSuggestion
-                  ?? (sourceType && targetType
+                const suggestion =
+                  resolution?.noPathSuggestion ??
+                  (sourceType && targetType
                     ? `No standard EA path between ${sourceType} and ${targetType}. You can use a free connector for visual links.`
                     : buildInferenceErrorMessage(sourceId, targetId));
                 eaConsole.push({
@@ -7511,7 +9345,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
           if (prev.width != null) n.style('width', prev.width);
           if (prev.height != null) n.style('height', prev.height);
           if (prev.textWrap != null) n.style('text-wrap', prev.textWrap);
-          if (prev.textMaxWidth != null) n.style('text-max-width', prev.textMaxWidth);
+          if (prev.textMaxWidth != null)
+            n.style('text-max-width', prev.textMaxWidth);
         }
         n.removeScratch('_dragSizeLock');
       };
@@ -7561,7 +9396,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       const posUpdates: Record<string, { x: number; y: number }> = {};
       const selectedForSave = cyRef.current.nodes(':selected');
-      const movedNodes = selectedForSave.length > 1 ? selectedForSave : cyRef.current.collection().merge(node);
+      const movedNodes =
+        selectedForSave.length > 1
+          ? selectedForSave
+          : cyRef.current.collection().merge(node);
       movedNodes.forEach((n: any) => {
         if (n.data('freeShape')) return;
         const pos = n.position();
@@ -7571,7 +9409,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       });
 
       // Persist moved positions to ViewLayoutStore for saved views
-      if (activeViewIdRef.current && !activeViewIsWorkingRef.current && Object.keys(posUpdates).length > 0) {
+      if (
+        activeViewIdRef.current &&
+        !activeViewIsWorkingRef.current &&
+        Object.keys(posUpdates).length > 0
+      ) {
         ViewLayoutStore.updatePositions(activeViewIdRef.current, posUpdates);
         setViewTabStateById((prev) => {
           const existing = prev[activeTabKey];
@@ -7588,13 +9430,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
 
       // Update in-memory positions for working views
-      if (activeViewIsWorkingRef.current && Object.keys(posUpdates).length > 0) {
+      if (
+        activeViewIsWorkingRef.current &&
+        Object.keys(posUpdates).length > 0
+      ) {
         setActiveView((prev) => {
           if (!prev) return prev;
           const layoutMetadata = prev.layoutMetadata ?? {};
-          const existing = (layoutMetadata as any)?.positions as Record<string, { x: number; y: number }> | undefined;
+          const existing = (layoutMetadata as any)?.positions as
+            | Record<string, { x: number; y: number }>
+            | undefined;
           const nextPositions = { ...(existing ?? {}), ...posUpdates };
-          return { ...prev, layoutMetadata: { ...layoutMetadata, positions: nextPositions, workingView: true } };
+          return {
+            ...prev,
+            layoutMetadata: {
+              ...layoutMetadata,
+              positions: nextPositions,
+              workingView: true,
+            },
+          };
         });
         setViewTabStateById((prev) => {
           const existing = prev[activeTabKey];
@@ -7609,7 +9463,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     layoutMetadata: {
                       ...(existing.view.layoutMetadata ?? {}),
                       positions: {
-                        ...((existing.view.layoutMetadata as any)?.positions ?? {}),
+                        ...((existing.view.layoutMetadata as any)?.positions ??
+                          {}),
                         ...posUpdates,
                       },
                       workingView: true,
@@ -7628,15 +9483,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const currentToolMode = toolModeRef.current;
       const panEnabled = currentToolMode === 'PAN';
       const selectEnabled = currentToolMode === 'SELECT';
-      const connectionMode = currentToolMode === 'CREATE_RELATIONSHIP' || currentToolMode === 'CREATE_FREE_CONNECTOR';
+      const connectionMode =
+        currentToolMode === 'CREATE_RELATIONSHIP' ||
+        currentToolMode === 'CREATE_FREE_CONNECTOR';
       cy.userPanningEnabled(presentationView ? true : panEnabled);
       cy.boxSelectionEnabled(presentationView ? false : selectEnabled);
       cy.startBatch();
-      cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLockRef.current || connectionMode || viewLayoutLocked);
+      cy.autoungrabify(
+        presentationView
+          ? true
+          : panEnabled ||
+              connectionDragLockRef.current ||
+              connectionMode ||
+              viewLayoutLocked,
+      );
       if (presentationView || connectionDragLockRef.current || connectionMode) {
         cy.nodes().forEach((n) => n.grabbable(false));
       } else {
-        cy.nodes().forEach((n) => n.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(n)));
+        cy.nodes().forEach((n) =>
+          n.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(n)),
+        );
       }
       cy.endBatch();
 
@@ -7645,7 +9511,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const existing = prev[activeTabKey];
         if (!existing) return prev;
         if (existing.saveStatus === 'dirty') return prev;
-        return { ...prev, [activeTabKey]: { ...existing, saveStatus: 'dirty' } };
+        return {
+          ...prev,
+          [activeTabKey]: { ...existing, saveStatus: 'dirty' },
+        };
       });
     };
 
@@ -7659,8 +9528,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (!intentConnectionRef.current.active) {
         if (relationshipChooser) setRelationshipChooser(null);
         if (connectionPalette) setConnectionPalette(null);
-        if (!viewReadOnly && canDiagramMode && designWorkspace.status === 'DRAFT' && !node.data('freeShape')) {
-          const selected = cyRef.current.nodes(':selected').filter((n) => !n.data('freeShape'));
+        if (
+          !viewReadOnly &&
+          canDiagramMode &&
+          designWorkspace.status === 'DRAFT' &&
+          !node.data('freeShape')
+        ) {
+          const selected = cyRef.current
+            .nodes(':selected')
+            .filter((n) => !n.data('freeShape'));
           if (selected.length <= 1) {
             const sourceId = String(node.id());
             if (sourceId) {
@@ -7775,7 +9651,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
         openInlineRenamePrompt(nodeId);
         return;
       }
-      message.info('Create new elements from the EA Toolbox. Drag from Explorer to reuse existing elements.');
+      message.info(
+        'Create new elements from the EA Toolbox. Drag from Explorer to reuse existing elements.',
+      );
     };
 
     const handleSelectionChange = () => {
@@ -7785,13 +9663,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const freeNodes = selectedNodes.filter((n) => n.data('freeShape'));
       const eaNodes = selectedNodes.filter((n) => !n.data('freeShape'));
       setSelectedNodeIds(eaNodes.map((n) => String(n.id())));
-      setSelectedFreeShapeId(freeNodes.length === 1 ? String(freeNodes[0].id()) : null);
+      setSelectedFreeShapeId(
+        freeNodes.length === 1 ? String(freeNodes[0].id()) : null,
+      );
 
       const selectedEdges = cyRef.current.edges(':selected');
       const freeEdges = selectedEdges.filter((e) => e.data('freeConnector'));
-      const eaEdges = selectedEdges.filter((e) => !e.data('freeConnector') && !e.data('governanceWarning'));
+      const eaEdges = selectedEdges.filter(
+        (e) => !e.data('freeConnector') && !e.data('governanceWarning'),
+      );
       setSelectedEdgeId(eaEdges.length ? String(eaEdges[0].id()) : null);
-      setSelectedFreeConnectorId(freeEdges.length ? String(freeEdges[0].id()) : null);
+      setSelectedFreeConnectorId(
+        freeEdges.length ? String(freeEdges[0].id()) : null,
+      );
     };
 
     const handleContextMenu = (evt: any) => {
@@ -7809,7 +9693,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const handleNodePositionChange = (evt: any) => {
       if (!cyRef.current) return;
       const currentToolMode = toolModeRef.current;
-      if (currentToolMode !== 'CREATE_RELATIONSHIP' && currentToolMode !== 'CREATE_FREE_CONNECTOR') return;
+      if (
+        currentToolMode !== 'CREATE_RELATIONSHIP' &&
+        currentToolMode !== 'CREATE_FREE_CONNECTOR'
+      )
+        return;
       const node = evt.target;
       if (!node || node === cyRef.current) return;
       const nodeId = String(node.id());
@@ -7820,7 +9708,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (!snapshot) return;
       const pos = node.position();
       if (!pos) return;
-      if (Math.abs(pos.x - snapshot.x) < 0.01 && Math.abs(pos.y - snapshot.y) < 0.01) return;
+      if (
+        Math.abs(pos.x - snapshot.x) < 0.01 &&
+        Math.abs(pos.y - snapshot.y) < 0.01
+      )
+        return;
       // Force-restore: nodes must NEVER move during connection mode
       node.position({ x: snapshot.x, y: snapshot.y });
     };
@@ -7861,10 +9753,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cyRef.current?.removeListener('mousemove', handleMouseMove);
       cyRef.current?.removeListener('dbltap', handleDoubleTap);
       cyRef.current?.removeListener('dblclick', handleDoubleTap);
-      cyRef.current?.removeListener('select unselect', 'node', handleSelectionChange);
-      cyRef.current?.removeListener('select unselect', 'edge', handleSelectionChange);
+      cyRef.current?.removeListener(
+        'select unselect',
+        'node',
+        handleSelectionChange,
+      );
+      cyRef.current?.removeListener(
+        'select unselect',
+        'edge',
+        handleSelectionChange,
+      );
       cyRef.current?.removeListener('cxttap', 'node', handleContextMenu);
-      cyRef.current?.removeListener('position', 'node', handleNodePositionChange);
+      cyRef.current?.removeListener(
+        'position',
+        'node',
+        handleNodePositionChange,
+      );
       // NOTE: Do NOT reset draggingRef or preDragInteractionRef here.
       // This cleanup runs when any of the ~35 effect dependencies change,
       // which can happen MID-DRAG.  Resetting drag state here would cause
@@ -7874,7 +9778,48 @@ const StudioShell: React.FC<StudioShellProps> = ({
       //   3. New handlers lose awareness that a drag is in progress
       // On true unmount, cy.destroy() (in separate effect) handles cleanup.
     };
-  }, [addGovernanceWarningEdge, buildConnectionResolutions, buildInferenceErrorMessage, buildIntentConnectionCandidates, canDiagramMode, captureLayoutSnapshot, clearRelationshipDraftArtifacts, connectionPalette, createRelationshipFromCanvas, designWorkspace.status, getFallbackAnchorPos, getInferredRelationshipTypesForPair, getValidRelationshipTypesForPair, getValidTargetsForSource, hierarchyRelationshipType, isHierarchicalView, isLargeGraph, isNodeEditable, iterativeModeling, layoutSnapshotSignature, lockNodesForConnection, openInlineCreatePrompt, openInlineRenamePrompt, openPropertiesPanel, pendingElementType, pendingElementVisualKind, refreshConnectionPositionSnapshot, rejectVisualOnlyAction, relationshipChooser, releaseConnectionDragLock, removeDraftTarget, repositoryOnlyCanvas, resolveElementLabel, restoreDraggedNodePosition, snapPosition, toRenderedPosition, updateDraftEdgeTarget, updateRelationshipDraft, validateRelationshipCreation, viewReadOnly]);
+  }, [
+    addGovernanceWarningEdge,
+    buildConnectionResolutions,
+    buildInferenceErrorMessage,
+    buildIntentConnectionCandidates,
+    canDiagramMode,
+    captureLayoutSnapshot,
+    clearRelationshipDraftArtifacts,
+    connectionPalette,
+    createRelationshipFromCanvas,
+    designWorkspace.status,
+    getFallbackAnchorPos,
+    getInferredRelationshipTypesForPair,
+    getValidRelationshipTypesForPair,
+    getValidTargetsForSource,
+    hierarchyRelationshipType,
+    isHierarchicalView,
+    isLargeGraph,
+    isNodeEditable,
+    iterativeModeling,
+    layoutSnapshotSignature,
+    lockNodesForConnection,
+    openInlineCreatePrompt,
+    openInlineRenamePrompt,
+    openPropertiesPanel,
+    pendingElementType,
+    pendingElementVisualKind,
+    refreshConnectionPositionSnapshot,
+    rejectVisualOnlyAction,
+    relationshipChooser,
+    releaseConnectionDragLock,
+    removeDraftTarget,
+    repositoryOnlyCanvas,
+    resolveElementLabel,
+    restoreDraggedNodePosition,
+    snapPosition,
+    toRenderedPosition,
+    updateDraftEdgeTarget,
+    updateRelationshipDraft,
+    validateRelationshipCreation,
+    viewReadOnly,
+  ]);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -7889,7 +9834,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       if (draggingRef.current) return;
 
       const rect = container.getBoundingClientRect();
-      const renderedPosition = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const renderedPosition = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
       const zoom = cyRef.current.zoom();
       // Lower sensitivity for smoother zoom feel (was 0.001)
       const factor = Math.exp(-event.deltaY * 0.0007);
@@ -7934,7 +9882,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!relationshipChooser) return;
     const handleDismiss = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (relationshipChooserRef.current && target && relationshipChooserRef.current.contains(target)) return;
+      if (
+        relationshipChooserRef.current &&
+        target &&
+        relationshipChooserRef.current.contains(target)
+      )
+        return;
       setRelationshipChooser(null);
     };
     const handleKey = (event: KeyboardEvent) => {
@@ -7953,7 +9906,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!connectionPalette) return;
     const handleDismiss = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (connectionPaletteRef.current && target && connectionPaletteRef.current.contains(target)) return;
+      if (
+        connectionPaletteRef.current &&
+        target &&
+        connectionPaletteRef.current.contains(target)
+      )
+        return;
       setConnectionPalette(null);
     };
     const handleKey = (event: KeyboardEvent) => {
@@ -7973,11 +9931,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (draggingRef.current) return;
     const panEnabled = toolMode === 'PAN';
     const selectEnabled = toolMode === 'SELECT';
-    const connectionMode = toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR';
+    const connectionMode =
+      toolMode === 'CREATE_RELATIONSHIP' ||
+      toolMode === 'CREATE_FREE_CONNECTOR';
     cy.userPanningEnabled(presentationView ? true : panEnabled);
     cy.boxSelectionEnabled(presentationView ? false : selectEnabled);
     cy.startBatch();
-    cy.autoungrabify(presentationView ? true : panEnabled || connectionDragLocked || connectionMode || viewLayoutLocked);
+    cy.autoungrabify(
+      presentationView
+        ? true
+        : panEnabled ||
+            connectionDragLocked ||
+            connectionMode ||
+            viewLayoutLocked,
+    );
     if (presentationView || connectionDragLocked || connectionMode) {
       cy.nodes().forEach((node) => node.grabbable(false));
     }
@@ -7994,10 +9961,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cy.nodes().forEach((node) => node.grabbable(false));
     } else {
       cy.nodes().forEach((node) => {
-        node.grabbable(!viewReadOnly && !viewLayoutLocked && isNodeEditable(node));
+        node.grabbable(
+          !viewReadOnly && !viewLayoutLocked && isNodeEditable(node),
+        );
       });
     }
-  }, [connectionDragLocked, isNodeEditable, presentationView, toolMode, viewLayoutLocked, viewReadOnly]);
+  }, [
+    connectionDragLocked,
+    isNodeEditable,
+    presentationView,
+    toolMode,
+    viewLayoutLocked,
+    viewReadOnly,
+  ]);
 
   React.useEffect(() => {
     applyLayerVisibility();
@@ -8006,41 +9982,65 @@ const StudioShell: React.FC<StudioShellProps> = ({
   React.useEffect(() => {
     if (!cyRef.current || !eaRepository) return;
     const cy = cyRef.current;
-    cy.nodes().filter((n) => !n.data('freeShape')).forEach((n) => {
-      const id = String(n.id());
-      const repoObj = eaRepository.objects.get(id);
-      if (!repoObj) return;
-      const nextName = nameForObject(repoObj);
-      if (n.data('label') !== nextName) n.data('label', nextName);
-      const nextType = repoObj.type as ObjectType;
-      const visualData = buildEaVisualData({ type: nextType, attributes: repoObj.attributes ?? undefined });
-      n.data('elementType', nextType);
-      n.data('eaShape', visualData.eaShape);
-      n.data('eaIcon', visualData.eaIcon);
-      n.data('eaColor', visualData.eaColor);
-      n.data('eaBorder', visualData.eaBorder);
-      n.data('eaVisualKind', visualData.eaVisualKind);
-    });
-    cy.nodes().filter((n) => n.data('freeShape')).forEach((n) => {
-      const label = String(n.data('label') ?? '').trim();
-      const kind = String(n.data('freeShapeKind') ?? '');
-      const def = FREE_SHAPE_DEFINITIONS.find((s) => s.kind === kind as FreeShapeKind);
-      if (def && label === def.label) {
-        n.data('label', '');
-      }
-    });
+    cy.nodes()
+      .filter((n) => !n.data('freeShape'))
+      .forEach((n) => {
+        const id = String(n.id());
+        const repoObj = eaRepository.objects.get(id);
+        if (!repoObj) return;
+        const nextName = nameForObject(repoObj);
+        if (n.data('label') !== nextName) n.data('label', nextName);
+        const nextType = repoObj.type as ObjectType;
+        const visualData = buildEaVisualData({
+          type: nextType,
+          attributes: repoObj.attributes ?? undefined,
+        });
+        n.data('elementType', nextType);
+        n.data('eaShape', visualData.eaShape);
+        n.data('eaIcon', visualData.eaIcon);
+        n.data('eaColor', visualData.eaColor);
+        n.data('eaBorder', visualData.eaBorder);
+        n.data('eaVisualKind', visualData.eaVisualKind);
+      });
+    cy.nodes()
+      .filter((n) => n.data('freeShape'))
+      .forEach((n) => {
+        const label = String(n.data('label') ?? '').trim();
+        const kind = String(n.data('freeShapeKind') ?? '');
+        const def = FREE_SHAPE_DEFINITIONS.find(
+          (s) => s.kind === (kind as FreeShapeKind),
+        );
+        if (def && label === def.label) {
+          n.data('label', '');
+        }
+      });
   }, [eaRepository, stagedElements.length]);
 
-  const lastWorkspaceSyncRef = React.useRef<{ id: string; updatedAt: string } | null>(null);
+  const lastWorkspaceSyncRef = React.useRef<{
+    id: string;
+    updatedAt: string;
+  } | null>(null);
 
   React.useEffect(() => {
     const last = lastWorkspaceSyncRef.current;
-    if (!last || last.id !== designWorkspace.id || last.updatedAt !== designWorkspace.updatedAt) {
+    if (
+      !last ||
+      last.id !== designWorkspace.id ||
+      last.updatedAt !== designWorkspace.updatedAt
+    ) {
       setStagedElements(designWorkspace.stagedElements ?? []);
       setStagedRelationships(designWorkspace.stagedRelationships ?? []);
-      lastWorkspaceSyncRef.current = { id: designWorkspace.id, updatedAt: designWorkspace.updatedAt };
+      lastWorkspaceSyncRef.current = {
+        id: designWorkspace.id,
+        updatedAt: designWorkspace.updatedAt,
+      };
     }
-  }, [designWorkspace.id, designWorkspace.updatedAt, designWorkspace.stagedElements, designWorkspace.stagedRelationships]);
+  }, [
+    designWorkspace.id,
+    designWorkspace.updatedAt,
+    designWorkspace.stagedElements,
+    designWorkspace.stagedRelationships,
+  ]);
 
   React.useEffect(() => {
     if (!cyRef.current) return;
@@ -8065,11 +10065,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
         stagedElements,
         stagedRelationships,
       };
-      const viewLayout = activeViewId && activeView ? buildLayoutFromView(activeView) : null;
-      const viewFreeShapes = repositoryOnlyCanvas ? [] : (activeView?.layoutMetadata as any)?.freeShapes ?? [];
-      const viewFreeConnectors = repositoryOnlyCanvas ? [] : (activeView?.layoutMetadata as any)?.freeConnectors ?? [];
-      const freeShapesSeed = repositoryOnlyCanvas ? [] : (activeViewId && activeView ? viewFreeShapes : freeShapes);
-      const freeConnectorsSeed = repositoryOnlyCanvas ? [] : (activeViewId && activeView ? viewFreeConnectors : freeConnectors);
+      const viewLayout =
+        activeViewId && activeView ? buildLayoutFromView(activeView) : null;
+      const viewFreeShapes = repositoryOnlyCanvas
+        ? []
+        : ((activeView?.layoutMetadata as any)?.freeShapes ?? []);
+      const viewFreeConnectors = repositoryOnlyCanvas
+        ? []
+        : ((activeView?.layoutMetadata as any)?.freeConnectors ?? []);
+      const freeShapesSeed = repositoryOnlyCanvas
+        ? []
+        : activeViewId && activeView
+          ? viewFreeShapes
+          : freeShapes;
+      const freeConnectorsSeed = repositoryOnlyCanvas
+        ? []
+        : activeViewId && activeView
+          ? viewFreeConnectors
+          : freeConnectors;
       if (repositoryOnlyCanvas) {
         if (freeShapes.length > 0) setFreeShapes([]);
         if (freeConnectors.length > 0) setFreeConnectors([]);
@@ -8117,7 +10130,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
         // Collect all element IDs that should appear on this workspace canvas
         const workspaceElementIds = new Set<string>();
         for (const n of workspaceLayoutNodes) workspaceElementIds.add(n.id);
-        for (const el of workspace.stagedElements) workspaceElementIds.add(el.id);
+        for (const el of workspace.stagedElements)
+          workspaceElementIds.add(el.id);
 
         // Build nodes: ONLY elements that exist in the repository
         let fallbackIndex = 0;
@@ -8143,11 +10157,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
         // Build edges: ONLY relationships that exist in the repository AND
         // whose endpoints are both visible on this canvas
         const visibleNodeIds = new Set(nodes.map((n) => n.id));
-        const workspaceEdgeIdSet = new Set(workspaceLayoutEdges.map((e) => e.id));
+        const workspaceEdgeIdSet = new Set(
+          workspaceLayoutEdges.map((e) => e.id),
+        );
 
         if (eaRepository) {
           for (const rel of eaRepository.relationships) {
-            if (!visibleNodeIds.has(rel.fromId) || !visibleNodeIds.has(rel.toId)) continue;
+            if (
+              !visibleNodeIds.has(rel.fromId) ||
+              !visibleNodeIds.has(rel.toId)
+            )
+              continue;
             const edgeId = rel.id ?? `${rel.fromId}__${rel.toId}__${rel.type}`;
             edges.push({
               id: edgeId,
@@ -8163,7 +10183,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const edgeIdSet = new Set(edges.map((e) => e.id));
         for (const rel of workspace.stagedRelationships) {
           if (edgeIdSet.has(rel.id)) continue;
-          if (!visibleNodeIds.has(rel.fromId) || !visibleNodeIds.has(rel.toId)) continue;
+          if (!visibleNodeIds.has(rel.fromId) || !visibleNodeIds.has(rel.toId))
+            continue;
           edges.push({
             id: rel.id,
             source: rel.fromId,
@@ -8180,18 +10201,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
       // HARD RULE: Filter out any edge whose endpoints are not visible
       const renderedNodeIds = new Set(nodes.map((n) => n.id));
-      edges = edges.filter((e) => renderedNodeIds.has(e.source) && renderedNodeIds.has(e.target));
+      edges = edges.filter(
+        (e) => renderedNodeIds.has(e.source) && renderedNodeIds.has(e.target),
+      );
 
-      const stagedElementIdSet = new Set(workspace.stagedElements.map((el) => el.id));
-      const stagedRelationshipIdSet = new Set(workspace.stagedRelationships.map((rel) => rel.id));
+      const stagedElementIdSet = new Set(
+        workspace.stagedElements.map((el) => el.id),
+      );
+      const stagedRelationshipIdSet = new Set(
+        workspace.stagedRelationships.map((rel) => rel.id),
+      );
       nodes.forEach((n) => {
         const isStaged = stagedElementIdSet.has(n.id);
         const repoObj = eaRepository?.objects.get(n.id);
         const repoName = repoObj ? nameForObject(repoObj) : n.label;
-        const repoType = (repoObj?.type as ObjectType | undefined) ?? (n.elementType as ObjectType | undefined);
+        const repoType =
+          (repoObj?.type as ObjectType | undefined) ??
+          (n.elementType as ObjectType | undefined);
         const visualData = repoType
-          ? buildEaVisualData({ type: repoType, attributes: repoObj?.attributes ?? undefined })
-          : { eaShape: undefined, eaIcon: undefined, eaColor: undefined, eaBorder: undefined, eaVisualKind: undefined };
+          ? buildEaVisualData({
+              type: repoType,
+              attributes: repoObj?.attributes ?? undefined,
+            })
+          : {
+              eaShape: undefined,
+              eaIcon: undefined,
+              eaColor: undefined,
+              eaBorder: undefined,
+              eaVisualKind: undefined,
+            };
         cy.add({
           data: {
             id: n.id,
@@ -8205,7 +10243,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
         const node = cy.getElementById(n.id);
         if (node && !node.empty()) {
-          node.grabbable(!viewReadOnly && !viewLayoutLocked && (Boolean(isStaged) || Boolean(n.viewInstance) || iterativeModeling));
+          node.grabbable(
+            !viewReadOnly &&
+              !viewLayoutLocked &&
+              (Boolean(isStaged) ||
+                Boolean(n.viewInstance) ||
+                iterativeModeling),
+          );
         }
       });
       edges.forEach((e) => {
@@ -8216,7 +10260,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             source: e.source,
             target: e.target,
             relationshipType: e.relationshipType,
-            relationshipStyle: relationshipStyleForType(e.relationshipType as RelationshipType),
+            relationshipStyle: relationshipStyleForType(
+              e.relationshipType as RelationshipType,
+            ),
             staged: isStaged,
           },
         });
@@ -8230,7 +10276,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             freeShapeKind: shape.kind,
             width: shape.width,
             height: shape.height,
-            shape: FREE_SHAPE_DEFINITIONS.find((s) => s.kind === shape.kind)?.shape ?? 'round-rectangle',
+            shape:
+              FREE_SHAPE_DEFINITIONS.find((s) => s.kind === shape.kind)
+                ?.shape ?? 'round-rectangle',
           },
           position: { x: shape.x, y: shape.y },
         });
@@ -8290,13 +10338,27 @@ const StudioShell: React.FC<StudioShellProps> = ({
       cyRef.current?.endBatch();
       cyRef.current?.elements().remove();
     }
-  }, [activeTabKey, activeView, activeViewId, applyLayerVisibility, buildLayoutFromView, designWorkspace, eaRepository, iterativeModeling, restoreCanvasState, stagedElements, stagedRelationships, viewReadOnly]);
+  }, [
+    activeTabKey,
+    activeView,
+    activeViewId,
+    applyLayerVisibility,
+    buildLayoutFromView,
+    designWorkspace,
+    eaRepository,
+    iterativeModeling,
+    restoreCanvasState,
+    stagedElements,
+    stagedRelationships,
+    viewReadOnly,
+  ]);
 
   const handleExit = React.useCallback(() => {
     if (stagedElements.length > 0 || stagedRelationships.length > 0) {
       Modal.confirm({
         title: 'Exit Studio with uncommitted changes?',
-        content: 'Choose how to handle your draft workspace before leaving Studio.',
+        content:
+          'Choose how to handle your draft workspace before leaving Studio.',
         okText: 'Save Workspace',
         cancelText: 'Cancel',
         okButtonProps: { type: 'primary' },
@@ -8354,7 +10416,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     // WRITE-THROUGH: always persist workspace layout before exiting Studio
     persistWorkspaceNow();
     onExit();
-  }, [form, onExit, persistWorkspaceNow, saveWorkspaceDraft, stagedElements.length, stagedRelationships.length]);
+  }, [
+    form,
+    onExit,
+    persistWorkspaceNow,
+    saveWorkspaceDraft,
+    stagedElements.length,
+    stagedRelationships.length,
+  ]);
 
   React.useEffect(() => {
     if (!stagedInitRef.current) {
@@ -8383,37 +10452,68 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!governance) return null;
     const repoFindings = governance.repoReport.findings ?? [];
     const relFindings = governance.relationshipReport.findings ?? [];
-    const isErrorSeverity = (sev?: string) => sev === 'ERROR' || sev === 'BLOCKER';
+    const isErrorSeverity = (sev?: string) =>
+      sev === 'ERROR' || sev === 'BLOCKER';
     const isWarningSeverity = (sev?: string) => sev === 'WARNING';
     const isInfoSeverity = (sev?: string) => sev === 'INFO';
-    const errors = [...repoFindings, ...relFindings].filter((f) => isErrorSeverity(f.severity));
-    const warnings = [...repoFindings, ...relFindings].filter((f) => isWarningSeverity(f.severity));
-    const infos = [...repoFindings, ...relFindings].filter((f) => isInfoSeverity(f.severity));
-    const issueErrors = (
-      (governance.invalidRelationshipInserts ?? []).filter((issue) => isErrorSeverity(issue.severity))
-    ).map((issue) => `Relationship insert: ${issue.message}`);
-    const issueWarnings = (
-      (governance.invalidRelationshipInserts ?? []).filter((issue) => isWarningSeverity(issue.severity))
-    ).map((issue) => `Relationship insert: ${issue.message}`);
-    const issueInfos = (
-      (governance.invalidRelationshipInserts ?? []).filter((issue) => isInfoSeverity(issue.severity))
-    ).map((issue) => `Relationship insert: ${issue.message}`);
-    const lifecycleErrorIssues = (
-      (governance.lifecycleTagMissingIds ?? []).filter((issue) => isErrorSeverity(issue.severity))
-    ).map((issue) => issue.message || `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`);
-    const lifecycleWarningIssues = (
-      (governance.lifecycleTagMissingIds ?? []).filter((issue) => isWarningSeverity(issue.severity))
-    ).map((issue) => issue.message || `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`);
-    const lifecycleInfoIssues = (
-      (governance.lifecycleTagMissingIds ?? []).filter((issue) => isInfoSeverity(issue.severity))
-    ).map((issue) => issue.message || `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`);
+    const errors = [...repoFindings, ...relFindings].filter((f) =>
+      isErrorSeverity(f.severity),
+    );
+    const warnings = [...repoFindings, ...relFindings].filter((f) =>
+      isWarningSeverity(f.severity),
+    );
+    const infos = [...repoFindings, ...relFindings].filter((f) =>
+      isInfoSeverity(f.severity),
+    );
+    const issueErrors = (governance.invalidRelationshipInserts ?? [])
+      .filter((issue) => isErrorSeverity(issue.severity))
+      .map((issue) => `Relationship insert: ${issue.message}`);
+    const issueWarnings = (governance.invalidRelationshipInserts ?? [])
+      .filter((issue) => isWarningSeverity(issue.severity))
+      .map((issue) => `Relationship insert: ${issue.message}`);
+    const issueInfos = (governance.invalidRelationshipInserts ?? [])
+      .filter((issue) => isInfoSeverity(issue.severity))
+      .map((issue) => `Relationship insert: ${issue.message}`);
+    const lifecycleErrorIssues = (governance.lifecycleTagMissingIds ?? [])
+      .filter((issue) => isErrorSeverity(issue.severity))
+      .map(
+        (issue) =>
+          issue.message ||
+          `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`,
+      );
+    const lifecycleWarningIssues = (governance.lifecycleTagMissingIds ?? [])
+      .filter((issue) => isWarningSeverity(issue.severity))
+      .map(
+        (issue) =>
+          issue.message ||
+          `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`,
+      );
+    const lifecycleInfoIssues = (governance.lifecycleTagMissingIds ?? [])
+      .filter((issue) => isInfoSeverity(issue.severity))
+      .map(
+        (issue) =>
+          issue.message ||
+          `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`,
+      );
     const extraErrors = issueErrors.length + lifecycleErrorIssues.length;
     const extraWarnings = issueWarnings.length + lifecycleWarningIssues.length;
     const extraInfos = issueInfos.length + lifecycleInfoIssues.length;
 
-    const errorMessages = [...errors.map((f) => f.message), ...issueErrors, ...lifecycleErrorIssues];
-    const warningMessages = [...warnings.map((f) => f.message), ...issueWarnings, ...lifecycleWarningIssues];
-    const infoMessages = [...infos.map((f) => f.message), ...issueInfos, ...lifecycleInfoIssues];
+    const errorMessages = [
+      ...errors.map((f) => f.message),
+      ...issueErrors,
+      ...lifecycleErrorIssues,
+    ];
+    const warningMessages = [
+      ...warnings.map((f) => f.message),
+      ...issueWarnings,
+      ...lifecycleWarningIssues,
+    ];
+    const infoMessages = [
+      ...infos.map((f) => f.message),
+      ...issueInfos,
+      ...lifecycleInfoIssues,
+    ];
 
     if (validationMode === 'soft') {
       const guidance = [...errorMessages, ...warningMessages, ...infoMessages];
@@ -8470,11 +10570,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const elementId =
         (finding as any).subjectKind === 'Element'
           ? (finding as any).subjectId
-          : (finding as any).sourceElementId ?? (finding as any).targetElementId ?? (finding as any).subjectId;
+          : ((finding as any).sourceElementId ??
+            (finding as any).targetElementId ??
+            (finding as any).subjectId);
       issues.push({
         message: finding.message,
         severity: toSeverity(finding.severity),
-        context: { elementId, relationshipType: (finding as any).relationshipType },
+        context: {
+          elementId,
+          relationshipType: (finding as any).relationshipType,
+        },
       });
     });
 
@@ -8488,7 +10593,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     (governance.lifecycleTagMissingIds ?? []).forEach((issue) => {
       issues.push({
-        message: issue.message || `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`,
+        message:
+          issue.message ||
+          `Lifecycle tag missing: ${issue.subjectId ?? 'Unknown'}`,
         severity: toSeverity(issue.severity),
         context: { elementId: issue.subjectId },
       });
@@ -8498,8 +10605,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [governance]);
 
   const validationIssues = React.useMemo(
-    () => [...stagedValidationIssues, ...mandatoryCommitRelationshipIssues, ...governanceIssues],
-    [governanceIssues, mandatoryCommitRelationshipIssues, stagedValidationIssues],
+    () => [
+      ...stagedValidationIssues,
+      ...mandatoryCommitRelationshipIssues,
+      ...governanceIssues,
+    ],
+    [
+      governanceIssues,
+      mandatoryCommitRelationshipIssues,
+      stagedValidationIssues,
+    ],
   );
 
   const clearValidationConsoleMessages = React.useCallback(() => {
@@ -8509,7 +10624,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, []);
 
   const validationConsoleEntries = React.useMemo(() => {
-    if (!validationGateOpen) return [] as Array<{ level: 'info' | 'warning' | 'error'; message: string; context?: ValidationIssue['context'] }>;
+    if (!validationGateOpen)
+      return [] as Array<{
+        level: 'info' | 'warning' | 'error';
+        message: string;
+        context?: ValidationIssue['context'];
+      }>;
     const toLevel = (severity: ValidationIssue['severity']) => {
       if (severity === 'error') return 'error' as const;
       if (severity === 'warning') return 'warning' as const;
@@ -8540,11 +10660,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
         context: entry.context,
       }),
     );
-  }, [clearValidationConsoleMessages, validationConsoleEntries, validationGateOpen]);
+  }, [
+    clearValidationConsoleMessages,
+    validationConsoleEntries,
+    validationGateOpen,
+  ]);
 
   React.useEffect(() => {
     try {
-      localStorage.setItem(guidanceIgnoreStorageKey, JSON.stringify(ignoredGuidance));
+      localStorage.setItem(
+        guidanceIgnoreStorageKey,
+        JSON.stringify(ignoredGuidance),
+      );
     } catch {
       // Best-effort only.
     }
@@ -8552,7 +10679,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   React.useEffect(() => {
     try {
-      localStorage.setItem(designPromptIgnoreStorageKey, JSON.stringify(ignoredDesignPrompts));
+      localStorage.setItem(
+        designPromptIgnoreStorageKey,
+        JSON.stringify(ignoredDesignPrompts),
+      );
     } catch {
       // Best-effort only.
     }
@@ -8581,32 +10711,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
       {
         id: 'CONNECTOR_PALETTE_EA_ONLY',
         title: 'Prompt 4 · Connector palette',
-        description: 'All connectors must represent a valid EA relationship type.',
+        description:
+          'All connectors must represent a valid EA relationship type.',
       },
       {
         id: 'DESIGN_WITHOUT_SEMANTICS_LOSS',
         title: 'Prompt 5 · Design without semantics loss',
-        description: 'Visual freedom must never violate EA semantics or layer rules.',
+        description:
+          'Visual freedom must never violate EA semantics or layer rules.',
       },
       {
         id: 'FLEXIBLE_LAYOUT',
         title: 'Prompt 6 · Flexible layout',
-        description: 'Allow users to freely position, resize, and align EA nodes to express their design intent.',
+        description:
+          'Allow users to freely position, resize, and align EA nodes to express their design intent.',
       },
       {
         id: 'INTENTIONAL_CONNECTIONS',
         title: 'Prompt 7 · Intentional connections',
-        description: 'A connection must always require the user to select an explicit relationship type.',
+        description:
+          'A connection must always require the user to select an explicit relationship type.',
       },
       {
         id: 'PARTIAL_DESIGNS_ALLOWED',
         title: 'Prompt 8 · Partial designs allowed',
-        description: 'Allow incomplete or evolving designs as long as no invalid relationships exist.',
+        description:
+          'Allow incomplete or evolving designs as long as no invalid relationships exist.',
       },
       {
         id: 'VISUAL_GROUPING',
         title: 'Prompt 9 · Visual grouping',
-        description: 'Allow visual grouping and layout patterns without creating semantic relationships.',
+        description:
+          'Allow visual grouping and layout patterns without creating semantic relationships.',
       },
       {
         id: 'EA_GUARDRAILS',
@@ -8620,11 +10756,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const visibleDesignPrompts = React.useMemo(() => {
     if (studioModeLevel !== 'Design') return [] as typeof designModePrompts;
-    return designModePrompts.filter((prompt) => !ignoredDesignPrompts.includes(prompt.id));
+    return designModePrompts.filter(
+      (prompt) => !ignoredDesignPrompts.includes(prompt.id),
+    );
   }, [designModePrompts, ignoredDesignPrompts, studioModeLevel]);
 
   const dismissDesignPrompt = React.useCallback((promptId: string) => {
-    setIgnoredDesignPrompts((prev) => (prev.includes(promptId) ? prev : [...prev, promptId]));
+    setIgnoredDesignPrompts((prev) =>
+      prev.includes(promptId) ? prev : [...prev, promptId],
+    );
   }, []);
 
   const GUIDANCE_RULE_LABELS: Record<string, string> = {
@@ -8632,19 +10772,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
     APPLICATION_MISSING_LIFECYCLE: 'Applications missing lifecycle',
     TECHNOLOGY_PAST_SUPPORT_END_DATE: 'Technology past support end date',
     APPLICATION_DEPENDS_ON_SELF: 'Application depends on itself',
-    APPLICATION_DEPENDENCY_MISSING_STRENGTH: 'Application dependency missing strength',
+    APPLICATION_DEPENDENCY_MISSING_STRENGTH:
+      'Application dependency missing strength',
     PROGRAMME_IMPACTS_RETIRED_ELEMENT: 'Programme impacts retired element',
     PROCESS_MISSING_CAPABILITY_PARENT: 'Process missing capability parent',
     EA_REQUIRED_OWNER: 'Missing owner',
     EA_INVALID_OWNER: 'Invalid owner',
     EA_ENTERPRISE_OWNERSHIP: 'Enterprise ownership required',
     EA_DEPARTMENT_REQUIRES_ENTERPRISE: 'Department requires enterprise',
-    EA_BUSINESS_SERVICE_REQUIRES_CAPABILITY: 'Business service missing capability',
-    EA_CAPABILITY_REQUIRES_APPLICATION_SERVICE_SUPPORT: 'Capability missing application service support',
-    EA_APPLICATION_SERVICE_REQUIRES_APPLICATION: 'Application service missing application',
+    EA_BUSINESS_SERVICE_REQUIRES_CAPABILITY:
+      'Business service missing capability',
+    EA_CAPABILITY_REQUIRES_APPLICATION_SERVICE_SUPPORT:
+      'Capability missing application service support',
+    EA_APPLICATION_SERVICE_REQUIRES_APPLICATION:
+      'Application service missing application',
     EA_APPLICATION_SERVICE_REQUIRES_USAGE: 'Application service missing usage',
     EA_APPLICATION_NO_PHYSICAL_TERMS: 'Application name is physical/infra',
-    EA_APPLICATION_REQUIRES_BUSINESS_PROCESS: 'Application missing business process support',
+    EA_APPLICATION_REQUIRES_BUSINESS_PROCESS:
+      'Application missing business process support',
     EA_REQUIRED_NAME: 'Missing name',
     EA_FORBIDDEN_TECHNOLOGY_BUSINESS_LINK: 'Forbidden technology-business link',
     RELATIONSHIP_INSERT: 'Relationship insert issues',
@@ -8665,7 +10810,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
   };
 
   const resolveGuidanceLabel = (checkId?: string, message?: string): string => {
-    const base = (checkId && GUIDANCE_RULE_LABELS[checkId]) || checkId || 'Guidance';
+    const base =
+      (checkId && GUIDANCE_RULE_LABELS[checkId]) || checkId || 'Guidance';
     const scope = message ? extractGuidanceScope(message) : null;
     if (!scope || scope === 'Unknown') return base;
     if (base.toLowerCase().includes(scope.toLowerCase())) return base;
@@ -8684,8 +10830,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (!governance) return [] as GuidanceItem[];
     const items: GuidanceItem[] = [];
 
-    const shouldInclude = (severity?: string) => iterativeModeling || severity === 'INFO';
-    const pushItem = (ruleKey: string, ruleLabel: string, detail: string, severity?: string) => {
+    const shouldInclude = (severity?: string) =>
+      iterativeModeling || severity === 'INFO';
+    const pushItem = (
+      ruleKey: string,
+      ruleLabel: string,
+      detail: string,
+      severity?: string,
+    ) => {
       if (!shouldInclude(severity)) return;
       items.push({
         id: detail,
@@ -8698,31 +10850,60 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     governance.repoReport.findings.forEach((f) => {
       const checkId = String((f as any).checkId ?? 'REPO');
-      pushItem(checkId, resolveGuidanceLabel(checkId, f.message), f.message, f.severity);
+      pushItem(
+        checkId,
+        resolveGuidanceLabel(checkId, f.message),
+        f.message,
+        f.severity,
+      );
     });
     governance.relationshipReport.findings.forEach((f) => {
       const checkId = String((f as any).checkId ?? 'RELATIONSHIP');
-      pushItem(checkId, resolveGuidanceLabel(checkId, f.message), f.message, f.severity);
+      pushItem(
+        checkId,
+        resolveGuidanceLabel(checkId, f.message),
+        f.message,
+        f.severity,
+      );
     });
     governance.invalidRelationshipInserts.forEach((issue) => {
       const ruleKey = 'RELATIONSHIP_INSERT';
-      pushItem(ruleKey, resolveGuidanceLabel(ruleKey, issue.message), issue.message, issue.severity);
+      pushItem(
+        ruleKey,
+        resolveGuidanceLabel(ruleKey, issue.message),
+        issue.message,
+        issue.severity,
+      );
     });
     governance.lifecycleTagMissingIds.forEach((issue) => {
       const ruleKey = 'LIFECYCLE_TAG';
-      pushItem(ruleKey, resolveGuidanceLabel(ruleKey, issue.message), issue.message, issue.severity);
+      pushItem(
+        ruleKey,
+        resolveGuidanceLabel(ruleKey, issue.message),
+        issue.message,
+        issue.severity,
+      );
     });
 
     return items;
   }, [governance, iterativeModeling]);
 
   const visibleGuidanceItems = React.useMemo(
-    () => guidanceItems.filter((item) => !ignoredGuidance.includes(item.detail)),
+    () =>
+      guidanceItems.filter((item) => !ignoredGuidance.includes(item.detail)),
     [guidanceItems, ignoredGuidance],
   );
 
   const guidanceGroups = React.useMemo(() => {
-    const grouped = new Map<string, { ruleKey: string; ruleLabel: string; count: number; items: GuidanceItem[] }>();
+    const grouped = new Map<
+      string,
+      {
+        ruleKey: string;
+        ruleLabel: string;
+        count: number;
+        items: GuidanceItem[];
+      }
+    >();
     for (const item of visibleGuidanceItems) {
       const entry = grouped.get(item.ruleKey);
       if (!entry) {
@@ -8737,7 +10918,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
       entry.count += item.count;
       entry.items.push(item);
     }
-    return Array.from(grouped.values()).sort((a, b) => a.ruleLabel.localeCompare(b.ruleLabel));
+    return Array.from(grouped.values()).sort((a, b) =>
+      a.ruleLabel.localeCompare(b.ruleLabel),
+    );
   }, [visibleGuidanceItems]);
 
   const visibleGuidanceCount = React.useMemo(
@@ -8747,7 +10930,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const validationCount = React.useMemo(() => {
     if (!validationGateOpen || !validationSummary) return 0;
-    return validationSummary.errorCount + validationSummary.warningCount + validationSummary.infoCount;
+    return (
+      validationSummary.errorCount +
+      validationSummary.warningCount +
+      validationSummary.infoCount
+    );
   }, [validationGateOpen, validationSummary]);
 
   const isDev = process.env.NODE_ENV === 'development';
@@ -8755,22 +10942,35 @@ const StudioShell: React.FC<StudioShellProps> = ({
   React.useEffect(() => {
     if (!isDev) return;
     const leftPrimaryActions: string[] = [];
-    const commandBarPrimaryActions = ['toolMode', 'layerVisibility', 'modelingCatalog', 'workspaceContext', 'workspaceActions'];
+    const commandBarPrimaryActions = [
+      'toolMode',
+      'layerVisibility',
+      'modelingCatalog',
+      'workspaceContext',
+      'workspaceActions',
+    ];
     const rightPrimaryActions: string[] = [];
 
     const violations: string[] = [];
     if (leftPrimaryActions.length > 0) {
-      violations.push(`Left palette contains primary actions: ${leftPrimaryActions.join(', ')}`);
+      violations.push(
+        `Left palette contains primary actions: ${leftPrimaryActions.join(', ')}`,
+      );
     }
     if (commandBarPrimaryActions.length === 0) {
       violations.push('Yellow Studio panel missing primary actions.');
     }
     if (rightPrimaryActions.length > 0) {
-      violations.push(`Right panel contains primary actions: ${rightPrimaryActions.join(', ')}`);
+      violations.push(
+        `Right panel contains primary actions: ${rightPrimaryActions.join(', ')}`,
+      );
     }
 
     if (violations.length > 0) {
-      console.warn('[StudioLayout] Primary action placement violation', violations);
+      console.warn(
+        '[StudioLayout] Primary action placement violation',
+        violations,
+      );
     }
   }, [isDev]);
 
@@ -8795,17 +10995,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
     const leftScrollables = getScrollableElements(studioLeftRef.current);
     if (leftScrollables.length > 1) {
-      console.warn('[StudioLayout] Left panel contains more than one scrollbar.');
+      console.warn(
+        '[StudioLayout] Left panel contains more than one scrollbar.',
+      );
     }
 
     const rightScrollables = getScrollableElements(studioRightRef.current);
     if (rightScrollables.length > 1) {
-      console.warn('[StudioLayout] Right panel contains more than one scrollbar.');
+      console.warn(
+        '[StudioLayout] Right panel contains more than one scrollbar.',
+      );
     }
 
-    const rightCatalogs = studioRightRef.current?.querySelectorAll('[data-role="catalog-list"]') ?? [];
+    const rightCatalogs =
+      studioRightRef.current?.querySelectorAll('[data-role="catalog-list"]') ??
+      [];
     if (rightCatalogs.length > 0) {
-      console.warn('[StudioLayout] Catalog browsing detected inside inspector panel.');
+      console.warn(
+        '[StudioLayout] Catalog browsing detected inside inspector panel.',
+      );
     }
   }, [isDev]);
 
@@ -8821,11 +11029,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
     if (viewSaveStatus === 'saving') return 'Saving…';
     if (viewSaveStatus === 'dirty') return 'Unsaved';
     return 'Saved';
-  }, [activeViewId, activeViewIsWorking, viewEditLocked, viewReadOnly, viewSaveStatus]);
+  }, [
+    activeViewId,
+    activeViewIsWorking,
+    viewEditLocked,
+    viewReadOnly,
+    viewSaveStatus,
+  ]);
   const lastViewSavedAt = React.useMemo(() => {
     return (activeView?.layoutMetadata as any)?.lastSavedAt ?? null;
   }, [activeView]);
-  const viewLayoutLocked = Boolean((activeView?.layoutMetadata as any)?.layoutLocked);
+  const viewLayoutLocked = Boolean(
+    (activeView?.layoutMetadata as any)?.layoutLocked,
+  );
 
   const autosaveTimerRef = React.useRef<number | null>(null);
   const tabSessionPayloadRef = React.useRef<string | null>(null);
@@ -8837,8 +11053,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const key = tabKey ?? activeTabKey;
       if (!key || key === WORKSPACE_TAB_KEY) return;
       const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
-      const selectedNodes = cyRef.current.nodes(':selected').map((n) => String(n.id()));
-      const selectedEdges = cyRef.current.edges(':selected').map((e) => String(e.id()));
+      const selectedNodes = cyRef.current
+        .nodes(':selected')
+        .map((n) => String(n.id()));
+      const selectedEdges = cyRef.current
+        .edges(':selected')
+        .map((e) => String(e.id()));
       setViewTabStateById((prev) => {
         const existing = prev[key];
         if (!existing) return prev;
@@ -8855,44 +11075,43 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [activeTabKey],
   );
 
-  const restoreCanvasState = React.useCallback(
-    (tabKey: string) => {
-      if (!cyRef.current) return;
-      const state = viewTabStateByIdRef.current[tabKey];
-      if (!state) return;
-      const viewport = state.viewport ?? ((state.view?.layoutMetadata as any)?.viewport ?? null);
-      if (viewport && typeof viewport.zoom === 'number' && viewport.pan) {
-        // Apply zoom + pan in a single atomic operation to avoid visual jump.
-        // Cytoscape's zoom({ level, position }) with pan afterwards causes
-        // two separate renders.  We batch them instead.
-        const cy = cyRef.current;
-        cy.startBatch();
-        cy.zoom(viewport.zoom);
-        cy.pan(viewport.pan);
-        cy.endBatch();
-      }
-      // NOTE: Do NOT call cy.fit() or cy.center() here.
-      // If no saved viewport exists the canvas stays at its current position
-      // which is valid — the user can pan/zoom manually.
-      if (state.selection) {
-        cyRef.current.elements().unselect();
-        state.selection.nodes.forEach((id) => {
-          const node = cyRef.current?.getElementById(id);
-          if (node && !node.empty()) node.select();
-        });
-        state.selection.edges.forEach((id) => {
-          const edge = cyRef.current?.getElementById(id);
-          if (edge && !edge.empty()) edge.select();
-        });
-      }
-    },
-    [],
-  );
+  const restoreCanvasState = React.useCallback((tabKey: string) => {
+    if (!cyRef.current) return;
+    const state = viewTabStateByIdRef.current[tabKey];
+    if (!state) return;
+    const viewport =
+      state.viewport ?? (state.view?.layoutMetadata as any)?.viewport ?? null;
+    if (viewport && typeof viewport.zoom === 'number' && viewport.pan) {
+      // Apply zoom + pan in a single atomic operation to avoid visual jump.
+      // Cytoscape's zoom({ level, position }) with pan afterwards causes
+      // two separate renders.  We batch them instead.
+      const cy = cyRef.current;
+      cy.startBatch();
+      cy.zoom(viewport.zoom);
+      cy.pan(viewport.pan);
+      cy.endBatch();
+    }
+    // NOTE: Do NOT call cy.fit() or cy.center() here.
+    // If no saved viewport exists the canvas stays at its current position
+    // which is valid — the user can pan/zoom manually.
+    if (state.selection) {
+      cyRef.current.elements().unselect();
+      state.selection.nodes.forEach((id) => {
+        const node = cyRef.current?.getElementById(id);
+        if (node && !node.empty()) node.select();
+      });
+      state.selection.edges.forEach((id) => {
+        const edge = cyRef.current?.getElementById(id);
+        if (edge && !edge.empty()) edge.select();
+      });
+    }
+  }, []);
 
   const scheduleAutosave = React.useCallback(
     (delayMs = 600) => {
       if (!activeViewId || !activeView || viewReadOnly) return;
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+      if (autosaveTimerRef.current)
+        window.clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = window.setTimeout(() => {
         autosaveTimerRef.current = null;
         autosaveActiveView({ silent: true });
@@ -8905,7 +11124,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
     try {
       const tabs = viewTabs.map((tab) => {
         const state = viewTabStateById[tab.key];
-        const viewSnapshot = tab.isWorking ? (state?.view ?? (tab.viewId === activeViewId ? activeView : null)) : null;
+        const viewSnapshot = tab.isWorking
+          ? (state?.view ?? (tab.viewId === activeViewId ? activeView : null))
+          : null;
         return {
           viewId: tab.viewId,
           readOnly: tab.readOnly,
@@ -8913,19 +11134,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
           view: viewSnapshot ?? undefined,
         };
       });
-      const viewStates = viewTabs.reduce<Record<string, { viewport?: { zoom: number; pan: { x: number; y: number } }; selection?: { nodes: string[]; edges: string[] } }>>(
-        (acc, tab) => {
-          const state = viewTabStateById[tab.key];
-          if (state?.viewport || state?.selection) {
-            acc[tab.viewId] = {
-              viewport: state.viewport,
-              selection: state.selection,
-            };
+      const viewStates = viewTabs.reduce<
+        Record<
+          string,
+          {
+            viewport?: { zoom: number; pan: { x: number; y: number } };
+            selection?: { nodes: string[]; edges: string[] };
           }
-          return acc;
-        },
-        {},
-      );
+        >
+      >((acc, tab) => {
+        const state = viewTabStateById[tab.key];
+        if (state?.viewport || state?.selection) {
+          acc[tab.viewId] = {
+            viewport: state.viewport,
+            selection: state.selection,
+          };
+        }
+        return acc;
+      }, {});
       const payload = JSON.stringify({
         activeViewId: activeViewId ?? null,
         tabs,
@@ -8941,7 +11167,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
   const schedulePersistTabSession = React.useCallback(
     (delayMs = 300) => {
-      if (tabSessionPersistTimerRef.current) window.clearTimeout(tabSessionPersistTimerRef.current);
+      if (tabSessionPersistTimerRef.current)
+        window.clearTimeout(tabSessionPersistTimerRef.current);
       tabSessionPersistTimerRef.current = window.setTimeout(() => {
         tabSessionPersistTimerRef.current = null;
         persistTabSession();
@@ -8983,7 +11210,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
       }
     });
     schedulePersistTabSession();
-  }, [activeTabKey, autosaveActiveView, captureCanvasState, persistTabSession, viewTabs]);
+  }, [
+    activeTabKey,
+    autosaveActiveView,
+    captureCanvasState,
+    persistTabSession,
+    viewTabs,
+  ]);
 
   React.useEffect(() => {
     const handleBeforeUnload = () => {
@@ -9002,12 +11235,18 @@ const StudioShell: React.FC<StudioShellProps> = ({
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('ea:repositoryChanged', handleRepositoryChange as EventListener);
+    window.addEventListener(
+      'ea:repositoryChanged',
+      handleRepositoryChange as EventListener,
+    );
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('ea:repositoryChanged', handleRepositoryChange as EventListener);
+      window.removeEventListener(
+        'ea:repositoryChanged',
+        handleRepositoryChange as EventListener,
+      );
     };
   }, [autosaveAllOpenViews]);
 
@@ -9057,7 +11296,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
               },
             };
           });
-          setViewTabs((prev) => prev.map((tab) => (tab.key === activeTabKey ? { ...tab, name } : tab)));
+          setViewTabs((prev) =>
+            prev.map((tab) =>
+              tab.key === activeTabKey ? { ...tab, name } : tab,
+            ),
+          );
           message.success('Working view renamed (unsaved).');
           return;
         }
@@ -9073,7 +11316,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
         message.success('View renamed.');
       },
     });
-  }, [activeTabKey, activeView, activeViewId, viewEditLocked, viewReadOnly, viewTabStateById]);
+  }, [
+    activeTabKey,
+    activeView,
+    activeViewId,
+    viewEditLocked,
+    viewReadOnly,
+    viewTabStateById,
+  ]);
 
   const handleDuplicateActiveView = React.useCallback(() => {
     if (!activeView) return;
@@ -9105,7 +11355,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     (tab: StudioViewTab) => {
       const state = viewTabStateById[tab.key];
       if (!state) return false;
-      return state.saveStatus === 'dirty' || state.saveStatus === 'saving' || Boolean(state.isWorking);
+      return (
+        state.saveStatus === 'dirty' ||
+        state.saveStatus === 'saving' ||
+        Boolean(state.isWorking)
+      );
     },
     [viewTabStateById],
   );
@@ -9113,10 +11367,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const requestCloseViewTab = React.useCallback(
     (tabKey: string) => {
       if (!tabKey || tabKey === WORKSPACE_TAB_KEY) return;
-      const tab = viewTabs.find((candidate) => candidate.key === tabKey) ?? null;
+      const tab =
+        viewTabs.find((candidate) => candidate.key === tabKey) ?? null;
       if (!tab) return;
       const state = viewTabStateById[tabKey];
-      const hasUnsaved = Boolean(state?.saveStatus === 'dirty' || state?.saveStatus === 'saving' || state?.isWorking);
+      const hasUnsaved = Boolean(
+        state?.saveStatus === 'dirty' ||
+          state?.saveStatus === 'saving' ||
+          state?.isWorking,
+      );
       if (!hasUnsaved) {
         closeViewTab(tabKey);
         return;
@@ -9155,7 +11414,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
         onOk: () => closeViewTab(tabKey),
       });
     },
-    [activeTabKey, autosaveActiveView, closeViewTab, viewTabStateById, viewTabs],
+    [
+      activeTabKey,
+      autosaveActiveView,
+      closeViewTab,
+      viewTabStateById,
+      viewTabs,
+    ],
   );
 
   const handleCreateWorkingView = React.useCallback(() => {
@@ -9164,9 +11429,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
       return;
     }
     const workingView = createWorkingView();
-    ensureViewTab(workingView.id, { mode: 'new', view: workingView, isWorking: true });
+    ensureViewTab(workingView.id, {
+      mode: 'new',
+      view: workingView,
+      isWorking: true,
+    });
   }, [createWorkingView, ensureViewTab, viewEditLocked]);
-
 
   const handleToggleViewLock = React.useCallback(
     (locked: boolean) => {
@@ -9221,12 +11489,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const isOwner = userRole === 'Owner';
     const isCreator = activeView.createdBy === actor;
     if (!isOwner && !isCreator) {
-      message.warning('Only the view creator or repository owner can delete this view.');
+      message.warning(
+        'Only the view creator or repository owner can delete this view.',
+      );
       return;
     }
     Modal.confirm({
       title: 'Delete view?',
-      content: 'Deleting a view removes only the view definition. Repository content remains unchanged.',
+      content:
+        'Deleting a view removes only the view definition. Repository content remains unchanged.',
       okText: 'Delete',
       okButtonProps: { danger: true },
       cancelText: 'Cancel',
@@ -9245,7 +11516,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
         message.success('View deleted.');
       },
     });
-  }, [activeTabKey, activeView, actor, closeViewTab, userRole, viewEditLocked, viewTabStateById]);
+  }, [
+    activeTabKey,
+    activeView,
+    actor,
+    closeViewTab,
+    userRole,
+    viewEditLocked,
+    viewTabStateById,
+  ]);
 
   const handleExportActiveViewJson = React.useCallback(() => {
     if (!activeView) return;
@@ -9266,23 +11545,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
   }, [activeView]);
 
-
-  const [rightPanelMode, setRightPanelMode] = React.useState<RightPanelMode>(RightPanelMode.STUDIO);
-  const [lastNonSwitchMode, setLastNonSwitchMode] = React.useState<RightPanelMode>(RightPanelMode.STUDIO);
-  const propertiesOverrideRef = React.useRef(false);
-  const [panelResetToken, setPanelResetToken] = React.useState<{ studio: number; selection: number; viewSwitch: number }>(
-    {
-      studio: 0,
-      selection: 0,
-      viewSwitch: 0,
-    },
+  const [rightPanelMode, setRightPanelMode] = React.useState<RightPanelMode>(
+    RightPanelMode.STUDIO,
   );
-  const previousRightPanelModeRef = React.useRef<RightPanelMode>(rightPanelMode);
+  const [lastNonSwitchMode, setLastNonSwitchMode] =
+    React.useState<RightPanelMode>(RightPanelMode.STUDIO);
+  const propertiesOverrideRef = React.useRef(false);
+  const [panelResetToken, setPanelResetToken] = React.useState<{
+    studio: number;
+    selection: number;
+    viewSwitch: number;
+  }>({
+    studio: 0,
+    selection: 0,
+    viewSwitch: 0,
+  });
+  const previousRightPanelModeRef =
+    React.useRef<RightPanelMode>(rightPanelMode);
 
   React.useEffect(() => {
     if (viewSwitchPanel && rightPanelMode !== RightPanelMode.VIEW_SWITCH) {
       if (propertiesOverrideRef.current) return;
-      if (rightPanelMode !== RightPanelMode.VIEW_SWITCH) setLastNonSwitchMode(rightPanelMode);
+      if (rightPanelMode !== RightPanelMode.VIEW_SWITCH)
+        setLastNonSwitchMode(rightPanelMode);
       setRightPanelMode(RightPanelMode.VIEW_SWITCH);
       return;
     }
@@ -9300,8 +11585,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const resetPanelState = React.useCallback(
     (mode: RightPanelMode) => {
       setPanelResetToken((prev) => {
-        if (mode === RightPanelMode.SELECTION) return { ...prev, selection: prev.selection + 1 };
-        if (mode === RightPanelMode.VIEW_SWITCH) return { ...prev, viewSwitch: prev.viewSwitch + 1 };
+        if (mode === RightPanelMode.SELECTION)
+          return { ...prev, selection: prev.selection + 1 };
+        if (mode === RightPanelMode.VIEW_SWITCH)
+          return { ...prev, viewSwitch: prev.viewSwitch + 1 };
         return { ...prev, studio: prev.studio + 1 };
       });
 
@@ -9338,7 +11625,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
   React.useEffect(() => {
     const clamp = () => {
       const maxWidth = getStudioRightPanelMaxWidth();
-      setStudioRightWidth((prev) => Math.min(maxWidth, Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, prev)));
+      setStudioRightWidth((prev) =>
+        Math.min(maxWidth, Math.max(STUDIO_RIGHT_PANEL_MIN_WIDTH, prev)),
+      );
     };
 
     clamp();
@@ -9346,11 +11635,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return () => window.removeEventListener('resize', clamp);
   }, []);
 
-  const RightPanelController: React.FC<{ title: string; children: React.ReactNode; onClose?: () => void }> = ({
-    title,
-    children,
-    onClose,
-  }) => (
+  const RightPanelController: React.FC<{
+    title: string;
+    children: React.ReactNode;
+    onClose?: () => void;
+  }> = ({ title, children, onClose }) => (
     <div className={styles.studioRightSection}>
       <div className={styles.studioRightHeader}>
         <Typography.Text strong>{title}</Typography.Text>
@@ -9395,16 +11684,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
   }, [stagedElements, stagedRelationships]);
 
   const studioTabItems = React.useMemo(
-    () => (
+    () =>
       viewTabs.map((tab) => {
         const state = viewTabStateById[tab.key];
-        const isDirty = Boolean(state?.saveStatus === 'dirty' || state?.saveStatus === 'saving' || state?.isWorking);
+        const isDirty = Boolean(
+          state?.saveStatus === 'dirty' ||
+            state?.saveStatus === 'saving' ||
+            state?.isWorking,
+        );
         return {
           key: tab.key,
           closable: true,
           label: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span>{tab.name}{isDirty ? ' ● Unsaved' : ''}</span>
+            <span
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>
+                {tab.name}
+                {isDirty ? ' ● Unsaved' : ''}
+              </span>
               {tab.readOnly ? (
                 <Tag color="default" style={{ marginInlineEnd: 0 }}>
                   Read-only
@@ -9413,13 +11711,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
             </span>
           ),
         };
-      })
-    ),
+      }),
     [viewTabs, viewTabStateById],
   );
 
   const diagramTypeName = React.useMemo(
-    () => (activeViewIsWorking ? 'Working View' : (activeViewpoint?.name ?? 'Studio Workspace')),
+    () =>
+      activeViewIsWorking
+        ? 'Working View'
+        : (activeViewpoint?.name ?? 'Studio Workspace'),
     [activeViewIsWorking, activeViewpoint?.name],
   );
   const diagramTypeDescription = React.useMemo(
@@ -9427,7 +11727,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       activeViewIsWorking
         ? 'Implicit working view. Model first, save later.'
         : (activeViewpoint?.description ??
-            'Free-form workspace. Diagram type controls the visual grammar, allowed elements, and relationships.'),
+          'Free-form workspace. Diagram type controls the visual grammar, allowed elements, and relationships.'),
     [activeViewIsWorking, activeViewpoint?.description],
   );
   const toolboxPanel = showToolbox ? (
@@ -9438,21 +11738,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
           <Typography.Text strong>Toolbox</Typography.Text>
         </div>
         <div className={styles.studioToolboxActions}>
-          <Tooltip title={toolboxExpanded ? 'Restore width' : 'Expand to full width'}>
+          <Tooltip
+            title={toolboxExpanded ? 'Restore width' : 'Expand to full width'}
+          >
             <Button
               size="small"
               type="text"
-              icon={toolboxExpanded ? <ShrinkOutlined /> : <ArrowsAltOutlined />}
-              aria-label={toolboxExpanded ? 'Restore toolbox width' : 'Expand toolbox'}
+              icon={
+                toolboxExpanded ? <ShrinkOutlined /> : <ArrowsAltOutlined />
+              }
+              aria-label={
+                toolboxExpanded ? 'Restore toolbox width' : 'Expand toolbox'
+              }
               onClick={toggleToolboxExpanded}
             />
           </Tooltip>
-          <Tooltip title={toolboxCollapsed ? 'Expand toolbox' : 'Collapse toolbox'}>
+          <Tooltip
+            title={toolboxCollapsed ? 'Expand toolbox' : 'Collapse toolbox'}
+          >
             <Button
               size="small"
               type="text"
               icon={toolboxCollapsed ? <AppstoreOutlined /> : <CloseOutlined />}
-              aria-label={toolboxCollapsed ? 'Expand toolbox' : 'Collapse toolbox'}
+              aria-label={
+                toolboxCollapsed ? 'Expand toolbox' : 'Collapse toolbox'
+              }
               onClick={() =>
                 setToolboxCollapsed((prev) => {
                   const next = !prev;
@@ -9472,9 +11782,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
             {
               key: 'components',
               label: 'Components',
-              children: (
+              children:
                 toolboxComponentItems.length === 0 ? (
-                  <Typography.Text type="secondary" className={styles.studioToolboxEmpty}>
+                  <Typography.Text
+                    type="secondary"
+                    className={styles.studioToolboxEmpty}
+                  >
                     No components available for this viewpoint.
                   </Typography.Text>
                 ) : (
@@ -9486,7 +11799,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <button
                             type="button"
                             className={
-                              toolMode === 'CREATE_ELEMENT' && pendingElementType === item.type && pendingElementVisualKind === item.kind
+                              toolMode === 'CREATE_ELEMENT' &&
+                              pendingElementType === item.type &&
+                              pendingElementVisualKind === item.kind
                                 ? styles.studioToolboxIconButtonActive
                                 : styles.studioToolboxIconButton
                             }
@@ -9494,10 +11809,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             draggable={!toolboxInteractionDisabled}
                             onDragStart={(e) => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxElementType(item.type as ObjectType, displayLabel, item.kind)) return;
-                              e.dataTransfer.setData('application/x-ea-element-type', String(item.type));
-                              e.dataTransfer.setData('application/x-ea-visual-kind', String(item.kind));
-                              e.dataTransfer.setData('text/plain', String(item.type));
+                              if (
+                                !ensureToolboxElementType(
+                                  item.type as ObjectType,
+                                  displayLabel,
+                                  item.kind,
+                                )
+                              )
+                                return;
+                              e.dataTransfer.setData(
+                                'application/x-ea-element-type',
+                                String(item.type),
+                              );
+                              e.dataTransfer.setData(
+                                'application/x-ea-visual-kind',
+                                String(item.kind),
+                              );
+                              e.dataTransfer.setData(
+                                'text/plain',
+                                String(item.type),
+                              );
                               e.dataTransfer.effectAllowed = 'copy';
                               setPendingElementType(item.type as ObjectType);
                               setPendingElementVisualKind(item.kind);
@@ -9505,7 +11836,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             }}
                             onClick={() => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxElementType(item.type as ObjectType, displayLabel, item.kind)) return;
+                              if (
+                                !ensureToolboxElementType(
+                                  item.type as ObjectType,
+                                  displayLabel,
+                                  item.kind,
+                                )
+                              )
+                                return;
                               setPendingElementType(item.type as ObjectType);
                               setPendingElementVisualKind(item.kind);
                               setPendingRelationshipType(null);
@@ -9517,7 +11855,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                               setInlineNamePrompt(null);
                               setInlineNameValue('');
                               setToolMode('CREATE_ELEMENT');
-                              message.info(`Click the canvas to name and place ${displayLabel}.`);
+                              message.info(
+                                `Click the canvas to name and place ${displayLabel}.`,
+                              );
                             }}
                             aria-label={`Create ${displayLabel}`}
                           >
@@ -9528,8 +11868,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
                                 draggable={false}
                                 className={styles.studioToolboxIconImage}
                                 onError={(e) => {
-                                  const fallback = fallbackIconForShape(item.shape);
-                                  if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+                                  const fallback = fallbackIconForShape(
+                                    item.shape,
+                                  );
+                                  if (e.currentTarget.src !== fallback)
+                                    e.currentTarget.src = fallback;
                                 }}
                               />
                             </span>
@@ -9538,15 +11881,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       );
                     })}
                   </div>
-                )
-              ),
+                ),
             },
             {
               key: 'nodes',
               label: 'Nodes',
-              children: (
+              children:
                 toolboxTechnologyItems.length === 0 ? (
-                  <Typography.Text type="secondary" className={styles.studioToolboxEmpty}>
+                  <Typography.Text
+                    type="secondary"
+                    className={styles.studioToolboxEmpty}
+                  >
                     No nodes available for this viewpoint.
                   </Typography.Text>
                 ) : (
@@ -9558,7 +11903,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <button
                             type="button"
                             className={
-                              toolMode === 'CREATE_ELEMENT' && pendingElementType === item.type && pendingElementVisualKind === item.kind
+                              toolMode === 'CREATE_ELEMENT' &&
+                              pendingElementType === item.type &&
+                              pendingElementVisualKind === item.kind
                                 ? styles.studioToolboxIconButtonActive
                                 : styles.studioToolboxIconButton
                             }
@@ -9566,10 +11913,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             draggable={!toolboxInteractionDisabled}
                             onDragStart={(e) => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxElementType(item.type as ObjectType, displayLabel, item.kind)) return;
-                              e.dataTransfer.setData('application/x-ea-element-type', String(item.type));
-                              e.dataTransfer.setData('application/x-ea-visual-kind', String(item.kind));
-                              e.dataTransfer.setData('text/plain', String(item.type));
+                              if (
+                                !ensureToolboxElementType(
+                                  item.type as ObjectType,
+                                  displayLabel,
+                                  item.kind,
+                                )
+                              )
+                                return;
+                              e.dataTransfer.setData(
+                                'application/x-ea-element-type',
+                                String(item.type),
+                              );
+                              e.dataTransfer.setData(
+                                'application/x-ea-visual-kind',
+                                String(item.kind),
+                              );
+                              e.dataTransfer.setData(
+                                'text/plain',
+                                String(item.type),
+                              );
                               e.dataTransfer.effectAllowed = 'copy';
                               setPendingElementType(item.type as ObjectType);
                               setPendingElementVisualKind(item.kind);
@@ -9577,7 +11940,14 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             }}
                             onClick={() => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxElementType(item.type as ObjectType, displayLabel, item.kind)) return;
+                              if (
+                                !ensureToolboxElementType(
+                                  item.type as ObjectType,
+                                  displayLabel,
+                                  item.kind,
+                                )
+                              )
+                                return;
                               setPendingElementType(item.type as ObjectType);
                               setPendingElementVisualKind(item.kind);
                               setPendingRelationshipType(null);
@@ -9589,7 +11959,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                               setInlineNamePrompt(null);
                               setInlineNameValue('');
                               setToolMode('CREATE_ELEMENT');
-                              message.info(`Click the canvas to name and place ${displayLabel}.`);
+                              message.info(
+                                `Click the canvas to name and place ${displayLabel}.`,
+                              );
                             }}
                             aria-label={`Create ${displayLabel}`}
                           >
@@ -9600,8 +11972,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
                                 draggable={false}
                                 className={styles.studioToolboxIconImage}
                                 onError={(e) => {
-                                  const fallback = fallbackIconForShape(item.shape);
-                                  if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+                                  const fallback = fallbackIconForShape(
+                                    item.shape,
+                                  );
+                                  if (e.currentTarget.src !== fallback)
+                                    e.currentTarget.src = fallback;
                                 }}
                               />
                             </span>
@@ -9610,15 +11985,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       );
                     })}
                   </div>
-                )
-              ),
+                ),
             },
             {
               key: 'connections',
               label: 'Connections',
-              children: (
+              children:
                 paletteRelationships.length === 0 ? (
-                  <Typography.Text type="secondary" className={styles.studioToolboxEmpty}>
+                  <Typography.Text
+                    type="secondary"
+                    className={styles.studioToolboxEmpty}
+                  >
                     No connections available for this viewpoint.
                   </Typography.Text>
                 ) : (
@@ -9630,7 +12007,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <button
                             type="button"
                             className={
-                              toolMode === 'CREATE_RELATIONSHIP' && pendingRelationshipType === t.type
+                              toolMode === 'CREATE_RELATIONSHIP' &&
+                              pendingRelationshipType === t.type
                                 ? styles.studioToolboxIconButtonActive
                                 : styles.studioToolboxIconButton
                             }
@@ -9638,14 +12016,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             draggable={!toolboxInteractionDisabled}
                             onDragStart={(e) => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxRelationshipType(t.type as RelationshipType, label)) return;
-                              e.dataTransfer.setData('application/x-ea-relationship-type', String(t.type));
-                              e.dataTransfer.setData('text/plain', String(t.type));
+                              if (
+                                !ensureToolboxRelationshipType(
+                                  t.type as RelationshipType,
+                                  label,
+                                )
+                              )
+                                return;
+                              e.dataTransfer.setData(
+                                'application/x-ea-relationship-type',
+                                String(t.type),
+                              );
+                              e.dataTransfer.setData(
+                                'text/plain',
+                                String(t.type),
+                              );
                               e.dataTransfer.effectAllowed = 'copy';
                               setToolMode('CREATE_RELATIONSHIP');
-                              setPendingRelationshipType(t.type as RelationshipType);
+                              setPendingRelationshipType(
+                                t.type as RelationshipType,
+                              );
                               toolModeRef.current = 'CREATE_RELATIONSHIP';
-                              pendingRelationshipTypeRef.current = t.type as RelationshipType;
+                              pendingRelationshipTypeRef.current =
+                                t.type as RelationshipType;
                               setPendingElementType(null);
                               setPendingElementVisualKind(null);
                               setRelationshipSourceId(null);
@@ -9654,11 +12047,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             }}
                             onClick={() => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxRelationshipType(t.type as RelationshipType, label)) return;
+                              if (
+                                !ensureToolboxRelationshipType(
+                                  t.type as RelationshipType,
+                                  label,
+                                )
+                              )
+                                return;
                               setToolMode('CREATE_RELATIONSHIP');
-                              setPendingRelationshipType(t.type as RelationshipType);
+                              setPendingRelationshipType(
+                                t.type as RelationshipType,
+                              );
                               toolModeRef.current = 'CREATE_RELATIONSHIP';
-                              pendingRelationshipTypeRef.current = t.type as RelationshipType;
+                              pendingRelationshipTypeRef.current =
+                                t.type as RelationshipType;
                               setPendingElementType(null);
                               setPendingElementVisualKind(null);
                               setRelationshipSourceId(null);
@@ -9668,28 +12070,40 @@ const StudioShell: React.FC<StudioShellProps> = ({
                                 level: 'info',
                                 domain: 'canvas',
                                 message: 'Select source element.',
-                                context: { relationshipType: t.type as RelationshipType },
+                                context: {
+                                  relationshipType: t.type as RelationshipType,
+                                },
                               });
                             }}
                             aria-label={`Create ${label}`}
                           >
                             <span className={styles.studioToolboxIcon}>
-                              <img src={resolveRelationshipIcon(t.type as RelationshipType, 'tool')} alt="" draggable={false} className={styles.studioToolboxIconImage} />
+                              <img
+                                src={resolveRelationshipIcon(
+                                  t.type as RelationshipType,
+                                  'tool',
+                                )}
+                                alt=""
+                                draggable={false}
+                                className={styles.studioToolboxIconImage}
+                              />
                             </span>
                           </button>
                         </Tooltip>
                       );
                     })}
                   </div>
-                )
-              ),
+                ),
             },
             {
               key: 'connectors',
               label: 'Connectors',
-              children: (
+              children:
                 paletteRelationships.length === 0 ? (
-                  <Typography.Text type="secondary" className={styles.studioToolboxEmpty}>
+                  <Typography.Text
+                    type="secondary"
+                    className={styles.studioToolboxEmpty}
+                  >
                     No connectors available for this viewpoint.
                   </Typography.Text>
                 ) : (
@@ -9701,7 +12115,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           <button
                             type="button"
                             className={
-                              toolMode === 'CREATE_RELATIONSHIP' && pendingRelationshipType === t.type
+                              toolMode === 'CREATE_RELATIONSHIP' &&
+                              pendingRelationshipType === t.type
                                 ? styles.studioToolboxIconButtonActive
                                 : styles.studioToolboxIconButton
                             }
@@ -9709,13 +12124,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             draggable={!toolboxInteractionDisabled}
                             onDragStart={(e) => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxRelationshipType(t.type as RelationshipType, label)) return;
-                              e.dataTransfer.setData('application/x-ea-relationship-type', String(t.type));
+                              if (
+                                !ensureToolboxRelationshipType(
+                                  t.type as RelationshipType,
+                                  label,
+                                )
+                              )
+                                return;
+                              e.dataTransfer.setData(
+                                'application/x-ea-relationship-type',
+                                String(t.type),
+                              );
                               e.dataTransfer.effectAllowed = 'copy';
                               setToolMode('CREATE_RELATIONSHIP');
-                              setPendingRelationshipType(t.type as RelationshipType);
+                              setPendingRelationshipType(
+                                t.type as RelationshipType,
+                              );
                               toolModeRef.current = 'CREATE_RELATIONSHIP';
-                              pendingRelationshipTypeRef.current = t.type as RelationshipType;
+                              pendingRelationshipTypeRef.current =
+                                t.type as RelationshipType;
                               setPendingElementType(null);
                               setPendingElementVisualKind(null);
                               setRelationshipSourceId(null);
@@ -9724,11 +12151,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             }}
                             onClick={() => {
                               if (toolboxInteractionDisabled) return;
-                              if (!ensureToolboxRelationshipType(t.type as RelationshipType, label)) return;
+                              if (
+                                !ensureToolboxRelationshipType(
+                                  t.type as RelationshipType,
+                                  label,
+                                )
+                              )
+                                return;
                               setToolMode('CREATE_RELATIONSHIP');
-                              setPendingRelationshipType(t.type as RelationshipType);
+                              setPendingRelationshipType(
+                                t.type as RelationshipType,
+                              );
                               toolModeRef.current = 'CREATE_RELATIONSHIP';
-                              pendingRelationshipTypeRef.current = t.type as RelationshipType;
+                              pendingRelationshipTypeRef.current =
+                                t.type as RelationshipType;
                               setPendingElementType(null);
                               setPendingElementVisualKind(null);
                               setRelationshipSourceId(null);
@@ -9738,21 +12174,30 @@ const StudioShell: React.FC<StudioShellProps> = ({
                                 level: 'info',
                                 domain: 'canvas',
                                 message: 'Select source element.',
-                                context: { relationshipType: t.type as RelationshipType },
+                                context: {
+                                  relationshipType: t.type as RelationshipType,
+                                },
                               });
                             }}
                             aria-label={`Create ${label}`}
                           >
                             <span className={styles.studioToolboxIcon}>
-                              <img src={resolveRelationshipIcon(t.type as RelationshipType, 'connector')} alt="" draggable={false} className={styles.studioToolboxIconImage} />
+                              <img
+                                src={resolveRelationshipIcon(
+                                  t.type as RelationshipType,
+                                  'connector',
+                                )}
+                                alt=""
+                                draggable={false}
+                                className={styles.studioToolboxIconImage}
+                              />
                             </span>
                           </button>
                         </Tooltip>
                       );
                     })}
                   </div>
-                )
-              ),
+                ),
             },
           ]}
         />
@@ -9761,10 +12206,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
   ) : null;
 
   return (
-    <div className={styles.studioShell} style={{ borderColor: token.colorWarningBorder }}>
+    <div
+      className={styles.studioShell}
+      style={{ borderColor: token.colorWarningBorder }}
+    >
       <div
         className={styles.studioHeader}
-        style={{ background: token.colorWarningBg, borderColor: token.colorWarningBorder }}
+        style={{
+          background: token.colorWarningBg,
+          borderColor: token.colorWarningBorder,
+        }}
         ref={studioHeaderRef}
       >
         <div className={styles.studioCommandRow}>
@@ -9784,8 +12235,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
           </div>
           <div className={styles.studioRibbonGroupSmall}>
             <Tooltip title={`Diagram Type: ${diagramTypeDescription}`}>
-              <div className={styles.studioRibbonItemMuted} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <NodeIndexOutlined style={{ color: token.colorTextSecondary }} />
+              <div
+                className={styles.studioRibbonItemMuted}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <NodeIndexOutlined
+                  style={{ color: token.colorTextSecondary }}
+                />
                 <Typography.Text style={{ color: token.colorTextSecondary }}>
                   Diagram Type: {diagramTypeName}
                 </Typography.Text>
@@ -9806,16 +12262,28 @@ const StudioShell: React.FC<StudioShellProps> = ({
           </div>
           <div className={styles.studioRibbonGroupSmall}>
             <Tooltip title="Presentation View hides modeling tools, locks layout, and enlarges labels.">
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Typography.Text style={{ color: token.colorTextSecondary }}>Presentation View</Typography.Text>
-                <Switch size="small" checked={presentationView} onChange={setPresentationView} />
+              <div
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <Typography.Text style={{ color: token.colorTextSecondary }}>
+                  Presentation View
+                </Typography.Text>
+                <Switch
+                  size="small"
+                  checked={presentationView}
+                  onChange={setPresentationView}
+                />
               </div>
             </Tooltip>
           </div>
           <div className={styles.studioRibbonGroupSmall}>
             <Tooltip title="Lock view layout to prevent accidental moves.">
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Typography.Text style={{ color: token.colorTextSecondary }}>View Lock</Typography.Text>
+              <div
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <Typography.Text style={{ color: token.colorTextSecondary }}>
+                  View Lock
+                </Typography.Text>
                 <Switch
                   size="small"
                   checked={viewLayoutLocked}
@@ -9829,20 +12297,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
             <div className={styles.studioRibbonGroup}>
               <div className={styles.studioRibbonGroupContent}>
                 <div className={styles.studioRibbonToggleGroup}>
-                  {([
-                    'Business',
-                    'Application',
-                    'Technology',
-                    'Implementation & Migration',
-                    'Governance',
-                  ] as const).map((layer) => (
+                  {(
+                    [
+                      'Business',
+                      'Application',
+                      'Technology',
+                      'Implementation & Migration',
+                      'Governance',
+                    ] as const
+                  ).map((layer) => (
                     <Button
                       key={layer}
                       size="small"
                       type="text"
-                      className={layerVisibility[layer] ? styles.studioRibbonToggleActive : styles.studioRibbonToggle}
+                      className={
+                        layerVisibility[layer]
+                          ? styles.studioRibbonToggleActive
+                          : styles.studioRibbonToggle
+                      }
                       onClick={() => {
-                        setLayerVisibility((prev) => ({ ...prev, [layer]: !prev[layer] }));
+                        setLayerVisibility((prev) => ({
+                          ...prev,
+                          [layer]: !prev[layer],
+                        }));
                       }}
                     >
                       {layer}
@@ -9877,10 +12354,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     { key: 'layer', label: 'By Layer' },
                     { key: 'flow', label: 'By Flow' },
                   ],
-                  onClick: ({ key }) => autoArrangeDiagram(key as AutoLayoutMode),
+                  onClick: ({ key }) =>
+                    autoArrangeDiagram(key as AutoLayoutMode),
                 }}
               >
-                <Button size="small" icon={<ArrowsAltOutlined />} disabled={presentationReadOnly}>
+                <Button
+                  size="small"
+                  icon={<ArrowsAltOutlined />}
+                  disabled={presentationReadOnly}
+                >
                   Auto Arrange
                 </Button>
               </Dropdown>
@@ -9899,7 +12381,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             </Tooltip>
           </div>
           <div className={styles.studioRibbonGroupMuted}>
-            <div className={styles.studioRibbonItemMutedLabel}>{activeViewDisplayLabel}</div>
+            <div className={styles.studioRibbonItemMutedLabel}>
+              {activeViewDisplayLabel}
+            </div>
             {activeViewpoint ? (
               <div className={styles.studioRibbonItemMuted}>
                 Viewpoint: {activeViewpoint.name}
@@ -9922,15 +12406,24 @@ const StudioShell: React.FC<StudioShellProps> = ({
               Repository updated
             </Tag>
           ) : null}
-          <Typography.Text type="secondary" className={styles.studioSubHeaderLabel}>
+          <Typography.Text
+            type="secondary"
+            className={styles.studioSubHeaderLabel}
+          >
             {activeView?.description || 'No view description'}
           </Typography.Text>
         </div>
         <div className={styles.studioSubHeaderRight}>
-          <Typography.Text type="secondary" className={styles.studioSubHeaderMeta}>
+          <Typography.Text
+            type="secondary"
+            className={styles.studioSubHeaderMeta}
+          >
             Staged: {stagedChangeCount}
           </Typography.Text>
-          <Typography.Text type="secondary" className={styles.studioSubHeaderMeta}>
+          <Typography.Text
+            type="secondary"
+            className={styles.studioSubHeaderMeta}
+          >
             Validation: {validationCount}
           </Typography.Text>
         </div>
@@ -9947,7 +12440,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 message={prompt.title}
                 description={prompt.description}
                 action={
-                  <Button size="small" onClick={() => dismissDesignPrompt(prompt.id)}>
+                  <Button
+                    size="small"
+                    onClick={() => dismissDesignPrompt(prompt.id)}
+                  >
                     Don’t show again
                   </Button>
                 }
@@ -9992,7 +12488,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
               cursor:
                 toolMode === 'CREATE_ELEMENT'
                   ? 'crosshair'
-                  : toolMode === 'CREATE_RELATIONSHIP' || toolMode === 'CREATE_FREE_CONNECTOR'
+                  : toolMode === 'CREATE_RELATIONSHIP' ||
+                      toolMode === 'CREATE_FREE_CONNECTOR'
                     ? 'alias'
                     : toolMode === 'PAN'
                       ? 'grab'
@@ -10001,7 +12498,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
             }}
             ref={containerRef}
             onPointerDownCapture={(e) => {
-              if (toolModeRef.current !== 'CREATE_RELATIONSHIP' || !pendingRelationshipTypeRef.current) return;
+              if (
+                toolModeRef.current !== 'CREATE_RELATIONSHIP' ||
+                !pendingRelationshipTypeRef.current
+              )
+                return;
               if (!relationshipDraftRef.current.dragging) return;
               if (connectionPointerActiveRef.current) return;
               connectionPointerIdRef.current = e.pointerId;
@@ -10024,7 +12525,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (e.button === 0 && toolModeRef.current === 'PAN') {
                 panningActiveRef.current = true;
               }
-              if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType || !placementModeActive) return;
+              if (
+                toolMode !== 'CREATE_ELEMENT' ||
+                !pendingElementType ||
+                !placementModeActive
+              )
+                return;
               const pos = toCanvasPosition(e.clientX, e.clientY);
               setElementDragAnchor(pos);
               setElementDragActive(true);
@@ -10036,7 +12542,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (panningActiveRef.current && !middlePanActiveRef.current) {
                 panningActiveRef.current = false;
                 if (cyRef.current) {
-                  const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                  const viewport = {
+                    zoom: cyRef.current.zoom(),
+                    pan: cyRef.current.pan(),
+                  };
                   setViewTabStateById((prev) => {
                     const key = activeTabKey;
                     const existing = prev[key];
@@ -10046,7 +12555,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       [key]: {
                         ...existing,
                         viewport,
-                        saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                        saveStatus:
+                          existing.saveStatus === 'dirty'
+                            ? existing.saveStatus
+                            : 'dirty',
                       },
                     };
                   });
@@ -10064,7 +12576,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
               }
               // Commit viewport to React state once on pan end.
               if (cyRef.current) {
-                const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                const viewport = {
+                  zoom: cyRef.current.zoom(),
+                  pan: cyRef.current.pan(),
+                };
                 setViewTabStateById((prev) => {
                   const key = activeTabKey;
                   const existing = prev[key];
@@ -10074,7 +12589,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     [key]: {
                       ...existing,
                       viewport,
-                      saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                      saveStatus:
+                        existing.saveStatus === 'dirty'
+                          ? existing.saveStatus
+                          : 'dirty',
                     },
                   };
                 });
@@ -10085,7 +12603,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (panningActiveRef.current && !middlePanActiveRef.current) {
                 panningActiveRef.current = false;
                 if (cyRef.current) {
-                  const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                  const viewport = {
+                    zoom: cyRef.current.zoom(),
+                    pan: cyRef.current.pan(),
+                  };
                   setViewTabStateById((prev) => {
                     const key = activeTabKey;
                     const existing = prev[key];
@@ -10095,7 +12616,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       [key]: {
                         ...existing,
                         viewport,
-                        saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                        saveStatus:
+                          existing.saveStatus === 'dirty'
+                            ? existing.saveStatus
+                            : 'dirty',
                       },
                     };
                   });
@@ -10112,7 +12636,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
               }
               // Commit viewport on leave.
               if (cyRef.current) {
-                const viewport = { zoom: cyRef.current.zoom(), pan: cyRef.current.pan() };
+                const viewport = {
+                  zoom: cyRef.current.zoom(),
+                  pan: cyRef.current.pan(),
+                };
                 setViewTabStateById((prev) => {
                   const key = activeTabKey;
                   const existing = prev[key];
@@ -10122,7 +12649,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     [key]: {
                       ...existing,
                       viewport,
-                      saveStatus: existing.saveStatus === 'dirty' ? existing.saveStatus : 'dirty',
+                      saveStatus:
+                        existing.saveStatus === 'dirty'
+                          ? existing.saveStatus
+                          : 'dirty',
                     },
                   };
                 });
@@ -10130,8 +12660,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
             }}
             onPointerDown={(e) => {
               const currentToolMode = toolModeRef.current;
-              const currentRelationshipType = pendingRelationshipTypeRef.current;
-              if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType) return;
+              const currentRelationshipType =
+                pendingRelationshipTypeRef.current;
+              if (
+                currentToolMode !== 'CREATE_RELATIONSHIP' ||
+                !currentRelationshipType
+              )
+                return;
               if (!containerRef.current) return;
               const pos = toCanvasPosition(e.clientX, e.clientY);
               if (!relationshipDraftRef.current.dragging) {
@@ -10152,14 +12687,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     setConnectionDragLocked(true);
                     lockNodesForConnection();
                     const cy = cyRef.current;
-                    const validTargets = relationshipEligibilityRef.current.get(sourceId) || getValidTargetsForSource(sourceId, currentRelationshipType);
+                    const validTargets =
+                      relationshipEligibilityRef.current.get(sourceId) ||
+                      getValidTargetsForSource(
+                        sourceId,
+                        currentRelationshipType,
+                      );
                     cy.nodes().forEach((n) => {
                       const id = String(n.id());
                       if (id === sourceId) return;
                       n.removeClass('validTarget');
                       n.removeClass('invalidTarget');
                       n.removeClass('validTargetCandidate');
-                      if (validTargets.has(id)) n.addClass('validTargetCandidate');
+                      if (validTargets.has(id))
+                        n.addClass('validTargetCandidate');
                     });
 
                     if (!cy.getElementById(DRAFT_EDGE_ID).empty()) {
@@ -10172,7 +12713,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                         source: sourceId,
                         target: sourceId,
                         draft: true,
-                        relationshipStyle: relationshipStyleForType(currentRelationshipType),
+                        relationshipStyle: relationshipStyleForType(
+                          currentRelationshipType,
+                        ),
                         relationshipType: currentRelationshipType,
                       },
                     });
@@ -10188,13 +12731,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
                     });
                     // Record origin for position restore
                     if (!connectionDragOriginRef.current.has(sourceId)) {
-                      connectionDragOriginRef.current.set(sourceId, { x: node.position('x'), y: node.position('y') });
+                      connectionDragOriginRef.current.set(sourceId, {
+                        x: node.position('x'),
+                        y: node.position('y'),
+                      });
                     }
                     eaConsole.push({
                       level: 'info',
                       domain: 'relationship',
                       message: 'Drag to target element.',
-                      context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                      context: {
+                        elementId: sourceId,
+                        relationshipType: currentRelationshipType,
+                      },
                     });
                   }
                 }
@@ -10211,36 +12760,72 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   }
                 }
                 if (cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
-                updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+                updateDraftEdgeTarget(
+                  pos,
+                  null,
+                  false,
+                  relationshipDraftRef.current.sourceId,
+                );
               }
             }}
             onPointerMove={(e) => {
               if (!connectionPointerActiveRef.current) return;
-              if (!relationshipDraftRef.current.dragging && !freeConnectorDragRef.current.dragging) return;
+              if (
+                !relationshipDraftRef.current.dragging &&
+                !freeConnectorDragRef.current.dragging
+              )
+                return;
               if (!cyRef.current) return;
               const relationshipType = pendingRelationshipTypeRef.current;
-              if (relationshipDraftRef.current.dragging && !relationshipType) return;
-              if (relationshipDraftRef.current.dragging && cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
+              if (relationshipDraftRef.current.dragging && !relationshipType)
+                return;
+              if (
+                relationshipDraftRef.current.dragging &&
+                cyRef.current.getElementById(DRAFT_EDGE_ID).empty()
+              )
+                return;
               const pos = toCanvasPosition(e.clientX, e.clientY);
               if (relationshipDraftRef.current.dragging) {
                 const hoverNode = findNodeAtPosition(pos);
-                cyRef.current.nodes().removeClass('validTarget').removeClass('invalidTarget');
+                cyRef.current
+                  .nodes()
+                  .removeClass('validTarget')
+                  .removeClass('invalidTarget');
                 if (hoverNode && !hoverNode.empty()) {
                   const targetId = String(hoverNode.id());
-                    const validation = validateRelationshipCreation(relationshipDraftRef.current.sourceId, targetId, relationshipType);
+                  const validation = validateRelationshipCreation(
+                    relationshipDraftRef.current.sourceId,
+                    targetId,
+                    relationshipType,
+                  );
                   if (validation.valid) {
                     hoverNode.addClass('validTarget');
                     updateDraftEdgeTarget(pos, hoverNode);
                   } else {
                     // Neutral — no red/invalidTarget on hover
-                    updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+                    updateDraftEdgeTarget(
+                      pos,
+                      null,
+                      false,
+                      relationshipDraftRef.current.sourceId,
+                    );
                   }
                 } else {
-                  updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+                  updateDraftEdgeTarget(
+                    pos,
+                    null,
+                    false,
+                    relationshipDraftRef.current.sourceId,
+                  );
                 }
               } else if (freeConnectorDragRef.current.dragging) {
                 const hoverNode = findNodeAtPosition(pos);
-                updateDraftEdgeTarget(pos, hoverNode, true, freeConnectorDragRef.current.sourceId);
+                updateDraftEdgeTarget(
+                  pos,
+                  hoverNode,
+                  true,
+                  freeConnectorDragRef.current.sourceId,
+                );
               }
             }}
             onMouseMove={(e) => {
@@ -10277,37 +12862,74 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 }
                 return;
               }
-              if (!relationshipDraftRef.current.dragging && !freeConnectorDragRef.current.dragging) return;
+              if (
+                !relationshipDraftRef.current.dragging &&
+                !freeConnectorDragRef.current.dragging
+              )
+                return;
               if (!cyRef.current) return;
               const relationshipType = pendingRelationshipTypeRef.current;
-              if (relationshipDraftRef.current.dragging && !relationshipType) return;
-              if (relationshipDraftRef.current.dragging && cyRef.current.getElementById(DRAFT_EDGE_ID).empty()) return;
+              if (relationshipDraftRef.current.dragging && !relationshipType)
+                return;
+              if (
+                relationshipDraftRef.current.dragging &&
+                cyRef.current.getElementById(DRAFT_EDGE_ID).empty()
+              )
+                return;
               const pos = toCanvasPosition(e.clientX, e.clientY);
               if (relationshipDraftRef.current.dragging) {
                 const hoverNode = findNodeAtPosition(pos);
-                cyRef.current.nodes().removeClass('validTarget').removeClass('invalidTarget');
+                cyRef.current
+                  .nodes()
+                  .removeClass('validTarget')
+                  .removeClass('invalidTarget');
                 if (hoverNode && !hoverNode.empty()) {
                   const targetId = String(hoverNode.id());
-                    const validation = validateRelationshipCreation(relationshipDraftRef.current.sourceId, targetId, relationshipType);
+                  const validation = validateRelationshipCreation(
+                    relationshipDraftRef.current.sourceId,
+                    targetId,
+                    relationshipType,
+                  );
                   if (validation.valid) {
                     hoverNode.addClass('validTarget');
                     updateDraftEdgeTarget(pos, hoverNode);
                   } else {
                     // Neutral — no red/invalidTarget on hover
-                    updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+                    updateDraftEdgeTarget(
+                      pos,
+                      null,
+                      false,
+                      relationshipDraftRef.current.sourceId,
+                    );
                   }
                 } else {
-                  updateDraftEdgeTarget(pos, null, false, relationshipDraftRef.current.sourceId);
+                  updateDraftEdgeTarget(
+                    pos,
+                    null,
+                    false,
+                    relationshipDraftRef.current.sourceId,
+                  );
                 }
               } else if (freeConnectorDragRef.current.dragging) {
                 const hoverNode = findNodeAtPosition(pos);
-                updateDraftEdgeTarget(pos, hoverNode, true, freeConnectorDragRef.current.sourceId);
+                updateDraftEdgeTarget(
+                  pos,
+                  hoverNode,
+                  true,
+                  freeConnectorDragRef.current.sourceId,
+                );
               }
             }}
             onPointerUp={(e) => {
-              if (connectionPointerActiveRef.current && containerRef.current && connectionPointerIdRef.current !== null) {
+              if (
+                connectionPointerActiveRef.current &&
+                containerRef.current &&
+                connectionPointerIdRef.current !== null
+              ) {
                 try {
-                  containerRef.current.releasePointerCapture(connectionPointerIdRef.current);
+                  containerRef.current.releasePointerCapture(
+                    connectionPointerIdRef.current,
+                  );
                 } catch {
                   // Best-effort only.
                 }
@@ -10316,9 +12938,17 @@ const StudioShell: React.FC<StudioShellProps> = ({
               connectionPointerIdRef.current = null;
 
               const currentToolMode = toolModeRef.current;
-              const currentRelationshipType = pendingRelationshipTypeRef.current;
-              if (currentToolMode !== 'CREATE_RELATIONSHIP' || !currentRelationshipType) return;
-              if (!relationshipDraftRef.current.dragging || !relationshipDraftRef.current.sourceId) {
+              const currentRelationshipType =
+                pendingRelationshipTypeRef.current;
+              if (
+                currentToolMode !== 'CREATE_RELATIONSHIP' ||
+                !currentRelationshipType
+              )
+                return;
+              if (
+                !relationshipDraftRef.current.dragging ||
+                !relationshipDraftRef.current.sourceId
+              ) {
                 releaseConnectionDragLock();
                 return;
               }
@@ -10330,12 +12960,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (!node || node.empty()) {
                 // Dropped on empty canvas — cancel
                 restoreDraggedNodePosition(sourceId);
-                updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+                updateRelationshipDraft({
+                  sourceId: null,
+                  targetId: null,
+                  valid: null,
+                  message: null,
+                  dragging: false,
+                });
                 setRelationshipSourceId(null);
                 setRelationshipTargetId(null);
                 cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
                 removeDraftTarget();
-                cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+                cyRef.current
+                  ?.nodes()
+                  .removeClass('validTarget')
+                  .removeClass('invalidTarget')
+                  .removeClass('validTargetCandidate')
+                  .removeClass('connectionSource');
                 releaseConnectionDragLock();
                 setPendingRelationshipType(null);
                 pendingRelationshipTypeRef.current = null;
@@ -10345,7 +12986,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   level: 'info',
                   domain: 'relationship',
                   message: 'Connection cancelled.',
-                  context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                  context: {
+                    elementId: sourceId,
+                    relationshipType: currentRelationshipType,
+                  },
                 });
                 return;
               }
@@ -10354,12 +12998,23 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (!targetId || targetId === sourceId) {
                 // Dropped on self — cancel
                 restoreDraggedNodePosition(sourceId);
-                updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+                updateRelationshipDraft({
+                  sourceId: null,
+                  targetId: null,
+                  valid: null,
+                  message: null,
+                  dragging: false,
+                });
                 setRelationshipSourceId(null);
                 setRelationshipTargetId(null);
                 cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
                 removeDraftTarget();
-                cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+                cyRef.current
+                  ?.nodes()
+                  .removeClass('validTarget')
+                  .removeClass('invalidTarget')
+                  .removeClass('validTargetCandidate')
+                  .removeClass('connectionSource');
                 releaseConnectionDragLock();
                 setPendingRelationshipType(null);
                 pendingRelationshipTypeRef.current = null;
@@ -10369,20 +13024,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   level: 'warning',
                   domain: 'relationship',
                   message: 'Invalid target — cannot connect to self.',
-                  context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                  context: {
+                    elementId: sourceId,
+                    relationshipType: currentRelationshipType,
+                  },
                 });
                 return;
               }
 
-              const validation = validateRelationshipCreation(sourceId, targetId, currentRelationshipType);
+              const validation = validateRelationshipCreation(
+                sourceId,
+                targetId,
+                currentRelationshipType,
+              );
               if (!validation.valid) {
                 restoreDraggedNodePosition(sourceId);
-                updateRelationshipDraft({ sourceId: null, targetId: null, valid: false, message: null, dragging: false });
+                updateRelationshipDraft({
+                  sourceId: null,
+                  targetId: null,
+                  valid: false,
+                  message: null,
+                  dragging: false,
+                });
                 setRelationshipSourceId(null);
                 setRelationshipTargetId(null);
                 cyRef.current?.getElementById(DRAFT_EDGE_ID)?.remove();
                 removeDraftTarget();
-                cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+                cyRef.current
+                  ?.nodes()
+                  .removeClass('validTarget')
+                  .removeClass('invalidTarget')
+                  .removeClass('validTargetCandidate')
+                  .removeClass('connectionSource');
                 releaseConnectionDragLock();
                 setPendingRelationshipType(null);
                 pendingRelationshipTypeRef.current = null;
@@ -10391,8 +13064,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 eaConsole.push({
                   level: 'warning',
                   domain: 'relationship',
-                  message: validation.message ?? 'Invalid relationship — connection not allowed.',
-                  context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                  message:
+                    validation.message ??
+                    'Invalid relationship — connection not allowed.',
+                  context: {
+                    elementId: sourceId,
+                    relationshipType: currentRelationshipType,
+                  },
                 });
                 return;
               }
@@ -10412,21 +13090,38 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   level: 'error',
                   domain: 'relationship',
                   message: creation.error ?? 'Failed to create connection.',
-                  context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                  context: {
+                    elementId: sourceId,
+                    relationshipType: currentRelationshipType,
+                  },
                 });
               } else {
                 eaConsole.push({
                   level: 'success',
                   domain: 'relationship',
                   message: 'Connection established.',
-                  context: { elementId: sourceId, relationshipType: currentRelationshipType },
+                  context: {
+                    elementId: sourceId,
+                    relationshipType: currentRelationshipType,
+                  },
                 });
               }
 
               // 3. Clean up
               restoreDraggedNodePosition(sourceId);
-              updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
-              cyRef.current?.nodes().removeClass('validTarget').removeClass('invalidTarget').removeClass('validTargetCandidate').removeClass('connectionSource');
+              updateRelationshipDraft({
+                sourceId: null,
+                targetId: null,
+                valid: null,
+                message: null,
+                dragging: false,
+              });
+              cyRef.current
+                ?.nodes()
+                .removeClass('validTarget')
+                .removeClass('invalidTarget')
+                .removeClass('validTargetCandidate')
+                .removeClass('connectionSource');
               setRelationshipSourceId(null);
               setRelationshipTargetId(null);
               setPendingRelationshipType(null);
@@ -10436,9 +13131,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
               releaseConnectionDragLock();
             }}
             onPointerCancel={() => {
-              if (connectionPointerActiveRef.current && containerRef.current && connectionPointerIdRef.current !== null) {
+              if (
+                connectionPointerActiveRef.current &&
+                containerRef.current &&
+                connectionPointerIdRef.current !== null
+              ) {
                 try {
-                  containerRef.current.releasePointerCapture(connectionPointerIdRef.current);
+                  containerRef.current.releasePointerCapture(
+                    connectionPointerIdRef.current,
+                  );
                 } catch {
                   // Best-effort only.
                 }
@@ -10449,7 +13150,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 releaseConnectionDragLock();
                 return;
               }
-              updateRelationshipDraft({ sourceId: null, targetId: null, valid: null, message: null, dragging: false });
+              updateRelationshipDraft({
+                sourceId: null,
+                targetId: null,
+                valid: null,
+                message: null,
+                dragging: false,
+              });
               setRelationshipSourceId(null);
               setRelationshipTargetId(null);
               clearRelationshipDraftArtifacts();
@@ -10467,31 +13174,49 @@ const StudioShell: React.FC<StudioShellProps> = ({
               if (viewReadOnly) return;
               if (!canDiagramMode) return;
               if (designWorkspace.status !== 'DRAFT') {
-                message.warning('Workspace is read-only. Reopen draft to add elements.');
+                message.warning(
+                  'Workspace is read-only. Reopen draft to add elements.',
+                );
                 return;
               }
-              const droppedExistingElementId = e.dataTransfer?.getData('application/x-ea-element-id');
+              const droppedExistingElementId = e.dataTransfer?.getData(
+                'application/x-ea-element-id',
+              );
               const droppedPlainId = e.dataTransfer?.getData('text/plain');
-              const droppedType = e.dataTransfer?.getData('application/x-ea-element-type');
-              const droppedVisualKind = e.dataTransfer?.getData('application/x-ea-visual-kind');
-              const droppedRelationshipType = e.dataTransfer?.getData('application/x-ea-relationship-type');
+              const droppedType = e.dataTransfer?.getData(
+                'application/x-ea-element-type',
+              );
+              const droppedVisualKind = e.dataTransfer?.getData(
+                'application/x-ea-visual-kind',
+              );
+              const droppedRelationshipType = e.dataTransfer?.getData(
+                'application/x-ea-relationship-type',
+              );
 
               const resolvedExplorerId = (() => {
                 if (droppedExistingElementId) return droppedExistingElementId;
-                if (droppedPlainId && eaRepository?.objects.has(droppedPlainId)) return droppedPlainId;
+                if (droppedPlainId && eaRepository?.objects.has(droppedPlainId))
+                  return droppedPlainId;
                 return '';
               })();
 
               if (resolvedExplorerId) {
                 const existing = eaRepository?.objects.get(resolvedExplorerId);
                 if (!existing) {
-                  message.warning('Selected element no longer exists in the repository.');
+                  message.warning(
+                    'Selected element no longer exists in the repository.',
+                  );
                   return;
                 }
-                if (!validateStudioElementType(existing.type as ObjectType)) return;
-                const resolvedShape = resolveEaShapeForObjectType(existing.type as ObjectType);
+                if (!validateStudioElementType(existing.type as ObjectType))
+                  return;
+                const resolvedShape = resolveEaShapeForObjectType(
+                  existing.type as ObjectType,
+                );
                 if (!resolvedShape) {
-                  message.error(`EA Shape Registry SVG mapping is missing for element type "${existing.type}".`);
+                  message.error(
+                    `EA Shape Registry SVG mapping is missing for element type "${existing.type}".`,
+                  );
                   return;
                 }
                 const pos = toCanvasPosition(e.clientX, e.clientY);
@@ -10500,7 +13225,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   const node = cyRef.current.getElementById(resolvedExplorerId);
                   if (node && !node.empty()) {
                     const label = nameForObject(existing as any);
-                    const visualData = buildEaVisualData({ type: existing.type as ObjectType, attributes: existing.attributes ?? undefined });
+                    const visualData = buildEaVisualData({
+                      type: existing.type as ObjectType,
+                      attributes: existing.attributes ?? undefined,
+                    });
                     node.data('label', label);
                     node.data('elementType', existing.type);
                     node.data('eaShape', visualData.eaShape);
@@ -10515,26 +13243,36 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 return;
               }
 
-
               if (droppedType) {
-                const resolvedVisualKind = droppedVisualKind || pendingElementVisualKind || null;
+                const resolvedVisualKind =
+                  droppedVisualKind || pendingElementVisualKind || null;
                 const visualLabel = resolvedVisualKind
-                  ? resolveElementVisualLabel(droppedType as ObjectType, resolvedVisualKind)
+                  ? resolveElementVisualLabel(
+                      droppedType as ObjectType,
+                      resolvedVisualKind,
+                    )
                   : droppedType;
                 const visual = resolveEaVisualForElement({
                   type: droppedType as ObjectType,
                   visualKindOverride: resolvedVisualKind || undefined,
                 });
                 if (!visual) {
-                  message.error(`Toolbox item "${visualLabel}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`);
+                  message.error(
+                    `Toolbox item "${visualLabel}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`,
+                  );
                   return;
                 }
-                const mappedShape = resolveEaShapeForObjectType(droppedType as ObjectType);
+                const mappedShape = resolveEaShapeForObjectType(
+                  droppedType as ObjectType,
+                );
                 if (!mappedShape) {
-                  message.error(`Toolbox item "${visualLabel}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`);
+                  message.error(
+                    `Toolbox item "${visualLabel}" is missing an EA Shape Registry SVG mapping (ArchiMate/drawio).`,
+                  );
                   return;
                 }
-                if (!validateStudioElementType(droppedType as ObjectType)) return;
+                if (!validateStudioElementType(droppedType as ObjectType))
+                  return;
                 const pos = toCanvasPosition(e.clientX, e.clientY);
                 openInlineCreatePrompt({
                   type: droppedType as ObjectType,
@@ -10546,26 +13284,31 @@ const StudioShell: React.FC<StudioShellProps> = ({
               }
 
               if (droppedRelationshipType) {
-                if (!RELATIONSHIP_TYPE_DEFINITIONS[droppedRelationshipType as RelationshipType]) {
+                if (
+                  !RELATIONSHIP_TYPE_DEFINITIONS[
+                    droppedRelationshipType as RelationshipType
+                  ]
+                ) {
                   message.error(
                     `Toolbox item "${droppedRelationshipType}" is not yet wired to the canvas (missing relationship mapping).`,
                   );
                   return;
                 }
                 setToolMode('CREATE_RELATIONSHIP');
-                setPendingRelationshipType(droppedRelationshipType as RelationshipType);
+                setPendingRelationshipType(
+                  droppedRelationshipType as RelationshipType,
+                );
                 toolModeRef.current = 'CREATE_RELATIONSHIP';
-                pendingRelationshipTypeRef.current = droppedRelationshipType as RelationshipType;
+                pendingRelationshipTypeRef.current =
+                  droppedRelationshipType as RelationshipType;
                 setPendingElementType(null);
                 setPendingElementVisualKind(null);
                 setRelationshipSourceId(null);
                 setRelationshipTargetId(null);
                 setPlacementModeActive(false);
               }
-
             }}
-          >
-          </div>
+          ></div>
           {inlineNamePrompt && inlinePromptPosition ? (
             <div
               style={{
@@ -10585,7 +13328,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 value={inlineNameValue}
                 autoFocus
                 allowClear
-                placeholder={inlineNamePrompt.mode === 'rename' ? 'Rename element' : 'Element name'}
+                placeholder={
+                  inlineNamePrompt.mode === 'rename'
+                    ? 'Rename element'
+                    : 'Element name'
+                }
                 onChange={(e) => setInlineNameValue(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -10617,7 +13364,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={styles.relationshipChooserLabel}>Choose relationship</div>
+              <div className={styles.relationshipChooserLabel}>
+                Choose relationship
+              </div>
               <div className={styles.relationshipChooserOptions}>
                 {relationshipChooser.types.map((type) => (
                   <button
@@ -10656,8 +13405,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 if (action.action === 'change-type') {
                   // Update the relationship type in the connection registry
                   const updated = { ...conn, primaryType: action.newType };
-                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
-                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  createdConnectionsRef.current.set(
+                    conn.primaryEdgeId,
+                    updated,
+                  );
+                  setConnectionEditor((prev) =>
+                    prev ? { ...prev, connection: updated } : null,
+                  );
                   eaConsole.push({
                     level: 'info',
                     domain: 'relationship',
@@ -10666,8 +13420,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   });
                 } else if (action.action === 'expand-intermediates') {
                   const updated = { ...conn, collapsed: false };
-                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
-                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  createdConnectionsRef.current.set(
+                    conn.primaryEdgeId,
+                    updated,
+                  );
+                  setConnectionEditor((prev) =>
+                    prev ? { ...prev, connection: updated } : null,
+                  );
                   // Show intermediate nodes on canvas
                   conn.intermediateElementIds.forEach((id) => {
                     const node = cyRef.current?.getElementById(id);
@@ -10679,8 +13438,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
                   });
                 } else if (action.action === 'collapse-intermediates') {
                   const updated = { ...conn, collapsed: true };
-                  createdConnectionsRef.current.set(conn.primaryEdgeId, updated);
-                  setConnectionEditor((prev) => prev ? { ...prev, connection: updated } : null);
+                  createdConnectionsRef.current.set(
+                    conn.primaryEdgeId,
+                    updated,
+                  );
+                  setConnectionEditor((prev) =>
+                    prev ? { ...prev, connection: updated } : null,
+                  );
                   // Hide intermediate nodes
                   conn.intermediateElementIds.forEach((id) => {
                     const node = cyRef.current?.getElementById(id);
@@ -10713,6 +13477,25 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 type="text"
                 size="small"
                 block
+                onClick={() => {
+                  setNodeContextMenu(null);
+                  if (!nodeContextMenu?.nodeId) return;
+                  openRouteTab('/catalog/business');
+                  window.setTimeout(() => {
+                    window.dispatchEvent(
+                      new CustomEvent('ea:catalog.reveal', {
+                        detail: { elementId: nodeContextMenu.nodeId },
+                      }),
+                    );
+                  }, 0);
+                }}
+              >
+                Open in Catalog
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                block
                 disabled={!canContextMenuDecompose}
                 onClick={() => {
                   setNodeContextMenu(null);
@@ -10737,7 +13520,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
           }}
           onDoubleClick={() => setStudioRightWidth(360)}
         />
-        <div className={styles.studioRight} ref={studioRightRef} style={{ width: studioRightWidth }}>
+        <div
+          className={styles.studioRight}
+          ref={studioRightRef}
+          style={{ width: studioRightWidth }}
+        >
           {rightPanelMode === RightPanelMode.VIEW_SWITCH ? (
             <RightPanelController
               title="View switcher"
@@ -10752,7 +13539,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
               key={`selection-${panelResetToken.selection}`}
               onClose={closeRightPanel}
             >
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Space
+                direction="vertical"
+                size="middle"
+                style={{ width: '100%' }}
+              >
                 {toolboxPanel}
                 {!toolboxExpanded ? (
                   <>
@@ -10769,7 +13560,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             <Input
                               value={selectedFreeShape.label}
                               disabled={repositoryOnlyCanvas}
-                              onChange={(e) => updateFreeShape(selectedFreeShape.id, { label: e.target.value })}
+                              onChange={(e) =>
+                                updateFreeShape(selectedFreeShape.id, {
+                                  label: e.target.value,
+                                })
+                              }
                             />
                           </Form.Item>
                           <Form.Item label="Width">
@@ -10781,7 +13576,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                               onChange={(value) => {
                                 const next = Number(value);
                                 if (!Number.isFinite(next)) return;
-                                updateFreeShape(selectedFreeShape.id, { width: Math.max(40, Math.round(next)) });
+                                updateFreeShape(selectedFreeShape.id, {
+                                  width: Math.max(40, Math.round(next)),
+                                });
                               }}
                             />
                           </Form.Item>
@@ -10794,7 +13591,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
                               onChange={(value) => {
                                 const next = Number(value);
                                 if (!Number.isFinite(next)) return;
-                                updateFreeShape(selectedFreeShape.id, { height: Math.max(40, Math.round(next)) });
+                                updateFreeShape(selectedFreeShape.id, {
+                                  height: Math.max(40, Math.round(next)),
+                                });
                               }}
                             />
                           </Form.Item>
@@ -10809,9 +13608,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
                         description="Repository-only policy: visual-only connectors are not allowed. Create a repository relationship instead."
                       />
                     ) : null}
-                    <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+                    <Space
+                      align="center"
+                      style={{ width: '100%', justifyContent: 'space-between' }}
+                    >
                       <Typography.Text strong>Properties</Typography.Text>
-                      <Button size="small" onClick={() => setRightPanelMode(RightPanelMode.STUDIO)}>
+                      <Button
+                        size="small"
+                        onClick={() => setRightPanelMode(RightPanelMode.STUDIO)}
+                      >
                         Open Inspector
                       </Button>
                     </Space>
@@ -10825,13 +13630,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           description="Use bulk edit to update shared fields for staged elements."
                         />
                         <Space wrap>
-                          <Button type="default" onClick={() => setBulkEditOpen(true)}>
+                          <Button
+                            type="default"
+                            onClick={() => setBulkEditOpen(true)}
+                          >
                             Bulk edit selected
                           </Button>
-                          <Button type="default" onClick={() => distributeSelectedNodes('x')}>
+                          <Button
+                            type="default"
+                            onClick={() => distributeSelectedNodes('x')}
+                          >
                             Distribute horizontally
                           </Button>
-                          <Button type="default" onClick={() => distributeSelectedNodes('y')}>
+                          <Button
+                            type="default"
+                            onClick={() => distributeSelectedNodes('y')}
+                          >
                             Distribute vertically
                           </Button>
                           <Button type="default" onClick={cleanAlignToGrid}>
@@ -10844,352 +13658,482 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       </div>
                     ) : null}
 
-                {!propertiesExpanded ? (
-                  <div className={styles.studioCompactProperties}>
-                    <div className={styles.studioCompactPropertiesRow}>
-                      <div className={styles.studioCompactTypeIcon}>{renderTypeIcon(compactSelectedElement?.type)}</div>
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <Typography.Text strong>
-                          {compactSelectedElement?.name || 'No selection'}
-                        </Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {compactSelectedElement?.type || 'Select an element'}
-                        </Typography.Text>
-                      </div>
-                      <Tag color={compactWarningCount > 0 ? 'gold' : 'default'} style={{ marginLeft: 'auto' }}>
-                        Warnings: {compactWarningCount}
-                      </Tag>
-                    </div>
-                    <Space size="small" wrap>
-                      <Button
-                        size="small"
-                        type="primary"
-                        onClick={handleOpenProperties}
-                      >
-                        Open Properties
-                      </Button>
-                      {selectedNodeId && isHierarchicalView ? (
-                        <Button
-                          size="small"
-                          onClick={() => selectedNodeId && startChildCreation(selectedNodeId)}
-                          disabled={!canAddChild}
-                        >
-                          Add child
-                        </Button>
-                      ) : null}
-                    </Space>
-                  </div>
-                ) : (
-                  <>
-                    {selectedStagedElements.length > 1 ? (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`Bulk edit (${selectedStagedElements.length} staged elements)`}
-                          description="Edit shared fields only. Changes apply to all selected staged elements."
-                        />
-                        <Form
-                          form={bulkEditForm}
-                          layout="vertical"
-                          onFinish={(values) => {
-                            const description = (values.description ?? '').trim();
-                            if (!description) {
-                              message.info('Enter a description to apply.');
-                              return;
-                            }
-                            const selectedSet = new Set(selectedStagedElements.map((el) => el.id));
-                            setStagedElements((prev) =>
-                              prev.map((el) => (selectedSet.has(el.id) ? { ...el, description } : el)),
-                            );
-                            message.success('Bulk description applied.');
-                          }}
-                        >
-                          <Form.Item label="Description (set for all)" name="description">
-                            <Input.TextArea rows={3} placeholder="Enter shared description" />
-                          </Form.Item>
-                          <Button type="primary" onClick={() => bulkEditForm.submit()}>
-                            Apply to selected
-                          </Button>
-                        </Form>
-                      </div>
-                    ) : stagedSelectedElement ? (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`Staged element • ${stagedSelectedElement.type}`}
-                          description="Edits apply to the workspace only."
-                        />
-                        {isHierarchicalView ? (
-                          <Button
-                            type="default"
-                            onClick={() => selectedNodeId && startChildCreation(selectedNodeId)}
-                            disabled={!canAddChild}
+                    {!propertiesExpanded ? (
+                      <div className={styles.studioCompactProperties}>
+                        <div className={styles.studioCompactPropertiesRow}>
+                          <div className={styles.studioCompactTypeIcon}>
+                            {renderTypeIcon(compactSelectedElement?.type)}
+                          </div>
+                          <div style={{ display: 'grid', gap: 2 }}>
+                            <Typography.Text strong>
+                              {compactSelectedElement?.name || 'No selection'}
+                            </Typography.Text>
+                            <Typography.Text
+                              type="secondary"
+                              style={{ fontSize: 12 }}
+                            >
+                              {compactSelectedElement?.type ||
+                                'Select an element'}
+                            </Typography.Text>
+                          </div>
+                          <Tag
+                            color={compactWarningCount > 0 ? 'gold' : 'default'}
+                            style={{ marginLeft: 'auto' }}
                           >
-                            Add child
+                            Warnings: {compactWarningCount}
+                          </Tag>
+                        </div>
+                        <Space size="small" wrap>
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={handleOpenProperties}
+                          >
+                            Open Properties
                           </Button>
-                        ) : null}
-                        {stagedSelectedElementExistsInRepo ? (
-                          isMarkedForRemoval(stagedSelectedElement.attributes) ? (
-                            <Alert
-                              type="warning"
-                              showIcon
-                              message="Marked for removal in Explorer"
-                              description="This element was marked for deletion from the repository in Explorer and will be removed on commit. Canvas actions cannot undo repository deletions."
-                            />
-                          ) : (
+                          {selectedNodeId && isHierarchicalView ? (
+                            <Button
+                              size="small"
+                              onClick={() =>
+                                selectedNodeId &&
+                                startChildCreation(selectedNodeId)
+                              }
+                              disabled={!canAddChild}
+                            >
+                              Add child
+                            </Button>
+                          ) : null}
+                        </Space>
+                      </div>
+                    ) : (
+                      <>
+                        {selectedStagedElements.length > 1 ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
                             <Alert
                               type="info"
                               showIcon
-                              message="Explorer is the source of truth"
-                              description="Deleting from the canvas will ask whether to remove from view or delete from the repository."
+                              message={`Bulk edit (${selectedStagedElements.length} staged elements)`}
+                              description="Edit shared fields only. Changes apply to all selected staged elements."
                             />
-                          )
-                        ) : null}
-                        <Button
-                          danger
-                          disabled={viewReadOnly}
-                          onClick={() => {
-                            promptRemoveOrDeleteElements([stagedSelectedElement.id]);
-                          }}
-                        >
-                          Remove or delete
-                        </Button>
-                        {!isMarkedForRemoval(stagedSelectedElement.attributes) ? (
-                          <Form
-                            layout="vertical"
-                            initialValues={{
-                              name: stagedSelectedElement.name,
-                              description: stagedSelectedElement.description,
-                              ...(stagedSelectedElement.attributes ?? {}),
-                            }}
-                            onValuesChange={(changed) => {
-                              setValidationGateOpen(true);
-                              setStagedElements((prev) =>
-                                prev.map((el) => {
-                                  if (el.id !== stagedSelectedElement.id) return el;
-                                  const next = {
-                                    ...el,
-                                    name: typeof changed.name === 'string' ? changed.name : el.name,
-                                    description:
-                                      typeof changed.description === 'string' ? changed.description : el.description,
-                                    attributes: {
-                                      ...(el.attributes ?? {}),
-                                      ...changed,
-                                    },
-                                  };
-                                  return next;
-                                }),
-                              );
-
-                              if (cyRef.current) {
-                                const node = cyRef.current.getElementById(stagedSelectedElement.id);
-                                if (node && !node.empty() && typeof changed.name === 'string') {
-                                  node.data('label', changed.name);
+                            <Form
+                              form={bulkEditForm}
+                              layout="vertical"
+                              onFinish={(values) => {
+                                const description = (
+                                  values.description ?? ''
+                                ).trim();
+                                if (!description) {
+                                  message.info('Enter a description to apply.');
+                                  return;
                                 }
-                              }
-                            }}
-                            validateTrigger={['onChange', 'onBlur']}
-                          >
-                            <Form.Item
-                              label="Name"
-                              name="name"
-                              rules={[{ required: true, message: 'Name is required' }]}
+                                const selectedSet = new Set(
+                                  selectedStagedElements.map((el) => el.id),
+                                );
+                                setStagedElements((prev) =>
+                                  prev.map((el) =>
+                                    selectedSet.has(el.id)
+                                      ? { ...el, description }
+                                      : el,
+                                  ),
+                                );
+                                message.success('Bulk description applied.');
+                              }}
                             >
-                              <Input autoFocus />
-                            </Form.Item>
-                            <Form.Item label="Description" name="description">
-                              <Input.TextArea rows={3} />
-                            </Form.Item>
-                            {requiredElementAttributes(stagedSelectedElement.type).map((attr) => (
                               <Form.Item
-                                key={attr}
-                                label={attr}
-                                name={attr}
-                                rules={[{ required: true, message: `${attr} is required` }]}
+                                label="Description (set for all)"
+                                name="description"
                               >
-                                <Input placeholder={`Enter ${attr}`} />
+                                <Input.TextArea
+                                  rows={3}
+                                  placeholder="Enter shared description"
+                                />
                               </Form.Item>
-                            ))}
-                          </Form>
-                        ) : null}
-                      </div>
-                    ) : stagedSelectedRelationship ? (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`Staged relationship • ${stagedSelectedRelationship.type.replace(/_/g, ' ')}`}
-                          description="Relationships are staged only."
-                        />
-                        {stagedSelectedRelationshipExistsInRepo ? (
-                          isMarkedForRemoval(stagedSelectedRelationship.attributes) ? (
+                              <Button
+                                type="primary"
+                                onClick={() => bulkEditForm.submit()}
+                              >
+                                Apply to selected
+                              </Button>
+                            </Form>
+                          </div>
+                        ) : stagedSelectedElement ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
                             <Alert
-                              type="warning"
+                              type="info"
                               showIcon
-                              message="Marked for removal"
-                              description="This relationship will be removed from the repository on commit."
-                              action={
+                              message={`Staged element • ${stagedSelectedElement.type}`}
+                              description="Edits apply to the workspace only."
+                            />
+                            {isHierarchicalView ? (
+                              <Button
+                                type="default"
+                                onClick={() =>
+                                  selectedNodeId &&
+                                  startChildCreation(selectedNodeId)
+                                }
+                                disabled={!canAddChild}
+                              >
+                                Add child
+                              </Button>
+                            ) : null}
+                            {stagedSelectedElementExistsInRepo ? (
+                              isMarkedForRemoval(
+                                stagedSelectedElement.attributes,
+                              ) ? (
+                                <Alert
+                                  type="warning"
+                                  showIcon
+                                  message="Marked for removal in Explorer"
+                                  description="This element was marked for deletion from the repository in Explorer and will be removed on commit. Canvas actions cannot undo repository deletions."
+                                />
+                              ) : (
+                                <Alert
+                                  type="info"
+                                  showIcon
+                                  message="Explorer is the source of truth"
+                                  description="Deleting from the canvas will ask whether to remove from view or delete from the repository."
+                                />
+                              )
+                            ) : null}
+                            <Button
+                              danger
+                              disabled={viewReadOnly}
+                              onClick={() => {
+                                promptRemoveOrDeleteElements([
+                                  stagedSelectedElement.id,
+                                ]);
+                              }}
+                            >
+                              Remove or delete
+                            </Button>
+                            {!isMarkedForRemoval(
+                              stagedSelectedElement.attributes,
+                            ) ? (
+                              <Form
+                                layout="vertical"
+                                initialValues={{
+                                  name: stagedSelectedElement.name,
+                                  description:
+                                    stagedSelectedElement.description,
+                                  ...(stagedSelectedElement.attributes ?? {}),
+                                }}
+                                onValuesChange={(changed) => {
+                                  setValidationGateOpen(true);
+                                  setStagedElements((prev) =>
+                                    prev.map((el) => {
+                                      if (el.id !== stagedSelectedElement.id)
+                                        return el;
+                                      const next = {
+                                        ...el,
+                                        name:
+                                          typeof changed.name === 'string'
+                                            ? changed.name
+                                            : el.name,
+                                        description:
+                                          typeof changed.description ===
+                                          'string'
+                                            ? changed.description
+                                            : el.description,
+                                        attributes: {
+                                          ...(el.attributes ?? {}),
+                                          ...changed,
+                                        },
+                                      };
+                                      return next;
+                                    }),
+                                  );
+
+                                  if (cyRef.current) {
+                                    const node = cyRef.current.getElementById(
+                                      stagedSelectedElement.id,
+                                    );
+                                    if (
+                                      node &&
+                                      !node.empty() &&
+                                      typeof changed.name === 'string'
+                                    ) {
+                                      node.data('label', changed.name);
+                                    }
+                                  }
+                                }}
+                                validateTrigger={['onChange', 'onBlur']}
+                              >
+                                <Form.Item
+                                  label="Name"
+                                  name="name"
+                                  rules={[
+                                    {
+                                      required: true,
+                                      message: 'Name is required',
+                                    },
+                                  ]}
+                                >
+                                  <Input autoFocus />
+                                </Form.Item>
+                                <Form.Item
+                                  label="Description"
+                                  name="description"
+                                >
+                                  <Input.TextArea rows={3} />
+                                </Form.Item>
+                                {requiredElementAttributes(
+                                  stagedSelectedElement.type,
+                                ).map((attr) => (
+                                  <Form.Item
+                                    key={attr}
+                                    label={attr}
+                                    name={attr}
+                                    rules={[
+                                      {
+                                        required: true,
+                                        message: `${attr} is required`,
+                                      },
+                                    ]}
+                                  >
+                                    <Input placeholder={`Enter ${attr}`} />
+                                  </Form.Item>
+                                ))}
+                              </Form>
+                            ) : null}
+                          </div>
+                        ) : stagedSelectedRelationship ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <Alert
+                              type="info"
+                              showIcon
+                              message={`Staged relationship • ${stagedSelectedRelationship.type.replace(/_/g, ' ')}`}
+                              description="Relationships are staged only."
+                            />
+                            {stagedSelectedRelationshipExistsInRepo ? (
+                              isMarkedForRemoval(
+                                stagedSelectedRelationship.attributes,
+                              ) ? (
+                                <Alert
+                                  type="warning"
+                                  showIcon
+                                  message="Marked for removal"
+                                  description="This relationship will be removed from the repository on commit."
+                                  action={
+                                    <Button
+                                      size="small"
+                                      onClick={() => {
+                                        setStagedRelationships((prev) =>
+                                          prev.map((rel) =>
+                                            rel.id ===
+                                            stagedSelectedRelationship.id
+                                              ? {
+                                                  ...rel,
+                                                  status: 'STAGED',
+                                                  attributes: {
+                                                    ...(rel.attributes ?? {}),
+                                                    _deleted: false,
+                                                  },
+                                                }
+                                              : rel,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      Undo removal
+                                    </Button>
+                                  }
+                                />
+                              ) : (
                                 <Button
-                                  size="small"
+                                  danger
                                   onClick={() => {
                                     setStagedRelationships((prev) =>
                                       prev.map((rel) =>
                                         rel.id === stagedSelectedRelationship.id
                                           ? {
                                               ...rel,
-                                              status: 'STAGED',
-                                              attributes: { ...(rel.attributes ?? {}), _deleted: false },
+                                              status: 'DISCARDED',
+                                              attributes: {
+                                                ...(rel.attributes ?? {}),
+                                                _deleted: true,
+                                              },
                                             }
                                           : rel,
                                       ),
                                     );
                                   }}
                                 >
-                                  Undo removal
+                                  Mark for removal
                                 </Button>
-                              }
-                            />
-                          ) : (
+                              )
+                            ) : null}
                             <Button
                               danger
                               onClick={() => {
-                                setStagedRelationships((prev) =>
-                                  prev.map((rel) =>
-                                    rel.id === stagedSelectedRelationship.id
-                                      ? {
-                                          ...rel,
-                                          status: 'DISCARDED',
-                                          attributes: { ...(rel.attributes ?? {}), _deleted: true },
-                                        }
-                                      : rel,
-                                  ),
-                                );
+                                Modal.confirm({
+                                  title: 'Delete staged relationship?',
+                                  content:
+                                    'This removes the relationship from the workspace only. Repository remains unchanged.',
+                                  okText: 'Delete',
+                                  okButtonProps: { danger: true },
+                                  cancelText: 'Cancel',
+                                  onOk: () =>
+                                    deleteStagedRelationship(
+                                      stagedSelectedRelationship.id,
+                                    ),
+                                });
                               }}
                             >
-                              Mark for removal
+                              Delete staged relationship
                             </Button>
-                          )
-                        ) : null}
-                        <Button
-                          danger
-                          onClick={() => {
-                            Modal.confirm({
-                              title: 'Delete staged relationship?',
-                              content: 'This removes the relationship from the workspace only. Repository remains unchanged.',
-                              okText: 'Delete',
-                              okButtonProps: { danger: true },
-                              cancelText: 'Cancel',
-                              onOk: () => deleteStagedRelationship(stagedSelectedRelationship.id),
-                            });
-                          }}
-                        >
-                          Delete staged relationship
-                        </Button>
-                        <Descriptions size="small" column={1} bordered>
-                          <Descriptions.Item label="From">
-                            {resolveElementLabel(stagedSelectedRelationship.fromId)?.label ?? stagedSelectedRelationship.fromId}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="To">
-                            {resolveElementLabel(stagedSelectedRelationship.toId)?.label ?? stagedSelectedRelationship.toId}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Status">
-                            {stagedSelectedRelationship.status}
-                          </Descriptions.Item>
-                        </Descriptions>
-                        {!isMarkedForRemoval(stagedSelectedRelationship.attributes) ? (
-                          (RELATIONSHIP_TYPE_DEFINITIONS[stagedSelectedRelationship.type]?.attributes ?? []).length > 0 ? (
-                            <Form
-                              form={relationshipAttributesForm}
-                              layout="vertical"
-                              onValuesChange={(changed) => {
-                                setValidationGateOpen(true);
-                                setStagedRelationships((prev) =>
-                                  prev.map((rel) => {
-                                    if (rel.id !== stagedSelectedRelationship.id) return rel;
-                                    return {
-                                      ...rel,
-                                      attributes: {
-                                        ...(rel.attributes ?? {}),
-                                        ...changed,
-                                      },
-                                    };
-                                  }),
-                                );
-                              }}
-                              validateTrigger={['onChange', 'onBlur']}
+                            <Descriptions size="small" column={1} bordered>
+                              <Descriptions.Item label="From">
+                                {resolveElementLabel(
+                                  stagedSelectedRelationship.fromId,
+                                )?.label ?? stagedSelectedRelationship.fromId}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="To">
+                                {resolveElementLabel(
+                                  stagedSelectedRelationship.toId,
+                                )?.label ?? stagedSelectedRelationship.toId}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="Status">
+                                {stagedSelectedRelationship.status}
+                              </Descriptions.Item>
+                            </Descriptions>
+                            {!isMarkedForRemoval(
+                              stagedSelectedRelationship.attributes,
+                            ) ? (
+                              (
+                                RELATIONSHIP_TYPE_DEFINITIONS[
+                                  stagedSelectedRelationship.type
+                                ]?.attributes ?? []
+                              ).length > 0 ? (
+                                <Form
+                                  form={relationshipAttributesForm}
+                                  layout="vertical"
+                                  onValuesChange={(changed) => {
+                                    setValidationGateOpen(true);
+                                    setStagedRelationships((prev) =>
+                                      prev.map((rel) => {
+                                        if (
+                                          rel.id !==
+                                          stagedSelectedRelationship.id
+                                        )
+                                          return rel;
+                                        return {
+                                          ...rel,
+                                          attributes: {
+                                            ...(rel.attributes ?? {}),
+                                            ...changed,
+                                          },
+                                        };
+                                      }),
+                                    );
+                                  }}
+                                  validateTrigger={['onChange', 'onBlur']}
+                                >
+                                  {(
+                                    RELATIONSHIP_TYPE_DEFINITIONS[
+                                      stagedSelectedRelationship.type
+                                    ]?.attributes ?? []
+                                  ).map((attr) => (
+                                    <Form.Item
+                                      key={attr}
+                                      label={attr}
+                                      name={attr}
+                                      rules={[
+                                        {
+                                          required: true,
+                                          message: `${attr} is required`,
+                                        },
+                                      ]}
+                                    >
+                                      <Input placeholder={`Enter ${attr}`} />
+                                    </Form.Item>
+                                  ))}
+                                </Form>
+                              ) : (
+                                <Typography.Text type="secondary">
+                                  No mandatory relationship attributes.
+                                </Typography.Text>
+                              )
+                            ) : null}
+                          </div>
+                        ) : selectedExistingElement ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <Alert
+                              type="info"
+                              showIcon
+                              message={`Existing element • ${selectedExistingElement.type}`}
+                              description="Stage this element to edit within the workspace. Repository stays unchanged."
+                            />
+                            {isHierarchicalView ? (
+                              <Button
+                                type="default"
+                                onClick={() =>
+                                  selectedExistingElement?.id &&
+                                  startChildCreation(selectedExistingElement.id)
+                                }
+                                disabled={!canAddChild}
+                              >
+                                Add child
+                              </Button>
+                            ) : null}
+                            <Descriptions size="small" column={1} bordered>
+                              <Descriptions.Item label="Name">
+                                {((selectedExistingElement.attributes as any)
+                                  ?.name as string) ||
+                                  selectedExistingElement.id}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="ID">
+                                {selectedExistingElement.id}
+                              </Descriptions.Item>
+                            </Descriptions>
+                            <Button
+                              type="primary"
+                              onClick={() =>
+                                stageExistingElement(
+                                  selectedExistingElement.id,
+                                  undefined,
+                                  'canvas',
+                                )
+                              }
                             >
-                              {(RELATIONSHIP_TYPE_DEFINITIONS[stagedSelectedRelationship.type]?.attributes ?? []).map(
-                                (attr) => (
-                                  <Form.Item
-                                    key={attr}
-                                    label={attr}
-                                    name={attr}
-                                    rules={[{ required: true, message: `${attr} is required` }]}
-                                  >
-                                    <Input placeholder={`Enter ${attr}`} />
-                                  </Form.Item>
-                                ),
-                              )}
-                            </Form>
-                          ) : (
-                            <Typography.Text type="secondary">No mandatory relationship attributes.</Typography.Text>
-                          )
-                        ) : null}
-                      </div>
-                    ) : selectedExistingElement ? (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`Existing element • ${selectedExistingElement.type}`}
-                          description="Stage this element to edit within the workspace. Repository stays unchanged."
-                        />
-                        {isHierarchicalView ? (
-                          <Button
-                            type="default"
-                            onClick={() => selectedExistingElement?.id && startChildCreation(selectedExistingElement.id)}
-                            disabled={!canAddChild}
-                          >
-                            Add child
-                          </Button>
-                        ) : null}
-                        <Descriptions size="small" column={1} bordered>
-                          <Descriptions.Item label="Name">
-                            {((selectedExistingElement.attributes as any)?.name as string) || selectedExistingElement.id}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="ID">{selectedExistingElement.id}</Descriptions.Item>
-                        </Descriptions>
-                        <Button type="primary" onClick={() => stageExistingElement(selectedExistingElement.id, undefined, 'canvas')}>
-                          Stage for editing
-                        </Button>
-                      </div>
-                    ) : selectedExistingRelationship ? (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Alert
-                          type="info"
-                          showIcon
-                          message={`Existing relationship • ${selectedExistingRelationship.type.replace(/_/g, ' ')}`}
-                          description="Stage this relationship to edit within the workspace. Repository stays unchanged."
-                        />
-                        <Descriptions size="small" column={1} bordered>
-                          <Descriptions.Item label="From">
-                            {resolveElementLabel(selectedExistingRelationship.fromId)?.label ?? selectedExistingRelationship.fromId}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="To">
-                            {resolveElementLabel(selectedExistingRelationship.toId)?.label ?? selectedExistingRelationship.toId}
-                          </Descriptions.Item>
-                        </Descriptions>
-                        <Button type="primary" onClick={() => stageExistingRelationship(selectedExistingRelationship.id)}>
-                          Stage for editing
-                        </Button>
-                      </div>
-                    ) : (
-                      propertiesPanel
+                              Stage for editing
+                            </Button>
+                          </div>
+                        ) : selectedExistingRelationship ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <Alert
+                              type="info"
+                              showIcon
+                              message={`Existing relationship • ${selectedExistingRelationship.type.replace(/_/g, ' ')}`}
+                              description="Stage this relationship to edit within the workspace. Repository stays unchanged."
+                            />
+                            <Descriptions size="small" column={1} bordered>
+                              <Descriptions.Item label="From">
+                                {resolveElementLabel(
+                                  selectedExistingRelationship.fromId,
+                                )?.label ?? selectedExistingRelationship.fromId}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="To">
+                                {resolveElementLabel(
+                                  selectedExistingRelationship.toId,
+                                )?.label ?? selectedExistingRelationship.toId}
+                              </Descriptions.Item>
+                            </Descriptions>
+                            <Button
+                              type="primary"
+                              onClick={() =>
+                                stageExistingRelationship(
+                                  selectedExistingRelationship.id,
+                                )
+                              }
+                            >
+                              Stage for editing
+                            </Button>
+                          </div>
+                        ) : (
+                          propertiesPanel
+                        )}
+                      </>
                     )}
-                  </>
-                )}
                   </>
                 ) : null}
               </Space>
@@ -11200,7 +14144,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
               key={`inspector-${panelResetToken.studio}`}
               onClose={closeRightPanel}
             >
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Space
+                direction="vertical"
+                size="middle"
+                style={{ width: '100%' }}
+              >
                 {toolboxPanel}
                 {!toolboxExpanded ? (
                   <>
@@ -11208,10 +14156,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
                       <Typography.Text strong>View status</Typography.Text>
                       {activeViewName ? (
                         <Descriptions size="small" column={1} bordered>
-                          <Descriptions.Item label="View">{activeViewName}</Descriptions.Item>
-                          <Descriptions.Item label="Status">{viewSaveLabel ?? 'Saved'}</Descriptions.Item>
+                          <Descriptions.Item label="View">
+                            {activeViewName}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Status">
+                            {viewSaveLabel ?? 'Saved'}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Last saved">
-                            {lastViewSavedAt ? new Date(lastViewSavedAt).toLocaleTimeString() : '—'}
+                            {lastViewSavedAt
+                              ? new Date(lastViewSavedAt).toLocaleTimeString()
+                              : '—'}
                           </Descriptions.Item>
                         </Descriptions>
                       ) : (
@@ -11231,32 +14185,56 @@ const StudioShell: React.FC<StudioShellProps> = ({
                           >
                             Save As
                           </Button>
-                          <Button size="small" onClick={handleRenameActiveView} disabled={presentationReadOnly}>
+                          <Button
+                            size="small"
+                            onClick={handleRenameActiveView}
+                            disabled={presentationReadOnly}
+                          >
                             Rename
                           </Button>
-                          <Button size="small" onClick={handleDuplicateActiveView} disabled={presentationReadOnly}>
+                          <Button
+                            size="small"
+                            onClick={handleDuplicateActiveView}
+                            disabled={presentationReadOnly}
+                          >
                             Duplicate
                           </Button>
-                          <Button size="small" onClick={handleExportActiveViewPng}>
+                          <Button
+                            size="small"
+                            onClick={handleExportActiveViewPng}
+                          >
                             Export PNG
                           </Button>
-                          <Button size="small" onClick={handleExportActiveViewJson}>
+                          <Button
+                            size="small"
+                            onClick={handleExportActiveViewJson}
+                          >
                             Export JSON
                           </Button>
-                          <Button size="small" danger onClick={handleDeleteActiveView} disabled={presentationReadOnly}>
+                          <Button
+                            size="small"
+                            danger
+                            onClick={handleDeleteActiveView}
+                            disabled={presentationReadOnly}
+                          >
                             Delete
                           </Button>
                         </Space>
                         <Descriptions size="small" column={1} bordered>
                           <Descriptions.Item label="Viewpoint">
-                            {ViewpointRegistry.get(activeView.viewpointId)?.name ?? activeView.viewpointId}
+                            {ViewpointRegistry.get(activeView.viewpointId)
+                              ?.name ?? activeView.viewpointId}
                           </Descriptions.Item>
-                          <Descriptions.Item label="Status">{activeView.status}</Descriptions.Item>
+                          <Descriptions.Item label="Status">
+                            {activeView.status}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Created by">
                             {activeView.createdBy || 'Unknown'}
                           </Descriptions.Item>
                           <Descriptions.Item label="Created at">
-                            {activeView.createdAt ? new Date(activeView.createdAt).toLocaleString() : '—'}
+                            {activeView.createdAt
+                              ? new Date(activeView.createdAt).toLocaleString()
+                              : '—'}
                           </Descriptions.Item>
                           <Descriptions.Item label="Description">
                             {activeView.description || 'No description'}
@@ -11271,19 +14249,36 @@ const StudioShell: React.FC<StudioShellProps> = ({
                         <Form
                           form={viewSummaryForm}
                           layout="vertical"
-                          onValuesChange={(_, allValues) => applyViewSummary(allValues)}
+                          onValuesChange={(_, allValues) =>
+                            applyViewSummary(allValues)
+                          }
                         >
                           <Form.Item label="Purpose" name="purpose">
-                            <Input.TextArea rows={2} placeholder="Why this view exists" disabled={presentationReadOnly} />
+                            <Input.TextArea
+                              rows={2}
+                              placeholder="Why this view exists"
+                              disabled={presentationReadOnly}
+                            />
                           </Form.Item>
                           <Form.Item label="Scope" name="scope">
-                            <Input.TextArea rows={2} placeholder="What this view covers" disabled={presentationReadOnly} />
+                            <Input.TextArea
+                              rows={2}
+                              placeholder="What this view covers"
+                              disabled={presentationReadOnly}
+                            />
                           </Form.Item>
                           <Form.Item label="Key insights" name="insights">
-                            <Input.TextArea rows={3} placeholder="Executive takeaways" disabled={presentationReadOnly} />
+                            <Input.TextArea
+                              rows={3}
+                              placeholder="Executive takeaways"
+                              disabled={presentationReadOnly}
+                            />
                           </Form.Item>
                         </Form>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ fontSize: 12 }}
+                        >
                           Stored in view metadata (not rendered on canvas).
                         </Typography.Text>
                       </div>
@@ -11310,23 +14305,46 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             key: 'validation',
                             label: (
                               <Tooltip title="Validation">
-                                <Tag color="red" style={{ marginInlineStart: 0 }}>
+                                <Tag
+                                  color="red"
+                                  style={{ marginInlineStart: 0 }}
+                                >
                                   ❌ {validationCount}
                                 </Tag>
                               </Tooltip>
                             ),
                             children: !validationGateOpen ? (
                               <Empty description="Validation appears after you model or save." />
-                            ) : validationSummary && (validationSummary.errorCount > 0 || validationSummary.warningCount > 0 || validationSummary.infoCount > 0) ? (
+                            ) : validationSummary &&
+                              (validationSummary.errorCount > 0 ||
+                                validationSummary.warningCount > 0 ||
+                                validationSummary.infoCount > 0) ? (
                               <div className={styles.studioValidationList}>
                                 {validationSummary.errorHighlights.map((m) => (
-                                  <Alert key={`err:${m}`} type="error" showIcon message={m} />
+                                  <Alert
+                                    key={`err:${m}`}
+                                    type="error"
+                                    showIcon
+                                    message={m}
+                                  />
                                 ))}
-                                {validationSummary.warningHighlights.map((m) => (
-                                  <Alert key={`warn:${m}`} type="warning" showIcon message={m} />
-                                ))}
+                                {validationSummary.warningHighlights.map(
+                                  (m) => (
+                                    <Alert
+                                      key={`warn:${m}`}
+                                      type="warning"
+                                      showIcon
+                                      message={m}
+                                    />
+                                  ),
+                                )}
                                 {validationSummary.infoHighlights.map((m) => (
-                                  <Alert key={`info:${m}`} type="info" showIcon message={m} />
+                                  <Alert
+                                    key={`info:${m}`}
+                                    type="info"
+                                    showIcon
+                                    message={m}
+                                  />
                                 ))}
                               </div>
                             ) : (
@@ -11348,27 +14366,47 @@ const StudioShell: React.FC<StudioShellProps> = ({
                             key: 'legend',
                             label: 'Viewpoint legend',
                             children: activeViewpoint ? (
-                              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                <Typography.Text type="secondary">Elements</Typography.Text>
+                              <Space
+                                direction="vertical"
+                                size="small"
+                                style={{ width: '100%' }}
+                              >
+                                <Typography.Text type="secondary">
+                                  Elements
+                                </Typography.Text>
                                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                  {activeViewpoint.allowedElementTypes.map((type) => (
-                                    <li key={`el-${type}`}>
-                                      <strong>{type}</strong>: {OBJECT_TYPE_DEFINITIONS[type]?.description ?? 'Element'}
-                                    </li>
-                                  ))}
+                                  {activeViewpoint.allowedElementTypes.map(
+                                    (type) => (
+                                      <li key={`el-${type}`}>
+                                        <strong>{type}</strong>:{' '}
+                                        {OBJECT_TYPE_DEFINITIONS[type]
+                                          ?.description ?? 'Element'}
+                                      </li>
+                                    ),
+                                  )}
                                 </ul>
 
-                                <Typography.Text type="secondary">Relationships</Typography.Text>
+                                <Typography.Text type="secondary">
+                                  Relationships
+                                </Typography.Text>
                                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                  {activeViewpoint.allowedRelationshipTypes.map((type) => (
-                                    <li key={`rel-${type}`}>
-                                      <strong>{type.replace(/_/g, ' ')}</strong>:{' '}
-                                      {RELATIONSHIP_TYPE_DEFINITIONS[type]?.description ?? 'Relationship'}
-                                    </li>
-                                  ))}
+                                  {activeViewpoint.allowedRelationshipTypes.map(
+                                    (type) => (
+                                      <li key={`rel-${type}`}>
+                                        <strong>
+                                          {type.replace(/_/g, ' ')}
+                                        </strong>
+                                        :{' '}
+                                        {RELATIONSHIP_TYPE_DEFINITIONS[type]
+                                          ?.description ?? 'Relationship'}
+                                      </li>
+                                    ),
+                                  )}
                                 </ul>
 
-                                <Typography.Text type="secondary">Layout rules</Typography.Text>
+                                <Typography.Text type="secondary">
+                                  Layout rules
+                                </Typography.Text>
                                 <Descriptions size="small" column={1} bordered>
                                   <Descriptions.Item label="Diagram Type">
                                     {activeViewpoint.name}
@@ -11394,11 +14432,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
             </RightPanelController>
           )}
         </div>
-        </div>
+      </div>
 
       <Modal
         open={repoEndpointOpen}
-        title={repoEndpointMode === 'source' ? 'Select repository source' : 'Select repository target'}
+        title={
+          repoEndpointMode === 'source'
+            ? 'Select repository source'
+            : 'Select repository target'
+        }
         okText="Use selection"
         cancelText="Cancel"
         onCancel={() => setRepoEndpointOpen(false)}
@@ -11419,16 +14461,26 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 sourceId: selectedId,
                 targetId: null,
                 valid: null,
-                message: 'Repository source selected. Choose a target on the canvas.',
+                message:
+                  'Repository source selected. Choose a target on the canvas.',
                 dragging: false,
               });
               if (cyRef.current) {
-                const validTargets = getValidTargetsForSource(selectedId, pendingRelationshipType);
+                const validTargets = getValidTargetsForSource(
+                  selectedId,
+                  pendingRelationshipType,
+                );
                 cyRef.current.nodes().forEach((n) => {
                   const targetId = String(n.id());
-                  if (!targetId || targetId === selectedId || n.data('draftTarget')) return;
+                  if (
+                    !targetId ||
+                    targetId === selectedId ||
+                    n.data('draftTarget')
+                  )
+                    return;
                   n.removeClass('validTargetCandidate');
-                  if (validTargets.has(targetId)) n.addClass('validTargetCandidate');
+                  if (validTargets.has(targetId))
+                    n.addClass('validTargetCandidate');
                 });
               }
               setRepoEndpointOpen(false);
@@ -11440,9 +14492,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
               return;
             }
 
-            const validation = validateRelationshipCreation(relationshipSourceId, selectedId, pendingRelationshipType);
+            const validation = validateRelationshipCreation(
+              relationshipSourceId,
+              selectedId,
+              pendingRelationshipType,
+            );
             if (!validation.valid) {
-              message.error(validation.message || 'Invalid relationship endpoints.');
+              message.error(
+                validation.message || 'Invalid relationship endpoints.',
+              );
               return;
             }
 
@@ -11471,7 +14529,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
               placeholder="Select repository element"
               options={repositoryElementOptions}
               filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                String(option?.label ?? '')
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
               }
             />
           </Form.Item>
@@ -11494,18 +14554,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
           style={{ marginBottom: 12 }}
         />
         <Form form={saveViewForm} layout="vertical">
-          <Form.Item label="View name" name="name" rules={[{ required: true, message: 'View name is required' }]}>
+          <Form.Item
+            label="View name"
+            name="name"
+            rules={[{ required: true, message: 'View name is required' }]}
+          >
             <Input placeholder="Enter view name" allowClear />
           </Form.Item>
           <Form.Item label="Viewpoint (optional)" name="viewpointId">
             <Select
               allowClear
               placeholder="Select viewpoint"
-              options={ViewpointRegistry.list().map((vp) => ({ value: vp.id, label: vp.name }))}
+              options={ViewpointRegistry.list().map((vp) => ({
+                value: vp.id,
+                label: vp.name,
+              }))}
             />
           </Form.Item>
           <Form.Item label="Description (optional)" name="description">
-            <Input.TextArea rows={3} placeholder="Optional description" allowClear />
+            <Input.TextArea
+              rows={3}
+              placeholder="Optional description"
+              allowClear
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -11536,7 +14607,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
           description="Workspace will be locked as COMMITTED and cannot be reopened for edits."
           style={{ marginBottom: 12 }}
         />
-        {stagedValidationErrors.length > 0 || (governanceMode !== 'Advisory' && (validationSummary?.warningCount ?? 0) > 0) ? (
+        {stagedValidationErrors.length > 0 ||
+        (governanceMode !== 'Advisory' &&
+          (validationSummary?.warningCount ?? 0) > 0) ? (
           <Alert
             type="error"
             showIcon
@@ -11599,7 +14672,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
           )}
         </ul>
         {stagedElements.length > 6 ? (
-          <Typography.Text type="secondary">+{stagedElements.length - 6} more</Typography.Text>
+          <Typography.Text type="secondary">
+            +{stagedElements.length - 6} more
+          </Typography.Text>
         ) : null}
         <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
           Relationships to be created
@@ -11616,7 +14691,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
           )}
         </ul>
         {stagedRelationships.length > 6 ? (
-          <Typography.Text type="secondary">+{stagedRelationships.length - 6} more</Typography.Text>
+          <Typography.Text type="secondary">
+            +{stagedRelationships.length - 6} more
+          </Typography.Text>
         ) : null}
         <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
           Impact preview
@@ -11644,13 +14721,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
           Impact analysis (high-level)
         </Typography.Text>
         <Typography.Paragraph type="secondary" style={{ marginTop: 6 }}>
-          +{stagedElements.length} elements, +{stagedRelationships.length} relationships staged.
+          +{stagedElements.length} elements, +{stagedRelationships.length}{' '}
+          relationships staged.
           {commitImpactPreview.relationshipTypes.length
             ? ` Relationship types: ${commitImpactPreview.relationshipTypes.join(', ')}.`
             : ''}
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginTop: 6 }}>
-          Informational only. Repository remains unchanged until commit completes.
+          Informational only. Repository remains unchanged until commit
+          completes.
         </Typography.Paragraph>
       </Modal>
 
@@ -11720,17 +14799,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
             }
           }}
         >
-          <Form.Item label="Element type" name="type" rules={[{ required: true, message: 'Select a type' }]}>
+          <Form.Item
+            label="Element type"
+            name="type"
+            rules={[{ required: true, message: 'Select a type' }]}
+          >
             <Select
               placeholder="Select element type"
               options={quickCreateTypeOptions}
             />
           </Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
+          <Form.Item
+            label="Name"
+            name="name"
+            rules={[{ required: true, message: 'Name is required' }]}
+          >
             <Input placeholder="Enter name" allowClear />
           </Form.Item>
           <Form.Item label="Description" name="description">
-            <Input.TextArea placeholder="Optional description" rows={3} allowClear />
+            <Input.TextArea
+              placeholder="Optional description"
+              rows={3}
+              allowClear
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -11800,7 +14891,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
             <Input placeholder="Optional suffix" allowClear />
           </Form.Item>
           <Form.Item label="Description (set for all)" name="description">
-            <Input.TextArea placeholder="Optional description" rows={3} allowClear />
+            <Input.TextArea
+              placeholder="Optional description"
+              rows={3}
+              allowClear
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -11840,17 +14935,29 @@ const StudioShell: React.FC<StudioShellProps> = ({
           description="Use a workspace to experiment safely before committing changes to the repository."
           style={{ marginBottom: 12 }}
         />
-        <Form form={workspaceForm} layout="vertical" initialValues={{
-          name: designWorkspace.name,
-          description: designWorkspace.description,
-          scope: designWorkspace.scope,
-          status: designWorkspace.status,
-        }}>
-          <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
+        <Form
+          form={workspaceForm}
+          layout="vertical"
+          initialValues={{
+            name: designWorkspace.name,
+            description: designWorkspace.description,
+            scope: designWorkspace.scope,
+            status: designWorkspace.status,
+          }}
+        >
+          <Form.Item
+            label="Name"
+            name="name"
+            rules={[{ required: true, message: 'Name is required' }]}
+          >
             <Input placeholder="Workspace name" allowClear />
           </Form.Item>
           <Form.Item label="Description" name="description">
-            <Input.TextArea placeholder="Workspace description" rows={3} allowClear />
+            <Input.TextArea
+              placeholder="Workspace description"
+              rows={3}
+              allowClear
+            />
           </Form.Item>
           <Form.Item label="Scope (optional)" name="scope">
             <Select
@@ -11863,7 +14970,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
               ]}
             />
           </Form.Item>
-          <Form.Item label="Status" name="status" rules={[{ required: true, message: 'Status is required' }]}>
+          <Form.Item
+            label="Status"
+            name="status"
+            rules={[{ required: true, message: 'Status is required' }]}
+          >
             <Select
               options={[
                 { label: 'DRAFT', value: 'DRAFT' },
@@ -11879,7 +14990,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
         open={freeShapeModalOpen}
         title={(() => {
           const kind = pendingFreeShapeDraft?.kind;
-          const def = FREE_SHAPE_DEFINITIONS.find((shape) => shape.kind === kind);
+          const def = FREE_SHAPE_DEFINITIONS.find(
+            (shape) => shape.kind === kind,
+          );
           return def ? `Name ${def.label}` : 'Name shape';
         })()}
         okText="Create"
@@ -11908,7 +15021,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         }}
       >
         <Form form={freeShapeForm} layout="vertical">
-          <Form.Item label="Label" name="label" rules={[{ required: true, message: 'Label is required' }]}>
+          <Form.Item
+            label="Label"
+            name="label"
+            rules={[{ required: true, message: 'Label is required' }]}
+          >
             <Input placeholder="Enter label" autoFocus allowClear />
           </Form.Item>
         </Form>
@@ -11916,7 +15033,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
 
       <Modal
         open={createModalOpen}
-        title={pendingElementType ? `Name new ${pendingElementLabel ?? pendingElementType}` : 'Name new element'}
+        title={
+          pendingElementType
+            ? `Name new ${pendingElementLabel ?? pendingElementType}`
+            : 'Name new element'
+        }
         okText="Create"
         cancelText="Cancel"
         onCancel={() => {
@@ -11940,9 +15061,16 @@ const StudioShell: React.FC<StudioShellProps> = ({
               return;
             }
             const description = String(values.description || '').trim();
-            const resolvedPlacement = placement ?? (cyRef.current ? getCanvasCenter() : getCanvasCenterPosition());
+            const resolvedPlacement =
+              placement ??
+              (cyRef.current ? getCanvasCenter() : getCanvasCenterPosition());
             if (!resolvedPlacement) {
-              setPendingElementNameDraft({ type: pendingElementType, name, description, visualKind: pendingElementVisualKind });
+              setPendingElementNameDraft({
+                type: pendingElementType,
+                name,
+                description,
+                visualKind: pendingElementVisualKind,
+              });
               setCreateModalOpen(false);
               setToolMode('CREATE_ELEMENT');
               setPlacementModeActive(true);
@@ -11958,7 +15086,12 @@ const StudioShell: React.FC<StudioShellProps> = ({
               source: 'toolbox',
             });
             if (!id) return;
-            openPropertiesPanel({ elementId: id, elementType: pendingElementType, dock: 'right', readOnly: false });
+            openPropertiesPanel({
+              elementId: id,
+              elementType: pendingElementType,
+              dock: 'right',
+              readOnly: false,
+            });
             setCreateModalOpen(false);
             setPendingElementType(null);
             setPendingElementVisualKind(null);
@@ -11966,7 +15099,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
             setPendingElementDraft(null);
             setPendingElementNameDraft(null);
             form.resetFields();
-            message.success(`${pendingElementType} created in Explorer and placed on canvas.`);
+            message.success(
+              `${pendingElementType} created in Explorer and placed on canvas.`,
+            );
           } catch {
             // validation errors handled by Form
           }
@@ -11980,11 +15115,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
           style={{ marginBottom: 12 }}
         />
         <Form form={form} layout="vertical">
-          <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
+          <Form.Item
+            label="Name"
+            name="name"
+            rules={[{ required: true, message: 'Name is required' }]}
+          >
             <Input placeholder="Enter name" autoFocus allowClear />
           </Form.Item>
           <Form.Item label="Description" name="description">
-            <Input.TextArea placeholder="Optional description" rows={3} allowClear />
+            <Input.TextArea
+              placeholder="Optional description"
+              rows={3}
+              allowClear
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -12018,7 +15161,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
           setPlacement(null);
           setPendingElementDraft(null);
           form.resetFields();
-          message.success(`${pendingElementDraft.type} created in Explorer and placed on canvas.`);
+          message.success(
+            `${pendingElementDraft.type} created in Explorer and placed on canvas.`,
+          );
         }}
       >
         <Typography.Text strong>Elements to be created</Typography.Text>
@@ -12038,7 +15183,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
           New element will be created in Explorer and displayed on the canvas.
         </Typography.Paragraph>
       </Modal>
-
     </div>
   );
 };

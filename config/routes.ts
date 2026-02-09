@@ -10,6 +10,10 @@
     layout: false,
   },
   {
+    path: '/catalog/:domain',
+    component: './catalog',
+  },
+  {
     path: '/workspace',
     component: './workspace',
   },

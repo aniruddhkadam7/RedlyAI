@@ -22,6 +22,13 @@ const PUBLIC_PATH: string = '/';
 
 export default defineConfig({
   ...(UMI_ENV === 'dev' ? { mfsu: false } : {}),
+  alias: {
+    umi: join(__dirname, '../src/.umi/exports'),
+  },
+  chainWebpack(memo) {
+    memo.resolve.alias.set('umi', join(__dirname, '../src/.umi/exports'));
+    memo.resolve.modules.add(join(__dirname, '../node_modules'));
+  },
   /**
    * @name 开启 hash 模式
    * @description 让 build 之后的产物包含 hash 后缀。通常用于增量发布和避免浏览器加载缓存。

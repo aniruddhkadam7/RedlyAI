@@ -1,9 +1,15 @@
-import { createArchitectureRepository, type ArchitectureRepository } from './ArchitectureRepository';
-import type { BaseArchitectureElement } from './BaseArchitectureElement';
-import type { RepositoryCollectionType } from './ArchitectureRepository';
-import type { RelationshipRepository } from './RelationshipRepository';
-import { strictValidationEngine, type ValidationGateResult } from '../validation/StrictValidationEngine';
 import { getGovernanceEnforcementMode } from '../governance/GovernanceEnforcementConfig';
+import {
+  strictValidationEngine,
+  type ValidationGateResult,
+} from '../validation/StrictValidationEngine';
+import type { RepositoryCollectionType } from './ArchitectureRepository';
+import {
+  type ArchitectureRepository,
+  createArchitectureRepository,
+} from './ArchitectureRepository';
+import type { BaseArchitectureElement } from './BaseArchitectureElement';
+import type { RelationshipRepository } from './RelationshipRepository';
 
 let repository: ArchitectureRepository | null = null;
 let repositoryRevision = 0;
@@ -44,10 +50,15 @@ export function getRepository(): ArchitectureRepository {
  */
 export function setRepository(
   next: ArchitectureRepository,
-  options?: { relationships?: RelationshipRepository | null; now?: Date; mode?: 'Strict' | 'Advisory' },
+  options?: {
+    relationships?: RelationshipRepository | null;
+    now?: Date;
+    mode?: 'Strict' | 'Advisory';
+  },
 ): ValidationGateResult {
   const governanceMode = getGovernanceEnforcementMode();
-  const mode = options?.mode ?? (governanceMode === 'Advisory' ? 'Advisory' : 'Strict');
+  const mode =
+    options?.mode ?? (governanceMode === 'Advisory' ? 'Advisory' : 'Strict');
 
   const validation = strictValidationEngine.validateOnSave({
     elements: next,
@@ -63,8 +74,35 @@ export function setRepository(
   return validation;
 }
 
-export function addElement(type: RepositoryCollectionType, element: BaseArchitectureElement) {
+export function addElement(
+  type: RepositoryCollectionType,
+  element: BaseArchitectureElement,
+) {
   const result = getRepository().addElement(type, element);
+  if (result.ok) notifyRepositoryChanged();
+  return result;
+}
+
+export function updateElementLifecycle(
+  elementId: string,
+  args: {
+    lifecycleStatus: BaseArchitectureElement['lifecycleStatus'];
+    lastModifiedAt?: string;
+    lastModifiedBy?: string;
+  },
+) {
+  const result = getRepository().updateElementLifecycle({
+    id: elementId,
+    lifecycleStatus: args.lifecycleStatus,
+    lastModifiedAt: args.lastModifiedAt,
+    lastModifiedBy: args.lastModifiedBy,
+  });
+  if (result.ok) notifyRepositoryChanged();
+  return result;
+}
+
+export function removeElement(elementId: string) {
+  const result = getRepository().removeElementById(elementId);
   if (result.ok) notifyRepositoryChanged();
   return result;
 }

@@ -25,10 +25,12 @@
     "serve": "umi-serve",
     "start": "cross-env UMI_ENV=dev max dev",
     "start:dev": "cross-env UMI_ENV=dev MOCK=none max dev",
+    "start:desktop": "cross-env UMI_ENV=dev PORT=8003 max dev",
     "start:no-mock": "cross-env MOCK=none max dev",
     "start:pre": "cross-env UMI_ENV=pre MOCK=none max dev",
     "start:test": "cross-env UMI_ENV=test MOCK=none max dev",
-    "desktop:dev": "concurrently -k -n api,web,desktop -c \"green,cyan,magenta\" \"npm run api:dev\" \"npm run start\" \"wait-on http://localhost:8000 && cross-env ELECTRON_START_URL=http://localhost:8000 electron ./electron/main.js\"",
+    "desktop:electron": "wait-on http://localhost:8003 && cross-env ELECTRON_START_URL=http://localhost:8003 electron ./electron/main.js",
+    "desktop:dev": "concurrently --kill-others-on-fail -n api,web,desktop -c \"green,cyan,magenta\" \"npm run api:dev\" \"npm run start:desktop\" \"npm run desktop:electron\"",
     "desktop:dist": "concurrently -k -n api,desktop -c \"green,magenta\" \"npm run api:dev\" \"npm run build && electron ./electron/main.js\"",
     "test": "npm run jest",
     "test:coverage": "npm run jest -- --coverage",
@@ -50,6 +52,7 @@
     "neo4j-driver": "^5.28.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-resizable": "^3.1.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
