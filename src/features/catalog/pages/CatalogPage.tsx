@@ -1,21 +1,6 @@
-import {
-  ColumnWidthOutlined,
-  DownloadOutlined,
-  FilterOutlined,
-  MoreOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { MoreOutlined } from '@ant-design/icons';
 import { history, useParams } from '@umijs/max';
-import {
-  Button,
-  Dropdown,
-  Input,
-  Modal,
-  Popover,
-  Select,
-  Tag,
-  Typography,
-} from 'antd';
+import { Button, Dropdown, Modal } from 'antd';
 import React from 'react';
 import { useIdeShell } from '@/components/IdeShellLayout';
 import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
@@ -23,10 +8,11 @@ import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
+import CatalogBottomInspector from '../CatalogBottomInspector';
+import CatalogGrid from '../CatalogGrid';
+import CatalogToolbar from '../CatalogToolbar';
 import styles from '../catalog.module.less';
 import { CatalogFilters } from '../components/CatalogFilters';
-import CatalogTable from '../components/CatalogTable';
-import { useCatalog } from '../hooks/useCatalog';
 import type {
   CatalogDomain,
   CatalogElement,
@@ -39,6 +25,7 @@ import {
   CATALOG_DOMAIN_TYPES,
   CATALOG_DOMAINS,
 } from '../types/catalog.types';
+import { useCatalogController } from '../useCatalogController';
 
 const isCatalogDomain = (value: string | undefined): value is CatalogDomain =>
   Boolean(value && CATALOG_DOMAINS.includes(value as CatalogDomain));
@@ -108,10 +95,16 @@ const CatalogPage: React.FC = () => {
     [debouncedSearch, filters, sort],
   );
 
-  const { rows, total, updateElementAttributes, removeElements } = useCatalog(
-    domain,
-    queryState,
-  );
+  const {
+    rows,
+    total,
+    updateField,
+    bulkUpdateLifecycle,
+    removeElements,
+    findInspectorElement,
+    getInspectorRelationships,
+    getInspectorViews,
+  } = useCatalogController(domain, queryState);
 
   React.useEffect(() => {
     try {
@@ -160,28 +153,6 @@ const CatalogPage: React.FC = () => {
       prev.filter((key) => allowed.has(String(key))),
     );
   }, [rows]);
-
-  const updateField = React.useCallback(
-    (args: {
-      id: string;
-      field: 'name' | 'owner' | 'lifecycle';
-      value: string;
-    }) => {
-      const now = new Date().toISOString();
-      const patch: Record<string, unknown> = {
-        lastModifiedAt: now,
-        lastModifiedBy: 'catalog',
-      };
-      if (args.field === 'name') patch.name = args.value.trim();
-      if (args.field === 'owner') patch.ownerName = args.value.trim();
-      if (args.field === 'lifecycle') {
-        patch.lifecycleState = args.value.trim();
-        patch.lifecycleStatus = args.value.trim();
-      }
-      updateElementAttributes(args.id, patch);
-    },
-    [updateElementAttributes],
-  );
 
   const handleDelete = React.useCallback(
     (ids: string[]) => {
@@ -273,9 +244,7 @@ const CatalogPage: React.FC = () => {
               : info.key === 'bulk-retired'
                 ? 'Retired'
                 : 'Draft';
-          ids.forEach((id) => {
-            updateField({ id, field: 'lifecycle', value: lifecycle });
-          });
+          bulkUpdateLifecycle(ids, lifecycle);
         },
       }}
       trigger={['click']}
@@ -319,67 +288,42 @@ const CatalogPage: React.FC = () => {
     </div>
   );
 
-  const inspectorElement = inspectorId
-    ? (rows.find((row) => row.id === inspectorId) ?? null)
-    : null;
+  const inspectorElement = findInspectorElement(inspectorId);
   const hasInspector = Boolean(inspectorElement);
 
   return (
     <div className={styles.registryPage}>
-      <div className={styles.registryHeader}>
-        <div className={styles.registryTitle}>
-          <Typography.Text strong>Architecture Registry</Typography.Text>
-          <Tag>{CATALOG_DOMAIN_LABELS[domain]}</Tag>
-          <Typography.Text type="secondary">{total} elements</Typography.Text>
-        </div>
-        <div className={styles.registryToolbar}>
-          <Input
-            allowClear
-            placeholder="Search elements"
-            prefix={<SearchOutlined />}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className={styles.searchInput}
-          />
-          <Button
-            icon={<FilterOutlined />}
-            className={filtersOpen ? styles.filterButtonActive : undefined}
-            onClick={() => setFiltersOpen((prev) => !prev)}
-          >
-            Filter
-          </Button>
-          <Popover placement="bottom" trigger="click" content={columnMenu}>
-            <Button icon={<ColumnWidthOutlined />}>Columns</Button>
-          </Popover>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={() => {
-              const headers = visibleColumns.filter((key) => key !== 'actions');
-              const lines = [headers.join(',')];
-              rows.forEach((row) => {
-                const values = headers.map((key) =>
-                  String((row as any)[key] ?? '').replace(/\n/g, ' '),
-                );
-                lines.push(
-                  values.map((v) => `"${v.replace(/"/g, '""')}"`).join(','),
-                );
-              });
-              const blob = new Blob([lines.join('\n')], {
-                type: 'text/csv;charset=utf-8;',
-              });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `catalog-${domain}.csv`;
-              link.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
-            Export
-          </Button>
-          {bulkActions}
-        </div>
-      </div>
+      <CatalogToolbar
+        domainLabel={CATALOG_DOMAIN_LABELS[domain]}
+        total={total}
+        search={search}
+        onSearchChange={setSearch}
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen((prev) => !prev)}
+        columnMenu={columnMenu}
+        bulkActions={bulkActions}
+        onExport={() => {
+          const headers = visibleColumns.filter((key) => key !== 'actions');
+          const lines = [headers.join(',')];
+          rows.forEach((row) => {
+            const values = headers.map((key) =>
+              String((row as any)[key] ?? '').replace(/\n/g, ' '),
+            );
+            lines.push(
+              values.map((v) => `"${v.replace(/"/g, '""')}"`).join(','),
+            );
+          });
+          const blob = new Blob([lines.join('\n')], {
+            type: 'text/csv;charset=utf-8;',
+          });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `catalog-${domain}.csv`;
+          link.click();
+          URL.revokeObjectURL(url);
+        }}
+      />
 
       <div
         className={
@@ -399,7 +343,7 @@ const CatalogPage: React.FC = () => {
         className={`${styles.registryBody} ${!hasInspector ? styles.registryBodyFull : ''}`}
       >
         <div className={styles.registryGrid}>
-          <CatalogTable
+          <CatalogGrid
             data={rows}
             loading={!eaRepository}
             onRowClick={(record) => {
@@ -424,97 +368,18 @@ const CatalogPage: React.FC = () => {
             scrollY={scrollY}
           />
         </div>
-        {inspectorElement ? (
-          <div className={styles.registryInspector}>
-            <div className={styles.inspectorHeader}>
-              <Typography.Text strong>{inspectorElement.name}</Typography.Text>
-              <Select
-                size="small"
-                value={inspectorTab}
-                onChange={(value) => setInspectorTab(value as any)}
-                options={[
-                  { value: 'details', label: 'Details' },
-                  { value: 'relationships', label: 'Relationships' },
-                  { value: 'views', label: 'Views' },
-                ]}
-              />
-              <Button size="small" onClick={() => setInspectorId(null)}>
-                Close
-              </Button>
-            </div>
-            <div className={styles.inspectorBody}>
-              {inspectorTab === 'details' ? (
-                <div className={styles.detailGrid}>
-                  <div>
-                    <Typography.Text type="secondary">Type</Typography.Text>
-                    <div>{inspectorElement.elementType}</div>
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary">Owner</Typography.Text>
-                    <div>{inspectorElement.owner || '-'}</div>
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary">
-                      Lifecycle
-                    </Typography.Text>
-                    <div>{inspectorElement.lifecycle || '-'}</div>
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary">Status</Typography.Text>
-                    <div>{inspectorElement.status || '-'}</div>
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary">
-                      Criticality
-                    </Typography.Text>
-                    <div>{inspectorElement.criticality || '-'}</div>
-                  </div>
-                  <div>
-                    <Typography.Text type="secondary">
-                      Last Modified
-                    </Typography.Text>
-                    <div>{inspectorElement.lastModifiedAt || '-'}</div>
-                  </div>
-                </div>
-              ) : null}
-              {inspectorTab === 'relationships' ? (
-                <div className={styles.inspectorList}>
-                  {(eaRepository?.relationships ?? [])
-                    .filter(
-                      (rel) =>
-                        rel.fromId === inspectorElement.id ||
-                        rel.toId === inspectorElement.id,
-                    )
-                    .map((rel) => (
-                      <div key={rel.id} className={styles.inspectorRow}>
-                        <Typography.Text>{rel.type}</Typography.Text>
-                        <Typography.Text type="secondary">{`${rel.fromId} -> ${rel.toId}`}</Typography.Text>
-                      </div>
-                    ))}
-                </div>
-              ) : null}
-              {inspectorTab === 'views' ? (
-                <div className={styles.inspectorList}>
-                  {ViewStore.list()
-                    .filter((view) => {
-                      if (view.scope.kind === 'EntireRepository') return true;
-                      return (view.scope.elementIds ?? []).includes(
-                        inspectorElement.id,
-                      );
-                    })
-                    .map((view) => (
-                      <div key={view.id} className={styles.inspectorRow}>
-                        <Typography.Text>{view.name}</Typography.Text>
-                        <Typography.Text type="secondary">
-                          {view.viewpointId}
-                        </Typography.Text>
-                      </div>
-                    ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        <CatalogBottomInspector
+          element={inspectorElement}
+          tab={inspectorTab}
+          onTabChange={setInspectorTab}
+          onClose={() => setInspectorId(null)}
+          relationships={
+            inspectorElement
+              ? getInspectorRelationships(inspectorElement.id)
+              : []
+          }
+          views={inspectorElement ? getInspectorViews(inspectorElement.id) : []}
+        />
       </div>
     </div>
   );

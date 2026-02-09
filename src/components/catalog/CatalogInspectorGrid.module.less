@@ -4,7 +4,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 6px 10px 10px;
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-panel);
   overflow: hidden;
 }
 
@@ -37,57 +37,197 @@
   background: rgba(148, 163, 184, 0.15);
 }
 
-.tableHeader {
+.gridWrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gridHeader {
   display: grid;
-  grid-template-columns: 180px 1fr;
-  padding: 4px 6px;
+  gap: 0;
+  padding: 6px 6px 4px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--ide-text-secondary);
+  color: var(--ide-table-header-text);
+  font-weight: 600;
   border-bottom: 1px solid var(--ide-border);
+  background: var(--ide-table-header-bg);
 }
 
-.tableBody {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow: auto;
+.gridHeaderCell {
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid #c8d0dd;
+}
+
+.gridHeaderCell:first-child {
+  border-left: none;
+}
+
+.gridBody {
+  flex: 1 1 auto;
   min-height: 0;
-  padding-right: 4px;
+  overflow: auto;
 }
 
-.tableRow {
+.gridRow {
   display: grid;
-  grid-template-columns: 180px 1fr;
   align-items: center;
-  border-bottom: 1px solid var(--ide-border);
-  padding: 4px 6px;
-  gap: 8px;
+  min-height: 32px;
+  background: #ffffff;
 }
 
-.tableCellLabel {
-  font-size: 12px;
+.gridRow:hover {
+  background: #f5f9ff;
+}
+
+.gridRow:nth-child(even) {
+  background: #f9fafb;
+}
+
+.gridCellWrapper {
+  padding: 0;
+  min-width: 0;
+  border-left: 2px solid #c8d0dd;
+  border-top: 2px solid #c8d0dd;
+  background: transparent;
+}
+
+.gridCellWrapper:first-child {
+  border-left: none;
+}
+
+.gridBody {
+  border-right: 2px solid #c8d0dd;
+  border-bottom: 2px solid #c8d0dd;
+}
+
+.gridCell {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--ide-table-body-text);
+  font-weight: 500;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: transparent;
+  border-radius: 0;
+}
+
+.gridCell:hover {
+  background: #f3f6fb;
+}
+
+.gridCellEmpty {
   color: var(--ide-text-secondary);
 }
 
-.tableCellValue {
-  min-width: 0;
+.gridCellReadOnly {
+  color: var(--ide-text-secondary);
+  background: #f3f4f6;
+  cursor: default;
 }
 
-.inspectorRoot :global(.ant-input),
-.inspectorRoot :global(.ant-input-affix-wrapper),
-.inspectorRoot :global(.ant-select-selector),
-.inspectorRoot :global(.ant-input-number) {
+.gridCellReadOnly:hover {
+  background: #f3f4f6;
+}
+
+.gridCellWrapper :global(.ant-input),
+.gridCellWrapper :global(.ant-input-affix-wrapper),
+.gridCellWrapper :global(.ant-select-selector),
+.gridCellWrapper :global(.ant-input-number) {
   min-height: 28px;
   height: 28px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: #111827;
+  padding: 0 8px;
 }
 
-.inspectorRoot :global(.ant-input-number),
-.inspectorRoot :global(.ant-select) {
+.gridCellWrapper :global(.ant-input-number),
+.gridCellWrapper :global(.ant-select) {
   width: 100%;
 }
 
-.inspectorRoot :global(textarea.ant-input) {
-  min-height: 56px;
+.gridCellWrapper :global(.ant-input::placeholder),
+.gridCellWrapper :global(.ant-input-number-input::placeholder) {
+  color: #9aa4b2;
+}
+
+.gridCellWrapper :global(.ant-select-selector) {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.gridCellWrapper :global(.ant-select-arrow) {
+  color: #334155;
+}
+
+.gridCellWrapper:focus-within {
+  background: #f0f4ff;
+}
+
+.gridCellActive {
+  border: 3px solid #1d4ed8;
+  margin: -1px 0 0 -1px;
+}
+
+.expandButton {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.expandedRow {
+  grid-column: 1 / -1;
+  padding: 10px 12px 12px;
+  border-top: 2px solid #c8d0dd;
+  background: #ffffff;
+}
+
+.expandedTabs {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.expandedTab,
+.expandedTabActive {
+  border: 1px solid #d0d7e2;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  background: #ffffff;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.expandedTabActive {
+  background: #e8eef7;
+  border-color: #b9c3d3;
+}
+
+.expandedGrid {
+  display: grid;
+  gap: 0;
 }

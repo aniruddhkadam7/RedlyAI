@@ -5,8 +5,6 @@ import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import styles from './CatalogInspectorGrid.module.less';
 import MetadataSectionTabs from './MetadataSectionTabs';
 
-const { TextArea } = Input;
-
 type InspectorDraft = {
   name: string;
   elementType: string;
@@ -40,10 +38,15 @@ type InspectorDraft = {
   constraints: string;
 };
 
-type Row = {
-  key: string;
+type ColumnType = 'text' | 'number' | 'select';
+
+type ColumnDef = {
+  key: keyof InspectorDraft;
   label: string;
-  render: () => React.ReactNode;
+  type: ColumnType;
+  readOnly?: boolean;
+  options?: string[];
+  width?: string;
 };
 
 const lifecycleOptions = ['Draft', 'Active', 'Retired'];
@@ -135,13 +138,22 @@ const CatalogInspectorGrid: React.FC = () => {
 
   const [draft, setDraft] = React.useState<InspectorDraft | null>(null);
   const [activeSection, setActiveSection] = React.useState('identity');
+  const [editingKey, setEditingKey] = React.useState<
+    keyof InspectorDraft | null
+  >(null);
+  const [editingValue, setEditingValue] = React.useState<
+    string | number | null
+  >(null);
   const lastSavedRef = React.useRef<string>('');
   const saveTimerRef = React.useRef<number | null>(null);
+  const editInputRef = React.useRef<Record<string, HTMLElement | null>>({});
 
   React.useEffect(() => {
     if (!element || !elementType) {
       setDraft(null);
       lastSavedRef.current = '';
+      setEditingKey(null);
+      setEditingValue(null);
       return;
     }
     const nextDraft = buildDraft(
@@ -207,6 +219,44 @@ const CatalogInspectorGrid: React.FC = () => {
     };
   }, [draft, eaRepository, elementId, trySetEaRepository]);
 
+  const setDraftField = React.useCallback(
+    (key: keyof InspectorDraft, value: string | number | null) => {
+      if (!draft) return;
+      setDraft({ ...draft, [key]: value ?? '' } as InspectorDraft);
+    },
+    [draft],
+  );
+
+  const focusEditor = React.useCallback((key: keyof InspectorDraft) => {
+    window.requestAnimationFrame(() => {
+      const node = editInputRef.current[String(key)];
+      if (node && 'focus' in node) {
+        (node as HTMLElement).focus();
+      }
+    });
+  }, []);
+
+  const startEdit = React.useCallback(
+    (key: keyof InspectorDraft, value: string | number | null) => {
+      setEditingKey(key);
+      setEditingValue(value ?? '');
+      focusEditor(key);
+    },
+    [focusEditor],
+  );
+
+  const commitEdit = React.useCallback(() => {
+    if (!editingKey) return;
+    setDraftField(editingKey, editingValue ?? '');
+    setEditingKey(null);
+    setEditingValue(null);
+  }, [editingKey, editingValue, setDraftField]);
+
+  const cancelEdit = React.useCallback(() => {
+    setEditingKey(null);
+    setEditingValue(null);
+  }, []);
+
   const sectionTabs = [
     { key: 'identity', label: 'Identity' },
     { key: 'governance', label: 'Governance' },
@@ -227,380 +277,288 @@ const CatalogInspectorGrid: React.FC = () => {
     );
   }
 
-  const renderRows = (): Row[] => {
-    const fields: Record<string, Row[]> = {
-      identity: [
-        {
-          key: 'name',
-          label: 'Name',
-          render: () => (
-            <Input
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            />
-          ),
-        },
-        {
-          key: 'type',
-          label: 'Type',
-          render: () => <Input value={draft.elementType} readOnly />,
-        },
-        {
-          key: 'domain',
-          label: 'Domain',
-          render: () => <Input value={draft.domain} readOnly />,
-        },
-        {
-          key: 'id',
-          label: 'Unique ID',
-          render: () => <Input value={draft.id} readOnly />,
-        },
-        {
-          key: 'created',
-          label: 'Created',
-          render: () => <Input value={draft.createdAt} readOnly />,
-        },
-        {
-          key: 'modified',
-          label: 'Modified',
-          render: () => <Input value={draft.lastModifiedAt} readOnly />,
-        },
-      ],
-      governance: [
-        {
-          key: 'owner',
-          label: 'Owner',
-          render: () => (
-            <Input
-              value={draft.owner}
-              onChange={(e) => setDraft({ ...draft, owner: e.target.value })}
-            />
-          ),
-        },
-        {
-          key: 'lifecycle',
-          label: 'Lifecycle',
-          render: () => (
-            <Select
-              value={draft.lifecycle}
-              onChange={(value) => setDraft({ ...draft, lifecycle: value })}
-              options={lifecycleOptions.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          ),
-        },
-        {
-          key: 'status',
-          label: 'Status',
-          render: () => (
-            <Select
-              value={draft.status}
-              onChange={(value) => setDraft({ ...draft, status: value })}
-              options={statusOptions.map((value) => ({ value, label: value }))}
-            />
-          ),
-        },
-        {
-          key: 'criticality',
-          label: 'Criticality',
-          render: () => (
-            <Select
-              value={draft.criticality}
-              onChange={(value) => setDraft({ ...draft, criticality: value })}
-              options={criticalityOptions.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          ),
-        },
-        {
-          key: 'riskScore',
-          label: 'Risk Score',
-          render: () => (
-            <InputNumber
-              min={1}
-              max={5}
-              value={draft.riskScore ?? undefined}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  riskScore: typeof value === 'number' ? value : null,
-                })
-              }
-            />
-          ),
-        },
-      ],
-      strategy: [
-        {
-          key: 'linkedObjective',
-          label: 'Linked Objective',
-          render: () => (
-            <Input
-              value={draft.linkedObjective}
-              onChange={(e) =>
-                setDraft({ ...draft, linkedObjective: e.target.value })
-              }
-            />
-          ),
-        },
-        {
-          key: 'strategicTheme',
-          label: 'Strategic Theme',
-          render: () => (
-            <Input
-              value={draft.strategicTheme}
-              onChange={(e) =>
-                setDraft({ ...draft, strategicTheme: e.target.value })
-              }
-            />
-          ),
-        },
-        {
-          key: 'roadmapPhase',
-          label: 'Roadmap Phase',
-          render: () => (
-            <Select
-              value={draft.roadmapPhase}
-              onChange={(value) => setDraft({ ...draft, roadmapPhase: value })}
-              options={roadmapOptions.map((value) => ({ value, label: value }))}
-            />
-          ),
-        },
-        {
-          key: 'investmentPriority',
-          label: 'Investment Priority',
-          render: () => (
-            <Select
-              value={draft.investmentPriority}
-              onChange={(value) =>
-                setDraft({ ...draft, investmentPriority: value })
-              }
-              options={investmentOptions.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          ),
-        },
-      ],
-      financial: [
-        {
-          key: 'annualCost',
-          label: 'Annual Cost',
-          render: () => (
-            <InputNumber
-              value={draft.annualCost ?? undefined}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  annualCost: typeof value === 'number' ? value : null,
-                })
-              }
-            />
-          ),
-        },
-        {
-          key: 'vendor',
-          label: 'Vendor',
-          render: () => (
-            <Input
-              value={draft.vendor}
-              onChange={(e) => setDraft({ ...draft, vendor: e.target.value })}
-            />
-          ),
-        },
-        {
-          key: 'contractExpiry',
-          label: 'Contract Expiry',
-          render: () => (
-            <Input
-              value={draft.contractExpiry}
-              onChange={(e) =>
-                setDraft({ ...draft, contractExpiry: e.target.value })
-              }
-            />
-          ),
-        },
-        {
-          key: 'technicalDebtScore',
-          label: 'Technical Debt Score',
-          render: () => (
-            <InputNumber
-              min={0}
-              max={10}
-              value={draft.technicalDebtScore ?? undefined}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  technicalDebtScore: typeof value === 'number' ? value : null,
-                })
-              }
-            />
-          ),
-        },
-      ],
-      ops: [
-        {
-          key: 'sla',
-          label: 'SLA',
-          render: () => (
-            <Select
-              value={draft.sla}
-              onChange={(value) => setDraft({ ...draft, sla: value })}
-              options={slaOptions.map((value) => ({ value, label: value }))}
-            />
-          ),
-        },
-        {
-          key: 'availabilityPct',
-          label: 'Availability %',
-          render: () => (
-            <InputNumber
-              min={0}
-              max={100}
-              value={draft.availabilityPct ?? undefined}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  availabilityPct: typeof value === 'number' ? value : null,
-                })
-              }
-            />
-          ),
-        },
-        {
-          key: 'incidentRate',
-          label: 'Incident Rate',
-          render: () => (
-            <InputNumber
-              min={0}
-              value={draft.incidentRate ?? undefined}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  incidentRate: typeof value === 'number' ? value : null,
-                })
-              }
-            />
-          ),
-        },
-        {
-          key: 'performanceKpi',
-          label: 'Performance KPI',
-          render: () => (
-            <Input
-              value={draft.performanceKpi}
-              onChange={(e) =>
-                setDraft({ ...draft, performanceKpi: e.target.value })
-              }
-            />
-          ),
-        },
-      ],
-      security: [
-        {
-          key: 'dataClassification',
-          label: 'Data Classification',
-          render: () => (
-            <Select
-              value={draft.dataClassification}
-              onChange={(value) =>
-                setDraft({ ...draft, dataClassification: value })
-              }
-              options={classificationOptions.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          ),
-        },
-        {
-          key: 'regulatoryImpact',
-          label: 'Regulatory Impact',
-          render: () => (
-            <Input
-              value={draft.regulatoryImpact}
-              onChange={(e) =>
-                setDraft({ ...draft, regulatoryImpact: e.target.value })
-              }
-            />
-          ),
-        },
-        {
-          key: 'securityTier',
-          label: 'Security Tier',
-          render: () => (
-            <Select
-              value={draft.securityTier}
-              onChange={(value) => setDraft({ ...draft, securityTier: value })}
-              options={securityOptions.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          ),
-        },
-        {
-          key: 'auditStatus',
-          label: 'Audit Status',
-          render: () => (
-            <Select
-              value={draft.auditStatus}
-              onChange={(value) => setDraft({ ...draft, auditStatus: value })}
-              options={auditOptions.map((value) => ({ value, label: value }))}
-            />
-          ),
-        },
-      ],
-      docs: [
-        {
-          key: 'description',
-          label: 'Description',
-          render: () => (
-            <TextArea
-              rows={2}
-              value={draft.description}
-              onChange={(e) =>
-                setDraft({ ...draft, description: e.target.value })
-              }
-            />
-          ),
-        },
-        {
-          key: 'notes',
-          label: 'Notes',
-          render: () => (
-            <TextArea
-              rows={2}
-              value={draft.notes}
-              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-            />
-          ),
-        },
-        {
-          key: 'constraints',
-          label: 'Constraints',
-          render: () => (
-            <TextArea
-              rows={2}
-              value={draft.constraints}
-              onChange={(e) =>
-                setDraft({ ...draft, constraints: e.target.value })
-              }
-            />
-          ),
-        },
-      ],
-    };
-
-    return fields[activeSection] ?? [];
+  const columnsBySection: Record<string, ColumnDef[]> = {
+    identity: [
+      { key: 'name', label: 'Name', type: 'text', width: 'minmax(160px, 1fr)' },
+      { key: 'elementType', label: 'Type', type: 'text' },
+      { key: 'domain', label: 'Domain', type: 'text' },
+      {
+        key: 'id',
+        label: 'Unique ID',
+        type: 'text',
+        readOnly: true,
+        width: 'minmax(220px, 1fr)',
+      },
+      { key: 'createdAt', label: 'Created', type: 'text', readOnly: true },
+      {
+        key: 'lastModifiedAt',
+        label: 'Modified',
+        type: 'text',
+        readOnly: true,
+      },
+    ],
+    governance: [
+      {
+        key: 'owner',
+        label: 'Owner',
+        type: 'text',
+        width: 'minmax(160px, 1fr)',
+      },
+      {
+        key: 'lifecycle',
+        label: 'Lifecycle',
+        type: 'select',
+        options: lifecycleOptions,
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        type: 'select',
+        options: statusOptions,
+      },
+      {
+        key: 'criticality',
+        label: 'Criticality',
+        type: 'select',
+        options: criticalityOptions,
+      },
+      { key: 'riskScore', label: 'Risk Score', type: 'number' },
+    ],
+    strategy: [
+      {
+        key: 'linkedObjective',
+        label: 'Linked Objective',
+        type: 'text',
+        width: 'minmax(180px, 1fr)',
+      },
+      {
+        key: 'strategicTheme',
+        label: 'Strategic Theme',
+        type: 'text',
+        width: 'minmax(160px, 1fr)',
+      },
+      {
+        key: 'roadmapPhase',
+        label: 'Roadmap Phase',
+        type: 'select',
+        options: roadmapOptions,
+      },
+      {
+        key: 'investmentPriority',
+        label: 'Investment Priority',
+        type: 'select',
+        options: investmentOptions,
+      },
+    ],
+    financial: [
+      { key: 'annualCost', label: 'Annual Cost', type: 'number' },
+      {
+        key: 'vendor',
+        label: 'Vendor',
+        type: 'text',
+        width: 'minmax(160px, 1fr)',
+      },
+      { key: 'contractExpiry', label: 'Contract Expiry', type: 'text' },
+      {
+        key: 'technicalDebtScore',
+        label: 'Technical Debt Score',
+        type: 'number',
+      },
+    ],
+    ops: [
+      { key: 'sla', label: 'SLA', type: 'select', options: slaOptions },
+      { key: 'availabilityPct', label: 'Availability %', type: 'number' },
+      { key: 'incidentRate', label: 'Incident Rate', type: 'number' },
+      {
+        key: 'performanceKpi',
+        label: 'Performance KPI',
+        type: 'text',
+        width: 'minmax(180px, 1fr)',
+      },
+    ],
+    security: [
+      {
+        key: 'dataClassification',
+        label: 'Data Classification',
+        type: 'select',
+        options: classificationOptions,
+        width: 'minmax(200px, 1fr)',
+      },
+      {
+        key: 'regulatoryImpact',
+        label: 'Regulatory Impact',
+        type: 'text',
+        width: 'minmax(180px, 1fr)',
+      },
+      {
+        key: 'securityTier',
+        label: 'Security Tier',
+        type: 'select',
+        options: securityOptions,
+      },
+      {
+        key: 'auditStatus',
+        label: 'Audit Status',
+        type: 'select',
+        options: auditOptions,
+      },
+    ],
+    docs: [
+      {
+        key: 'description',
+        label: 'Description',
+        type: 'text',
+        width: 'minmax(240px, 1fr)',
+      },
+      {
+        key: 'notes',
+        label: 'Notes',
+        type: 'text',
+        width: 'minmax(200px, 1fr)',
+      },
+      {
+        key: 'constraints',
+        label: 'Constraints',
+        type: 'text',
+        width: 'minmax(200px, 1fr)',
+      },
+    ],
   };
 
-  const rows = renderRows();
+  const columns = columnsBySection[activeSection] ?? [];
+  const editableColumns = columns.filter((column) => !column.readOnly);
+
+  const moveToNextEditable = (direction: 1 | -1) => {
+    if (!editingKey) return;
+    const currentIndex = editableColumns.findIndex(
+      (column) => column.key === editingKey,
+    );
+    if (currentIndex === -1) return;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= editableColumns.length) return;
+    const nextColumn = editableColumns[nextIndex];
+    const nextValue = draft ? draft[nextColumn.key] : '';
+    startEdit(nextColumn.key, (nextValue ?? '') as string | number | null);
+  };
+
+  const handleEditorKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitEdit();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelEdit();
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      commitEdit();
+      moveToNextEditable(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      commitEdit();
+      moveToNextEditable(1);
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      commitEdit();
+      moveToNextEditable(-1);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      commitEdit();
+      moveToNextEditable(1);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      commitEdit();
+      moveToNextEditable(-1);
+    }
+  };
+
+  const renderCell = (column: ColumnDef) => {
+    if (!draft) return null;
+    const value = draft[column.key];
+    const isEditing = editingKey === column.key && !column.readOnly;
+    const isActive = editingKey === column.key;
+    if (!isEditing) {
+      const isEmpty = !(value || value === 0);
+      return (
+        <div
+          className={`${styles.gridCell} ${column.readOnly ? styles.gridCellReadOnly : ''} ${isEmpty ? styles.gridCellEmpty : ''} ${isActive ? styles.gridCellActive : ''}`}
+          onClick={() => {
+            if (column.readOnly) return;
+            startEdit(column.key, (value ?? '') as string | number | null);
+          }}
+        >
+          {value || value === 0 ? String(value) : ''}
+        </div>
+      );
+    }
+
+    if (column.type === 'number') {
+      const numberValue =
+        typeof editingValue === 'number'
+          ? editingValue
+          : editingValue
+            ? Number(editingValue)
+            : undefined;
+      return (
+        <InputNumber
+          value={numberValue}
+          onChange={(next) =>
+            setEditingValue(typeof next === 'number' ? next : null)
+          }
+          onKeyDown={handleEditorKeyDown}
+          onBlur={commitEdit}
+          ref={(node) => {
+            editInputRef.current[String(column.key)] = node;
+          }}
+        />
+      );
+    }
+
+    if (column.type === 'select') {
+      return (
+        <Select
+          value={String(editingValue ?? '')}
+          onChange={(next) => {
+            setEditingValue(next);
+            setDraftField(column.key, next);
+            setEditingKey(null);
+          }}
+          options={(column.options ?? []).map((option) => ({
+            value: option,
+            label: option,
+          }))}
+          onKeyDown={handleEditorKeyDown}
+          ref={(node) => {
+            editInputRef.current[String(column.key)] =
+              node as HTMLElement | null;
+          }}
+        />
+      );
+    }
+
+    return (
+      <Input
+        value={String(editingValue ?? '')}
+        onChange={(event) => setEditingValue(event.target.value)}
+        onKeyDown={handleEditorKeyDown}
+        onBlur={commitEdit}
+        ref={(node) => {
+          editInputRef.current[String(column.key)] = node;
+        }}
+      />
+    );
+  };
 
   return (
     <div className={styles.inspectorRoot}>
@@ -609,17 +567,42 @@ const CatalogInspectorGrid: React.FC = () => {
         activeKey={activeSection}
         onChange={setActiveSection}
       />
-      <div className={styles.tableHeader}>
-        <div>Field</div>
-        <div>Value</div>
-      </div>
-      <div className={styles.tableBody}>
-        {rows.map((row) => (
-          <div key={row.key} className={styles.tableRow}>
-            <div className={styles.tableCellLabel}>{row.label}</div>
-            <div className={styles.tableCellValue}>{row.render()}</div>
+      <div className={styles.gridWrap}>
+        <div
+          className={styles.gridHeader}
+          style={{
+            gridTemplateColumns: `28px ${columns
+              .map((column) => column.width ?? 'minmax(140px, 1fr)')
+              .join(' ')}`,
+          }}
+        >
+          <div className={styles.gridHeaderCell} />
+          {columns.map((column) => (
+            <div key={String(column.key)} className={styles.gridHeaderCell}>
+              {column.label}
+            </div>
+          ))}
+        </div>
+        <div className={styles.gridBody}>
+          <div
+            className={styles.gridRow}
+            style={{
+              gridTemplateColumns: `28px ${columns
+                .map((column) => column.width ?? 'minmax(140px, 1fr)')
+                .join(' ')}`,
+            }}
+          >
+            <div className={styles.gridCellWrapper} />
+            {columns.map((column) => (
+              <div
+                key={String(column.key)}
+                className={`${styles.gridCellWrapper} ${editingKey === column.key ? styles.gridCellActive : ''}`}
+              >
+                {renderCell(column)}
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

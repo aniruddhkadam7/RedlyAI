@@ -14,8 +14,9 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px 12px;
-  background: var(--ide-bg-layout);
+  background: var(--ide-bg-container);
   border-bottom: 1px solid var(--ide-border);
+  box-shadow: var(--ide-shadow-subtle);
 }
 
 .registryTitle {
@@ -41,8 +42,8 @@
 .filterPanelClosed {
   overflow: hidden;
   transition: max-height 200ms ease, opacity 200ms ease;
-  background: var(--ide-bg-layout);
-  border-bottom: 1px solid var(--ide-border);
+  background: var(--ide-bg-container);
+  border-bottom: 1px solid var(--ide-border-subtle);
 }
 
 .filterPanelOpen {
@@ -71,6 +72,7 @@
   overflow: hidden;
   flex: 1 1 auto;
   min-height: 0;
+  background: var(--ide-bg-layout);
 }
 
 .registryBodyFull {
@@ -79,9 +81,10 @@
 
 .registryGrid {
   min-width: 0;
-  background: transparent;
-  border: none;
-  border-radius: 0;
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  border-radius: 10px;
+  box-shadow: var(--ide-shadow-subtle);
   padding: 0;
   height: 100%;
   display: flex;
@@ -95,9 +98,11 @@
   padding: 12px;
   border: 1px solid var(--ide-border);
   border-radius: 10px;
-  background: var(--ide-bg-container);
-  height: fit-content;
-  align-self: start;
+  background: var(--ide-bg-panel);
+  box-shadow: var(--ide-shadow-subtle);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .inspectorHeader {
@@ -111,12 +116,15 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .detailGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 .inspectorList {
@@ -148,15 +156,18 @@
 
 .catalogTableWrap {
   min-width: 0;
+  height: 100%;
+  background: var(--ide-bg-container);
 }
 
 .catalogTable {
   font-size: 12.5px;
+  color: var(--ide-table-body-text);
 }
 
 .catalogTable :global(.ant-table-thead > tr > th),
 .catalogTable :global(.ant-table-tbody > tr > td) {
-  padding: 6px 10px;
+  padding: 6px 8px;
 }
 
 .catalogTable :global(.ant-table-selection-column) {
@@ -171,6 +182,40 @@
 
 .catalogTable :global(.ant-table-thead > tr > th) {
   font-size: 12px;
+  background: var(--ide-table-header-bg);
+  color: var(--ide-table-header-text);
+  border-bottom: 1px solid var(--ide-border);
+  border-right: 1px solid var(--ide-border-subtle);
+}
+
+.catalogTable :global(.ant-table-thead > tr > th:last-child) {
+  border-right: none;
+}
+
+.catalogTable :global(.ant-table-tbody > tr > td) {
+  background: #ffffff;
+  color: var(--ide-table-body-text);
+  border: 1px solid #d8dee6;
+  border-bottom-color: #e6eaf0;
+  border-right-color: #eef1f4;
+  border-radius: 4px;
+  outline: none;
+}
+
+.catalogTable :global(.ant-table-tbody > tr > td:last-child) {
+  border-right: none;
+}
+
+.catalogTable :global(.ant-table-tbody > tr:hover > td) {
+  background: #f5f9ff;
+}
+
+.catalogTable :global(.ant-table-tbody > tr.ant-table-row-selected > td) {
+  background: #e9f2ff;
+}
+
+.catalogTable :global(.ant-table-tbody > tr.ant-table-row-selected > td:first-child) {
+  box-shadow: inset 3px 0 0 #2563eb;
 }
 
 .catalogTable :global(.ant-btn-link),
@@ -184,17 +229,17 @@
 }
 
 .catalogTable :global(.ant-table) {
-  background: transparent;
+  background: var(--ide-bg-container);
 }
 
 .highlightRow :global(td) {
-  background: rgba(255, 223, 128, 0.35);
+  background: #e9f2ff;
 }
 
 .catalogFilters {
   padding: 6px 8px;
   border: 1px solid var(--ide-border);
-  background: var(--ide-bg-layout);
+  background: var(--ide-bg-container);
   border-radius: 6px;
   display: grid;
   grid-template-columns: repeat(8, minmax(90px, 1fr));
@@ -216,7 +261,7 @@
 
 .filterLabel {
   font-size: 11px;
-  color: var(--ide-text-secondary);
+  color: var(--ide-table-meta-text);
 }
 
 .filterControl {
@@ -249,6 +294,7 @@
 
 .ownerRole {
   font-size: 12px;
+  color: var(--ide-table-meta-text);
 }
 
 .resizeHandle {

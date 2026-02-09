@@ -3,8 +3,8 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--ide-bg-container);
-  color: #1f2937;
+  background: var(--ide-bg-panel);
+  color: var(--ide-text);
 }
 
 .consoleHeader {
@@ -13,8 +13,8 @@
   gap: 8px 12px;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-header-bg);
+  border-bottom: 1px solid var(--ide-border-subtle);
+  background: var(--ide-bg-panel);
 }
 
 .filterGroup {
@@ -26,7 +26,7 @@
 
 .filterLabel {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ide-text-secondary);
 }
 
 .filterSelect {
@@ -46,7 +46,7 @@
 }
 
 .emptyState {
-  color: #6b7280;
+  color: var(--ide-text-secondary);
   padding: 20px 8px;
   font-size: 13px;
 }
@@ -71,13 +71,13 @@
   display: flex;
   gap: 10px;
   font-size: 11px;
-  color: #64748b;
+  color: var(--ide-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .timestamp {
-  color: #6b7280;
+  color: var(--ide-text-secondary);
 }
 
 .domain {
@@ -85,12 +85,12 @@
 }
 
 .level {
-  color: #111827;
+  color: var(--ide-text);
 }
 
 .rowMessage {
   font-size: 13px;
-  color: #1f2937;
+  color: var(--ide-text);
 }
 
 .rowContext {

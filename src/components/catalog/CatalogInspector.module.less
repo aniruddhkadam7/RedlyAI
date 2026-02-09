@@ -3,6 +3,9 @@
   overflow: hidden;
   padding: 10px 12px;
   background: var(--ide-bg-container);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .emptyState {
@@ -18,11 +21,18 @@
   font-weight: 600;
 }
 
+.collapse {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .sectionGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 14px;
-  padding: 6px 0 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 0 10px;
 }
 
 .field {
@@ -43,6 +53,11 @@
 .inspectorRoot :global(.ant-input-number) {
   min-height: 32px;
   height: 32px;
+}
+
+.inspectorRoot :global(.ant-input-number),
+.inspectorRoot :global(.ant-select) {
+  width: 100%;
 }
 
 .inspectorRoot :global(textarea.ant-input) {

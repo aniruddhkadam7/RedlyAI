@@ -72,19 +72,19 @@
 }
 
 .activitySider {
-  background: #1b2a55 !important;
-  color: #f3f6ff;
+  background: var(--ide-bg-sidebar) !important;
+  color: var(--ide-rail-icon);
 }
 
 .activitySider :global(.ant-layout-sider-children) {
-  background: #1b2a55;
+  background: var(--ide-bg-sidebar);
 }
 
 .activitySider :global(.ant-btn),
 .activitySider :global(.ant-btn .anticon),
 .activitySider :global(.ant-typography),
 .activitySider :global(.ant-typography span) {
-  color: #f3f6ff !important;
+  color: var(--ide-rail-icon) !important;
 }
 
 .topHeader :global(.ant-typography),
@@ -181,7 +181,7 @@
   flex-direction: row;
   height: 100%;
   min-height: 0;
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-layout);
 }
 
 .iconRail {
@@ -191,8 +191,8 @@
   flex-direction: column;
   gap: 6px;
   padding: 7px 7px;
-  border-right: none;
-  background: var(--ide-rail-bg);
+  border-right: 1px solid var(--ide-border);
+  background: var(--ide-bg-sidebar);
 }
 
 .iconRailTop {
@@ -225,7 +225,7 @@
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-sidebar);
 }
 
 .leftDockResizer {
@@ -1481,16 +1481,17 @@
   flex-direction: column;
   min-height: 0;
   border-top: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  background: var(--ide-bg-panel);
+  box-shadow: var(--ide-shadow-subtle);
 }
 
 .bottomPanelHeader {
-  height: 32px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--ide-border);
-  background: var(--ide-bg-container);
+  border-bottom: 1px solid var(--ide-border-subtle);
+  background: var(--ide-bg-panel);
 }
 
 .panelTabs {
@@ -1499,21 +1500,42 @@
   flex-wrap: wrap;
 }
 
+.panelMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ide-text-secondary);
+}
+
 .panelTab,
 .panelTabActive {
   border: 1px solid transparent;
   border-radius: 6px;
-  padding: 2px 8px;
+  padding: 4px 10px;
   font-size: 12px;
   background: transparent;
-  color: var(--ide-text-primary);
+  color: var(--ide-text-secondary);
   cursor: pointer;
+  position: relative;
 }
 
 .panelTabActive {
   border-color: var(--ide-border);
-  color: var(--ide-text-primary);
-  background: rgba(148, 163, 184, 0.15);
+  color: var(--ide-text);
+  background: #ffffff;
+}
+
+.panelTabActive::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -6px;
+  height: 2px;
+  background: #2563eb;
+  border-radius: 2px;
 }
 
 .bottomPanelTitle {
@@ -1526,6 +1548,31 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  position: relative;
+  background: var(--ide-bg-panel);
+  color: var(--ide-text);
+}
+
+.bottomPanelContent {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bottomPanelPane {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 16px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.bottomPanelPaneActive {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .bottomPanelScrollable {
@@ -1543,7 +1590,7 @@
   align-items: center;
   justify-content: center;
   border-top: 1px solid var(--ide-border);
-  background: var(--ide-rail-bg);
+  background: var(--ide-bg-panel);
 }
 
 .editorTabs {

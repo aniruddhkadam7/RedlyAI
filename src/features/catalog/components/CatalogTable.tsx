@@ -49,6 +49,7 @@ const renderNullable = (value: unknown) => {
 };
 
 const lifecycleOptions = ['Draft', 'Active', 'Retired'];
+const statusOptions = ['Active', 'Approved', 'In Review', 'Deprecated'];
 
 export type CatalogTableProps = {
   data: CatalogElement[];
@@ -58,7 +59,7 @@ export type CatalogTableProps = {
   onSortChange: (sort: CatalogSortState) => void;
   onUpdateField: (args: {
     id: string;
-    field: 'name' | 'owner' | 'lifecycle';
+    field: 'name' | 'owner' | 'lifecycle' | 'status';
     value: string;
   }) => void;
   onAction: (
@@ -92,7 +93,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
   const tableRef = React.useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = React.useState<{
     id: string;
-    field: 'name' | 'owner' | 'lifecycle';
+    field: 'name' | 'owner' | 'lifecycle' | 'status';
   } | null>(null);
 
   React.useEffect(() => {
@@ -255,7 +256,39 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       width: 120,
       sorter: true,
       key: 'status',
-      render: (value) => renderNullable(value),
+      render: (value, record) => {
+        const isEditing =
+          editing?.id === record.id && editing.field === 'status';
+        if (isEditing) {
+          return (
+            <Select
+              autoFocus
+              defaultValue={String(value) || 'Active'}
+              onChange={(next) => {
+                onUpdateField({
+                  id: record.id,
+                  field: 'status',
+                  value: next,
+                });
+                setEditing(null);
+              }}
+              options={statusOptions.map((option) => ({
+                value: option,
+                label: option,
+              }))}
+              style={{ width: 140 }}
+            />
+          );
+        }
+        return (
+          <Button
+            type="text"
+            onClick={() => setEditing({ id: record.id, field: 'status' })}
+          >
+            {renderNullable(value)}
+          </Button>
+        );
+      },
     },
     {
       title: 'Criticality',

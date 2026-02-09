@@ -1,5 +1,4 @@
 import {
-  ApartmentOutlined,
   ArrowsAltOutlined,
   BuildOutlined,
   CaretDownOutlined,
@@ -9,9 +8,7 @@ import {
   DoubleLeftOutlined,
   FolderOpenOutlined,
   FundOutlined,
-  LineChartOutlined,
   NodeIndexOutlined,
-  ProjectOutlined,
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -531,9 +528,14 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
   shellOnly = false,
 }) => {
   const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
   const location = useLocation();
   const pathname = location.pathname || '/';
   const { initialState } = useModel('@@initialState');
+  const currentUserLabel =
+    initialState?.currentUser?.name ||
+    initialState?.currentUser?.userid ||
+    'Unknown user';
   const runtimeEnv = initialState?.runtimeEnv;
   const isDesktop = runtimeEnv?.isDesktop ?? false;
   const topMenuBarHeight = isDesktop
@@ -553,7 +555,6 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     selection,
     setActiveDocument,
     setSelectedElement,
-    setActiveElement,
     setActiveImpactElement,
   } = useIdeSelection();
   const { project } = useEaProject();
@@ -565,37 +566,86 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     if (access === 'architect' || access === 'user') return 'Architect';
     return 'Viewer';
   }, [initialState?.currentUser?.access]);
-  const canModel = React.useMemo(
-    () =>
-      hasRepositoryPermission(userRole, 'createElement') ||
-      hasRepositoryPermission(userRole, 'editElement') ||
-      hasRepositoryPermission(userRole, 'createRelationship') ||
-      hasRepositoryPermission(userRole, 'editRelationship'),
-    [userRole],
-  );
-  const canEditView = React.useMemo(
-    () => hasRepositoryPermission(userRole, 'editView'),
-    [userRole],
-  );
-  const governanceStrict = (metadata as any)?.governanceMode === 'Strict';
-  const governanceReadOnly = governanceStrict && !canEditView;
-  const currentUserLabel = React.useMemo(() => {
-    const name =
-      initialState?.currentUser?.name || initialState?.currentUser?.userid;
-    return name && name.trim() ? name.trim() : 'Unknown user';
-  }, [initialState?.currentUser?.name, initialState?.currentUser?.userid]);
-  const repositoryName = metadata?.repositoryName || 'default';
-  const generateWorkspaceId = React.useCallback(() => {
-    try {
-      if (typeof globalThis.crypto?.randomUUID === 'function')
-        return globalThis.crypto.randomUUID();
-    } catch {
-      // fall through
+
+  const canModel =
+    hasRepositoryPermission(userRole, 'createElement') ||
+    hasRepositoryPermission(userRole, 'editElement') ||
+    hasRepositoryPermission(userRole, 'createRelationship') ||
+    hasRepositoryPermission(userRole, 'editRelationship');
+
+  const canEditView = hasRepositoryPermission(userRole, 'editView');
+  const cssVars = React.useMemo(() => {
+    const baseVars: Record<string, string> = {
+      '--ide-bg-layout': token.colorBgLayout,
+      '--ide-bg-container': token.colorBgContainer,
+      '--ide-bg-panel': token.colorBgElevated,
+      '--ide-bg-sidebar': token.colorBgContainer,
+      '--ide-border': token.colorBorderSecondary,
+      '--ide-border-subtle': token.colorBorderSecondary,
+      '--ide-header-bg': token.colorBgElevated,
+      '--ide-rail-bg': token.colorFillTertiary,
+      '--ide-control-hover': token.colorFillSecondary,
+      '--ide-resizer-hover': token.colorFillSecondary,
+      '--ide-tab-inactive-bg': token.colorFillTertiary,
+      '--ide-table-header-bg': token.colorFillQuaternary,
+      '--ide-table-header-text': token.colorTextSecondary,
+      '--ide-table-body-text': token.colorText,
+      '--ide-table-meta-text': token.colorTextSecondary,
+      '--ide-rail-icon': token.colorTextSecondary,
+      '--ide-rail-icon-active': token.colorText,
+      '--ide-rail-active-bg': token.colorBgTextHover,
+      '--ide-shadow-subtle': '0 1px 2px rgba(0,0,0,0.04)',
+      // Explorer tree visuals must be neutral (no primary blue selection).
+      // Use the text hover/active background tokens, which are designed to be subtle and neutral.
+      '--ide-tree-hover-bg': token.colorBgTextHover,
+      '--ide-tree-selected-bg':
+        (token as any).colorBgTextActive ?? token.colorBgTextHover,
+      '--ide-tree-text': token.colorText,
+      '--ide-tree-muted': token.colorTextTertiary,
+      '--ide-tree-accent': token.colorTextSecondary,
+      '--ide-tree-line': token.colorBorder,
+      '--ide-text': token.colorText,
+      '--ide-text-secondary': token.colorTextSecondary,
+      '--ide-text-tertiary': token.colorTextTertiary,
+      '--ide-fill-secondary': token.colorFillSecondary,
+      '--ide-bg-elevated': token.colorBgElevated,
+      '--ide-topbar-height': isDesktop
+        ? 'env(titlebar-area-height, 34px)'
+        : `${topMenuBarHeight}px`,
+      '--ide-statusbar-height': `${STATUS_BAR_HEIGHT}px`,
+    };
+
+    if (!isDark) {
+      return {
+        ...baseVars,
+        '--ide-bg-layout': '#f4f6f9',
+        '--ide-bg-container': '#ffffff',
+        '--ide-bg-panel': '#fafbfc',
+        '--ide-bg-sidebar': '#f8f9fb',
+        '--ide-border': '#e3e6ea',
+        '--ide-border-subtle': '#e8ecf1',
+        '--ide-header-bg': '#ffffff',
+        '--ide-rail-bg': '#f8f9fb',
+        '--ide-control-hover': '#eef2f6',
+        '--ide-resizer-hover': '#e8ecf1',
+        '--ide-tab-inactive-bg': '#f3f5f8',
+        '--ide-table-header-bg': '#eef2f6',
+        '--ide-table-header-text': '#344054',
+        '--ide-table-body-text': '#1f2937',
+        '--ide-table-meta-text': '#6b7280',
+        '--ide-rail-icon': '#475569',
+        '--ide-rail-icon-active': '#1f2937',
+        '--ide-rail-active-bg': '#e9f2ff',
+        '--ide-text': '#1f2937',
+        '--ide-text-secondary': '#6b7280',
+        '--ide-text-tertiary': '#94a3b8',
+      };
     }
-    return `ws-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  }, []);
-  const createDefaultWorkspace = React.useCallback((): DesignWorkspace => {
-    const now = new Date().toISOString();
+
+    return baseVars;
+  }, [isDark, isDesktop, token, topMenuBarHeight]);
+
+  const createDefaultWorkspace = React.useCallback(() => {
     return {
       id: generateWorkspaceId(),
       repositoryName,
@@ -618,174 +668,9 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     repositoryName,
   ]);
 
-  React.useEffect(() => {
-    const onStudioOpen = (event: Event) => {
-      if (!canEnterStudio()) return;
-      const e = event as CustomEvent<{
-        id?: string;
-        name?: string;
-        description?: string;
-        layout?: {
-          nodes?: DesignWorkspaceLayoutNode[];
-          edges?: DesignWorkspaceLayoutEdge[];
-        } | null;
-      }>;
-      const detail = e.detail ?? {};
-      const now = new Date().toISOString();
-      const layout = detail.layout ?? null;
-      const next: DesignWorkspace = {
-        id: detail.id ?? generateWorkspaceId(),
-        repositoryName,
-        name: (detail.name ?? '').trim() || 'Untitled Workspace',
-        description: detail.description ?? '',
-        status: 'DRAFT',
-        createdBy: currentUserLabel || 'unknown',
-        createdAt: now,
-        updatedAt: now,
-        repositoryUpdatedAt: metadata?.updatedAt,
-        mode: 'ITERATIVE',
-        stagedElements: [],
-        stagedRelationships: [],
-        layout: {
-          nodes: Array.isArray(layout?.nodes) ? (layout?.nodes ?? []) : [],
-          edges: Array.isArray(layout?.edges) ? (layout?.edges ?? []) : [],
-        },
-      };
-
-      DesignWorkspaceStore.save(repositoryName, next);
-      setActiveWorkspace(next);
-      setStudioMode(true);
-      setPanelMode('properties');
-    };
-
-    window.addEventListener('ea:studio.open', onStudioOpen as EventListener);
-    return () =>
-      window.removeEventListener(
-        'ea:studio.open',
-        onStudioOpen as EventListener,
-      );
-  }, [
-    canEnterStudio,
-    currentUserLabel,
-    generateWorkspaceId,
-    metadata?.updatedAt,
-    repositoryName,
-  ]);
-
-  React.useEffect(() => {
-    const onStudioViewOpen = (event: Event) => {
-      const e = event as CustomEvent<{
-        viewId?: string;
-        view?: ViewInstance;
-        readOnly?: boolean;
-        replay?: boolean;
-      }>;
-      if (e.detail?.replay) return;
-      const viewId = (e.detail?.viewId ?? e.detail?.view?.id ?? '').trim();
-      if (!viewId) return;
-      if (!canEnterStudio()) return;
-      if (studioMode) return;
-      setStudioMode(true);
-      setPanelMode('properties');
-      setPropertiesReadOnly(false);
-      setPendingStudioViewOpen({
-        viewId,
-        readOnly: e.detail?.readOnly,
-        view: e.detail?.view ?? null,
-      });
-    };
-
-    window.addEventListener(
-      'ea:studio.view.open',
-      onStudioViewOpen as EventListener,
-    );
-    return () =>
-      window.removeEventListener(
-        'ea:studio.view.open',
-        onStudioViewOpen as EventListener,
-      );
-  }, [
-    canEnterStudio,
-    setPanelMode,
-    setPropertiesReadOnly,
-    setStudioMode,
-    studioMode,
-  ]);
-
   const triggerCreateView = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent('ea:studio.view.create'));
   }, []);
-
-  React.useEffect(() => {
-    if (!studioMode || !pendingStudioViewOpen) return;
-    const { viewId, readOnly, view: pendingView } = pendingStudioViewOpen;
-    const view = pendingView ?? ViewStore.get(viewId) ?? null;
-    if (view) {
-      const nextWorkspace = createViewWorkspace({
-        view,
-        repositoryName,
-        currentUserLabel,
-        repositoryUpdatedAt: metadata?.updatedAt,
-        readOnly,
-      });
-      DesignWorkspaceStore.save(repositoryName, nextWorkspace);
-      setActiveWorkspace(nextWorkspace);
-    }
-    setPendingStudioViewOpen(null);
-    try {
-      window.dispatchEvent(
-        new CustomEvent('ea:studio.view.open', {
-          detail: {
-            viewId,
-            view,
-            readOnly,
-            openMode: 'new',
-            replay: true,
-          },
-        }),
-      );
-    } catch {
-      // Best-effort only.
-    }
-  }, [
-    currentUserLabel,
-    metadata?.updatedAt,
-    pendingStudioViewOpen,
-    repositoryName,
-    studioMode,
-  ]);
-
-  const cssVars = React.useMemo<React.CSSProperties>(
-    () => ({
-      ['--ide-bg-layout' as any]: token.colorBgLayout,
-      ['--ide-bg-container' as any]: token.colorBgContainer,
-      ['--ide-border' as any]: token.colorBorderSecondary,
-      ['--ide-header-bg' as any]: token.colorBgElevated,
-      ['--ide-rail-bg' as any]: token.colorFillTertiary,
-      ['--ide-control-hover' as any]: token.colorFillSecondary,
-      ['--ide-resizer-hover' as any]: token.colorFillSecondary,
-      ['--ide-tab-inactive-bg' as any]: token.colorFillTertiary,
-      // Explorer tree visuals must be neutral (no primary blue selection).
-      // Use the text hover/active background tokens, which are designed to be subtle and neutral.
-      ['--ide-tree-hover-bg' as any]: token.colorBgTextHover,
-      ['--ide-tree-selected-bg' as any]:
-        (token as any).colorBgTextActive ?? token.colorBgTextHover,
-      ['--ide-tree-text' as any]: token.colorText,
-      ['--ide-tree-muted' as any]: token.colorTextTertiary,
-      ['--ide-tree-accent' as any]: token.colorTextSecondary,
-      ['--ide-tree-line' as any]: token.colorBorder,
-      ['--ide-text' as any]: token.colorText,
-      ['--ide-text-secondary' as any]: token.colorTextSecondary,
-      ['--ide-text-tertiary' as any]: token.colorTextTertiary,
-      ['--ide-fill-secondary' as any]: token.colorFillSecondary,
-      ['--ide-bg-elevated' as any]: token.colorBgElevated,
-      ['--ide-topbar-height' as any]: isDesktop
-        ? 'env(titlebar-area-height, 34px)'
-        : `${topMenuBarHeight}px`,
-      ['--ide-statusbar-height' as any]: `${STATUS_BAR_HEIGHT}px`,
-    }),
-    [isDesktop, token, topMenuBarHeight],
-  );
 
   const [sidebarOpen, setSidebarOpen] = React.useState<boolean>(() => {
     try {
@@ -812,9 +697,9 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
       try {
         const raw = Number(localStorage.getItem('ide.bottom.height'));
         if (Number.isFinite(raw) && raw >= 120 && raw <= 520) return raw;
-        return 240;
+        return 320;
       } catch {
-        return 240;
+        return 320;
       }
     },
   );
@@ -1619,6 +1504,139 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
 
     return true;
   }, [eaRepository, metadata, studioEntryDisabled, userRole]);
+
+  React.useEffect(() => {
+    const onStudioOpen = (event: Event) => {
+      if (!canEnterStudio()) return;
+      const e = event as CustomEvent<{
+        id?: string;
+        name?: string;
+        description?: string;
+        layout?: {
+          nodes?: DesignWorkspaceLayoutNode[];
+          edges?: DesignWorkspaceLayoutEdge[];
+        } | null;
+      }>;
+      const detail = e.detail ?? {};
+      const now = new Date().toISOString();
+      const layout = detail.layout ?? null;
+      const next: DesignWorkspace = {
+        id: detail.id ?? generateWorkspaceId(),
+        repositoryName,
+        name: (detail.name ?? '').trim() || 'Untitled Workspace',
+        description: detail.description ?? '',
+        status: 'DRAFT',
+        createdBy: currentUserLabel || 'unknown',
+        createdAt: now,
+        updatedAt: now,
+        repositoryUpdatedAt: metadata?.updatedAt,
+        mode: 'ITERATIVE',
+        stagedElements: [],
+        stagedRelationships: [],
+        layout: {
+          nodes: Array.isArray(layout?.nodes) ? (layout?.nodes ?? []) : [],
+          edges: Array.isArray(layout?.edges) ? (layout?.edges ?? []) : [],
+        },
+      };
+
+      DesignWorkspaceStore.save(repositoryName, next);
+      setActiveWorkspace(next);
+      setStudioMode(true);
+      setPanelMode('properties');
+    };
+
+    window.addEventListener('ea:studio.open', onStudioOpen as EventListener);
+    return () =>
+      window.removeEventListener(
+        'ea:studio.open',
+        onStudioOpen as EventListener,
+      );
+  }, [
+    canEnterStudio,
+    currentUserLabel,
+    generateWorkspaceId,
+    metadata?.updatedAt,
+    repositoryName,
+  ]);
+
+  React.useEffect(() => {
+    const onStudioViewOpen = (event: Event) => {
+      const e = event as CustomEvent<{
+        viewId?: string;
+        view?: ViewInstance;
+        readOnly?: boolean;
+        replay?: boolean;
+      }>;
+      if (e.detail?.replay) return;
+      const viewId = (e.detail?.viewId ?? e.detail?.view?.id ?? '').trim();
+      if (!viewId) return;
+      if (!canEnterStudio()) return;
+      if (studioMode) return;
+      setStudioMode(true);
+      setPanelMode('properties');
+      setPropertiesReadOnly(false);
+      setPendingStudioViewOpen({
+        viewId,
+        readOnly: e.detail?.readOnly,
+        view: e.detail?.view ?? null,
+      });
+    };
+
+    window.addEventListener(
+      'ea:studio.view.open',
+      onStudioViewOpen as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        'ea:studio.view.open',
+        onStudioViewOpen as EventListener,
+      );
+  }, [
+    canEnterStudio,
+    setPanelMode,
+    setPropertiesReadOnly,
+    setStudioMode,
+    studioMode,
+  ]);
+
+  React.useEffect(() => {
+    if (!studioMode || !pendingStudioViewOpen) return;
+    const { viewId, readOnly, view: pendingView } = pendingStudioViewOpen;
+    const view = pendingView ?? ViewStore.get(viewId) ?? null;
+    if (view) {
+      const nextWorkspace = createViewWorkspace({
+        view,
+        repositoryName,
+        currentUserLabel,
+        repositoryUpdatedAt: metadata?.updatedAt,
+        readOnly,
+      });
+      DesignWorkspaceStore.save(repositoryName, nextWorkspace);
+      setActiveWorkspace(nextWorkspace);
+    }
+    setPendingStudioViewOpen(null);
+    try {
+      window.dispatchEvent(
+        new CustomEvent('ea:studio.view.open', {
+          detail: {
+            viewId,
+            view,
+            readOnly,
+            openMode: 'new',
+            replay: true,
+          },
+        }),
+      );
+    } catch {
+      // Best-effort only.
+    }
+  }, [
+    currentUserLabel,
+    metadata?.updatedAt,
+    pendingStudioViewOpen,
+    repositoryName,
+    studioMode,
+  ]);
   const sidebarTitleNode: React.ReactNode =
     activity === 'metamodel' ? (
       <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
@@ -1852,7 +1870,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
     setActivity('explorer');
     setSidebarWidth(280);
     setBottomPanelOpen(false);
-    setBottomPanelHeight(240);
+    setBottomPanelHeight(320);
     setPanelDock('bottom');
     setRightPanelWidth(RIGHT_PANEL_DEFAULT_WIDTH);
   }, []);
@@ -2111,17 +2129,31 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
   const renderBottomPanelBody = React.useCallback(() => {
     return (
       <div className={styles.bottomPanelBody}>
-        {bottomPanelMode === 'console' ? (
-          <div className={styles.bottomPanelScrollable}>
+        <div className={styles.bottomPanelContent}>
+          <div
+            className={`${styles.bottomPanelPane} ${
+              bottomPanelMode === 'console' ? styles.bottomPanelPaneActive : ''
+            }`}
+          >
             <EAConsolePanel />
           </div>
-        ) : bottomPanelMode === 'agent' ? (
-          <div className={styles.bottomPanelScrollable}>
+          <div
+            className={`${styles.bottomPanelPane} ${
+              bottomPanelMode === 'agent' ? styles.bottomPanelPaneActive : ''
+            }`}
+          >
             <ArchitectureAgentPanel />
           </div>
-        ) : (
-          <CatalogInspectorGrid />
-        )}
+          <div
+            className={`${styles.bottomPanelPane} ${
+              bottomPanelMode === 'inspector'
+                ? styles.bottomPanelPaneActive
+                : ''
+            }`}
+          >
+            <CatalogInspectorGrid />
+          </div>
+        </div>
       </div>
     );
   }, [bottomPanelMode]);
@@ -2176,7 +2208,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
         <CreateViewController />
         <Layout
           className={styles.layoutRoot}
-          style={{ background: token.colorBgLayout }}
+          style={{ background: 'var(--ide-bg-layout)' }}
         >
           {shouldRenderDesktopHeader ? (
             <div
@@ -2216,7 +2248,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
 
           <Layout
             className={styles.mainRow}
-            style={{ background: token.colorBgLayout }}
+            style={{ background: 'var(--ide-bg-layout)' }}
           >
             <Layout.Sider
               className={styles.activitySider}
@@ -2226,8 +2258,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
               trigger={null}
               collapsible={false}
               style={{
-                background: token.colorBgElevated,
-                borderRight: 'none',
+                background: 'var(--ide-bg-sidebar)',
+                borderRight: '1px solid var(--ide-border)',
               }}
             >
               <div
@@ -2325,15 +2357,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                                     width: activityHitSize,
                                     height: activityHitSize,
                                     minWidth: activityHitSize,
-                                    background: token.colorBgTextHover,
-                                    color: token.colorText,
-                                    border: `1px solid ${token.colorBorderSecondary}`,
+                                    background: 'var(--ide-rail-active-bg)',
+                                    color: 'var(--ide-rail-icon-active)',
+                                    border: '1px solid var(--ide-border)',
                                   }
                                 : {
                                     width: activityHitSize,
                                     height: activityHitSize,
                                     minWidth: activityHitSize,
-                                    color: token.colorTextSecondary,
+                                    color: 'var(--ide-rail-icon)',
                                     border: '1px solid transparent',
                                   }
                             }
@@ -2406,15 +2438,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                                   width: activityHitSize,
                                   height: activityHitSize,
                                   minWidth: activityHitSize,
-                                  background: token.colorBgTextHover,
-                                  color: token.colorText,
-                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                  background: 'var(--ide-rail-active-bg)',
+                                  color: 'var(--ide-rail-icon-active)',
+                                  border: '1px solid var(--ide-border)',
                                 }
                               : {
                                   width: activityHitSize,
                                   height: activityHitSize,
                                   minWidth: activityHitSize,
-                                  color: token.colorTextSecondary,
+                                  color: 'var(--ide-rail-icon)',
                                   border: '1px solid transparent',
                                 }
                           }
@@ -2440,8 +2472,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
               trigger={null}
               collapsible={false}
               style={{
-                background: token.colorBgContainer,
-                borderRight: `1px solid ${token.colorBorderSecondary}`,
+                background: 'var(--ide-bg-sidebar)',
+                borderRight: '1px solid var(--ide-border)',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
@@ -2454,8 +2486,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   paddingInline: token.paddingSM,
-                  background: token.colorBgElevated,
-                  borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                  background: 'var(--ide-bg-sidebar)',
+                  borderBottom: '1px solid var(--ide-border)',
                 }}
               >
                 <Typography.Text className={styles.sidebarHeaderText}>
@@ -2468,37 +2500,39 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                     aria-label="Collapse side panel"
                     onClick={() => setSidebarOpen(false)}
                     icon={<DoubleLeftOutlined />}
-                    style={{ color: token.colorTextSecondary }}
+                    style={{ color: 'var(--ide-text-secondary)' }}
                   />
                 </div>
               </div>
               <div className={styles.sidebarBody}>{sidebarBody}</div>
             </Layout.Sider>
 
-            <div
+            <hr
               className={styles.leftDockResizer}
-              role="separator"
               aria-label="Resize explorer panel"
               aria-orientation="vertical"
+              aria-valuemin={220}
+              aria-valuemax={520}
+              aria-valuenow={sidebarWidth}
               tabIndex={0}
               onMouseDown={beginSidebarResize}
-              style={{ background: token.colorBgLayout }}
+              style={{ background: 'var(--ide-bg-layout)' }}
             />
 
             <Layout.Content
               className={styles.editorColumn}
               style={{
-                background: token.colorBgContainer,
-                borderLeft: `1px solid ${token.colorBorderSecondary}`,
+                background: 'var(--ide-bg-container)',
+                borderLeft: '1px solid var(--ide-border)',
               }}
             >
               <div
                 className={styles.editorRow}
-                style={{ background: token.colorBgContainer }}
+                style={{ background: 'var(--ide-bg-container)' }}
               >
                 <div
                   className={styles.editorArea}
-                  style={{ background: token.colorBgContainer }}
+                  style={{ background: 'var(--ide-bg-container)' }}
                 >
                   {studioMode ? (
                     activeWorkspace ? (
@@ -2700,21 +2734,23 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                   bottomPanelOpen &&
                   (!studioMode || panelMode === 'console') && (
                     <>
-                      <div
+                      <hr
                         className={styles.rightResizer}
-                        role="separator"
                         aria-label="Resize right panel"
                         aria-orientation="vertical"
                         tabIndex={0}
+                        aria-valuemin={RIGHT_PANEL_MIN_WIDTH}
+                        aria-valuemax={RIGHT_PANEL_MAX_WIDTH}
+                        aria-valuenow={rightPanelWidth}
                         onMouseDown={beginRightResize}
-                        style={{ background: token.colorBgLayout }}
+                        style={{ background: 'var(--ide-bg-layout)' }}
                       />
                       <div
                         className={styles.rightPanel}
                         style={{
                           width: rightPanelWidth,
-                          background: token.colorBgElevated,
-                          borderLeft: `1px solid ${token.colorBorderSecondary}`,
+                          background: 'var(--ide-bg-panel)',
+                          borderLeft: '1px solid var(--ide-border)',
                         }}
                       >
                         <div className={styles.bottomPanelHeader}>
@@ -2761,14 +2797,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                               </button>
                             </div>
                             {panelMode === 'properties' && (
-                              <Typography.Text
-                                type="secondary"
-                                style={{ fontSize: 12 }}
-                              >
-                                {activeElementId
-                                  ? `${activeElementName}${activeElementType ? ` • ${activeElementType}` : ''}`
-                                  : 'No element selected'}
-                              </Typography.Text>
+                              <div className={styles.panelMeta}>
+                                <span>
+                                  Selected:{' '}
+                                  {activeElementId
+                                    ? activeElementName || activeElementId
+                                    : 'None'}
+                                </span>
+                                <span>Type: {activeElementType || '-'}</span>
+                              </div>
                             )}
                           </div>
                           <div
@@ -2785,7 +2822,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                                 className={styles.iconButton}
                                 aria-label="Dock panel to bottom"
                                 onClick={() => setPanelDock('bottom')}
-                                style={{ color: token.colorTextSecondary }}
+                                style={{ color: 'var(--ide-text-secondary)' }}
                               >
                                 <ArrowsAltOutlined />
                               </button>
@@ -2795,7 +2832,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                               className={styles.iconButton}
                               aria-label="Collapse panel"
                               onClick={() => setBottomPanelOpen(false)}
-                              style={{ color: token.colorTextSecondary }}
+                              style={{ color: 'var(--ide-text-secondary)' }}
                             >
                               <CaretDownOutlined />
                             </button>
@@ -2819,7 +2856,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                             : 'Expand EA console'
                         }
                         onClick={() => setBottomPanelOpen(true)}
-                        style={{ color: token.colorTextSecondary }}
+                        style={{ color: 'var(--ide-text-secondary)' }}
                       >
                         <CaretUpOutlined />
                       </button>
@@ -2831,19 +2868,23 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                 bottomPanelOpen &&
                 (!studioMode || panelMode === 'console') && (
                   <>
-                    <div
+                    <hr
                       className={styles.bottomResizer}
-                      role="separator"
                       aria-label="Resize bottom panel"
+                      aria-orientation="horizontal"
+                      aria-valuemin={120}
+                      aria-valuemax={520}
+                      aria-valuenow={bottomPanelHeight}
+                      tabIndex={0}
                       onMouseDown={beginBottomResize}
-                      style={{ background: token.colorBgLayout }}
+                      style={{ background: 'var(--ide-bg-layout)' }}
                     />
                     <div
                       className={styles.bottomPanel}
                       style={{
                         height: bottomPanelHeight,
-                        background: token.colorBgContainer,
-                        borderTop: `1px solid ${token.colorBorderSecondary}`,
+                        background: 'var(--ide-bg-panel)',
+                        borderTop: '1px solid var(--ide-border)',
                       }}
                     >
                       <div className={styles.bottomPanelHeader}>
@@ -2890,14 +2931,15 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                             </button>
                           </div>
                           {bottomPanelMode === 'inspector' && (
-                            <Typography.Text
-                              type="secondary"
-                              style={{ fontSize: 12 }}
-                            >
-                              {activeElementId
-                                ? `${activeElementName}${activeElementType ? ` • ${activeElementType}` : ''}`
-                                : 'No element selected'}
-                            </Typography.Text>
+                            <div className={styles.panelMeta}>
+                              <span>
+                                Selected:{' '}
+                                {activeElementId
+                                  ? activeElementName || activeElementId
+                                  : 'None'}
+                              </span>
+                              <span>Type: {activeElementType || '-'}</span>
+                            </div>
                           )}
                         </div>
                         <div
@@ -2914,7 +2956,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                               className={styles.iconButton}
                               aria-label="Dock panel to right"
                               onClick={() => setPanelDock('right')}
-                              style={{ color: token.colorTextSecondary }}
+                              style={{ color: 'var(--ide-text-secondary)' }}
                             >
                               <ArrowsAltOutlined />
                             </button>
@@ -2924,7 +2966,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                             className={styles.iconButton}
                             aria-label="Collapse panel"
                             onClick={() => setBottomPanelOpen(false)}
-                            style={{ color: token.colorTextSecondary }}
+                            style={{ color: 'var(--ide-text-secondary)' }}
                           >
                             <CaretDownOutlined />
                           </button>
@@ -2950,7 +2992,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
                             : 'Expand EA console'
                       }
                       onClick={() => setBottomPanelOpen(true)}
-                      style={{ color: token.colorTextSecondary }}
+                      style={{ color: 'var(--ide-text-secondary)' }}
                     >
                       <CaretUpOutlined />
                     </button>
@@ -2965,8 +3007,8 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
               lineHeight: `${STATUS_BAR_HEIGHT}px`,
               paddingInline: token.paddingSM,
               paddingBlock: 0,
-              background: token.colorBgElevated,
-              borderTop: `1px solid ${token.colorBorderSecondary}`,
+              background: 'var(--ide-bg-panel)',
+              borderTop: '1px solid var(--ide-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',

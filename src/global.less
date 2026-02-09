@@ -153,6 +153,34 @@ ol {
   color-scheme: dark;
 }
 
+/* Scrollbar styling for light mode (WebKit browsers / Electron) */
+[data-theme="light"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.25);
+  border-radius: 8px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+[data-theme="light"] * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+}
+
 /* Scrollbar styling for dark mode (WebKit browsers / Electron) */
 [data-theme="dark"] ::-webkit-scrollbar {
   width: 10px;
