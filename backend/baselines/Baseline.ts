@@ -1,5 +1,8 @@
-import type { BaseArchitectureElement } from '../repository/BaseArchitectureElement';
-import type { BaseArchitectureRelationship } from '../repository/BaseArchitectureRelationship';
+import type {
+  RepositoryElementRecord,
+  RepositoryPackageBaselineSnapshot,
+  RepositoryRelationshipRecord,
+} from '../services/repository/packageTypes';
 
 /**
  * Baseline = point-in-time snapshot of the entire repository (elements + relationships).
@@ -21,10 +24,15 @@ export type Baseline = {
     elementsRevision: number;
     relationshipsRevision: number;
   };
+  /** Export-aligned snapshot for portability/restore. */
+  snapshot: RepositoryPackageBaselineSnapshot;
+  elementCount: number;
+  relationshipCount: number;
+  diagramCount: number;
   /** Full element set at capture time (includes lifecycle fields/properties). */
-  elements: readonly BaseArchitectureElement[];
+  elements: readonly RepositoryElementRecord[];
   /** Full relationship set at capture time. */
-  relationships: readonly BaseArchitectureRelationship[];
+  relationships: readonly RepositoryRelationshipRecord[];
 };
 
 export type BaselineCreateRequest = {

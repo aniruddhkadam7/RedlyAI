@@ -1,11 +1,12 @@
 ﻿import { useModel } from '@umijs/max';
-import { Button, Form, Input, Space, Typography } from 'antd';
+import { Button, Form, Input, Space, Typography, theme } from 'antd';
 import React from 'react';
 import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import { resolveViewScope } from '@/diagram-studio/viewpoints/resolveViewScope';
 import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { message } from '@/ea/eaConsole';
+import { useAppTheme } from '@/theme/ThemeContext';
 import { useIdeShell } from './index';
 
 export type ObjectTableTabProps = {
@@ -25,6 +26,14 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
   const { eaRepository, trySetEaRepository } = useEaRepository();
   const { openPropertiesPanel, openRouteTab } = useIdeShell();
   const [form] = Form.useForm();
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
+
+  const sectionBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+  const borderColor = token.colorBorder;
+  const disabledBg = isDark
+    ? token.colorFillTertiary
+    : token.colorFillQuaternary;
 
   const actor =
     initialState?.currentUser?.name ||
@@ -278,7 +287,7 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
           <Input
             value={objectType}
             disabled
-            style={{ color: 'inherit', backgroundColor: '#fafafa' }}
+            style={{ color: 'inherit', backgroundColor: disabledBg }}
           />
         </Form.Item>
         <Form.Item label="ID">
@@ -287,7 +296,7 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
             disabled
             style={{
               color: 'inherit',
-              backgroundColor: '#fafafa',
+              backgroundColor: disabledBg,
               fontFamily: 'monospace',
               fontSize: 12,
             }}
@@ -304,7 +313,15 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
         )}
       </Form>
 
-      <div style={{ marginTop: 24 }}>
+      <div
+        style={{
+          marginTop: 24,
+          padding: 12,
+          background: sectionBg,
+          border: `1px solid ${borderColor}`,
+          borderRadius: token.borderRadius,
+        }}
+      >
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           Relationships
         </Typography.Title>
@@ -316,9 +333,21 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
               <Typography.Text type="secondary">None</Typography.Text>
             </div>
           ) : (
-            <ul style={{ margin: '8px 0 0', paddingInlineStart: 18 }}>
+            <ul
+              style={{
+                margin: '8px 0 0',
+                paddingInlineStart: 18,
+                listStyle: 'none',
+              }}
+            >
               {outgoingRelationships.map((rel) => (
-                <li key={rel.id}>
+                <li
+                  key={rel.id}
+                  style={{
+                    padding: '4px 0',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
                   <Typography.Text>{rel.type}</Typography.Text>
                   <Typography.Text type="secondary"> → </Typography.Text>
                   <Button
@@ -352,9 +381,21 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
               <Typography.Text type="secondary">None</Typography.Text>
             </div>
           ) : (
-            <ul style={{ margin: '8px 0 0', paddingInlineStart: 18 }}>
+            <ul
+              style={{
+                margin: '8px 0 0',
+                paddingInlineStart: 18,
+                listStyle: 'none',
+              }}
+            >
               {incomingRelationships.map((rel) => (
-                <li key={rel.id}>
+                <li
+                  key={rel.id}
+                  style={{
+                    padding: '4px 0',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
                   <Button
                     type="link"
                     size="small"
@@ -383,7 +424,7 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
           )}
         </div>
 
-        <div>
+        <div style={{ paddingTop: 12, borderTop: `1px solid ${borderColor}` }}>
           <Typography.Text strong>View references</Typography.Text>
           {viewsContainingElement.length === 0 ? (
             <div>
@@ -392,9 +433,21 @@ const ObjectTableTab: React.FC<ObjectTableTabProps> = ({
               </Typography.Text>
             </div>
           ) : (
-            <ul style={{ margin: '8px 0 0', paddingInlineStart: 18 }}>
+            <ul
+              style={{
+                margin: '8px 0 0',
+                paddingInlineStart: 18,
+                listStyle: 'none',
+              }}
+            >
               {viewsContainingElement.map((v) => (
-                <li key={v.id}>
+                <li
+                  key={v.id}
+                  style={{
+                    padding: '4px 0',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
                   <Button
                     type="link"
                     size="small"

@@ -438,6 +438,12 @@ const serializeRepository = (
   const designWorkspaces = isSameRepository
     ? DesignWorkspaceStore.list(repositoryName)
     : [];
+  const importHistory = isSameRepository
+    ? (existingSnapshot?.importHistory ?? [])
+    : [];
+  const versionHistory = isSameRepository
+    ? (existingSnapshot?.versionHistory ?? [])
+    : [];
 
   return {
     version: 1,
@@ -460,6 +466,8 @@ const serializeRepository = (
       viewLayouts,
       designWorkspaces,
     },
+    importHistory,
+    versionHistory,
     updatedAt: new Date().toISOString(),
   };
 };

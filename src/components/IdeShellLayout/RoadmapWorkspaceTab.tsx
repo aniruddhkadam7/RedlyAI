@@ -1,10 +1,11 @@
-import React from 'react';
-import { Alert, Table, Typography } from 'antd';
+import { Alert, Table, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import React from 'react';
 
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { isRoadmapAllowedForLifecycleCoverage } from '@/repository/lifecycleCoveragePolicy';
 import { isRoadmapItemInTimeHorizon } from '@/repository/timeHorizonPolicy';
+import { useAppTheme } from '@/theme/ThemeContext';
 
 type RoadmapRow = {
   key: string;
@@ -31,23 +32,11 @@ const toDisplayDate = (value: string | undefined): string => {
 
 const RoadmapWorkspaceTab: React.FC = () => {
   const { eaRepository, metadata } = useEaRepository();
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
 
-  if (!isRoadmapAllowedForLifecycleCoverage(metadata?.lifecycleCoverage)) {
-    return (
-      <div style={{ padding: 12 }}>
-        <Typography.Title level={5} style={{ marginTop: 0 }}>
-          Roadmap
-        </Typography.Title>
-
-        <Alert
-          type="warning"
-          showIcon
-          message="Roadmap is hidden in As-Is Lifecycle Coverage"
-          description="Change Lifecycle Coverage to 'To-Be' or 'Both' to view and manage Roadmap items."
-        />
-      </div>
-    );
-  }
+  const borderColor = token.colorBorder;
+  const headerBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
 
   const data = React.useMemo<RoadmapRow[]>(() => {
     if (!eaRepository) return [];
@@ -57,7 +46,10 @@ const RoadmapWorkspaceTab: React.FC = () => {
     for (const obj of eaRepository.objects.values()) {
       if (obj.type !== 'Programme' && obj.type !== 'Project') continue;
 
-      const nameAttr = typeof obj.attributes?.name === 'string' ? obj.attributes.name.trim() : '';
+      const nameAttr =
+        typeof obj.attributes?.name === 'string'
+          ? obj.attributes.name.trim()
+          : '';
       const name = nameAttr || obj.id;
 
       const startDate =
@@ -71,7 +63,9 @@ const RoadmapWorkspaceTab: React.FC = () => {
         undefined;
 
       const lifecycleStatus =
-        typeof obj.attributes?.lifecycleStatus === 'string' ? obj.attributes.lifecycleStatus : undefined;
+        typeof obj.attributes?.lifecycleStatus === 'string'
+          ? obj.attributes.lifecycleStatus
+          : undefined;
 
       if (
         !isRoadmapItemInTimeHorizon({
@@ -126,10 +120,32 @@ const RoadmapWorkspaceTab: React.FC = () => {
         width: 140,
         render: (v: RoadmapRow['endDate']) => toDisplayDate(v),
       },
-      { title: 'Lifecycle', dataIndex: 'lifecycleStatus', width: 140, render: (v) => v ?? '—' },
+      {
+        title: 'Lifecycle',
+        dataIndex: 'lifecycleStatus',
+        width: 140,
+        render: (v) => v ?? '—',
+      },
     ],
     [],
   );
+
+  if (!isRoadmapAllowedForLifecycleCoverage(metadata?.lifecycleCoverage)) {
+    return (
+      <div style={{ padding: 12 }}>
+        <Typography.Title level={5} style={{ marginTop: 0 }}>
+          Roadmap
+        </Typography.Title>
+
+        <Alert
+          type="warning"
+          showIcon
+          message="Roadmap is hidden in As-Is Lifecycle Coverage"
+          description="Change Lifecycle Coverage to 'To-Be' or 'Both' to view and manage Roadmap items."
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 12 }}>
@@ -145,14 +161,35 @@ const RoadmapWorkspaceTab: React.FC = () => {
         style={{ marginBottom: 12 }}
       />
 
-      <Table<RoadmapRow>
-        size="small"
-        rowKey="key"
-        dataSource={data}
-        columns={columns}
-        pagination={{ pageSize: 20, hideOnSinglePage: true }}
-        scroll={{ x: 900 }}
-      />
+      <style>{`
+        .roadmap-ws-grid .ant-table-thead > tr > th {
+          border-bottom: 2px solid ${borderColor} !important;
+          background: ${headerBg} !important;
+        }
+        .roadmap-ws-grid .ant-table-tbody > tr > td {
+          border-bottom: 1px solid ${borderColor} !important;
+          border-right: 1px solid ${token.colorBorderSecondary} !important;
+        }
+        .roadmap-ws-grid .ant-table-tbody > tr > td:last-child {
+          border-right: none !important;
+        }
+        .roadmap-ws-grid .ant-table-thead > tr > th {
+          border-right: 1px solid ${token.colorBorderSecondary} !important;
+        }
+        .roadmap-ws-grid .ant-table-thead > tr > th:last-child {
+          border-right: none !important;
+        }
+      `}</style>
+      <div className="roadmap-ws-grid">
+        <Table<RoadmapRow>
+          size="small"
+          rowKey="key"
+          dataSource={data}
+          columns={columns}
+          pagination={{ pageSize: 20, hideOnSinglePage: true }}
+          scroll={{ x: 900 }}
+        />
+      </div>
     </div>
   );
 };

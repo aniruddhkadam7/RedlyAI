@@ -1,14 +1,24 @@
-import React from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Space, Table, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Divider,
+  Space,
+  Table,
+  Typography,
+  theme,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import React from 'react';
 
 import type { AnalysisKind } from '@/analysis/analysisResultsStore';
 import { getAnalysisResult } from '@/analysis/analysisResultsStore';
-
+import { getImpactExplanation } from '@/services/ea/impact';
+import { useAppTheme } from '@/theme/ThemeContext';
 import type { ImpactAnalysisRequest } from '../../../backend/analysis/ImpactAnalysisRequest';
 import type { ImpactRankedElement } from '../../../backend/analysis/ImpactRanking';
 import type { ImpactSummary } from '../../../backend/analysis/ImpactSummary';
-import { getImpactExplanation } from '@/services/ea/impact';
 
 export type ImpactAnalysisResultData = {
   request: ImpactAnalysisRequest;
@@ -56,17 +66,18 @@ const nameFor = (
   return { title: e.name || e.id, subtitle: `${e.elementType} · ${e.id}` };
 };
 
-const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }) => {
-  const [selectedElementId, setSelectedElementId] = React.useState<string | null>(null);
-  const [loadingExplanation, setLoadingExplanation] = React.useState(false);
-  const [explanation, setExplanation] = React.useState<
-    | {
-        explanationText: string;
-        selectionPolicy: string;
-        representativePathLength: number;
-      }
-    | null
+const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({
+  data,
+}) => {
+  const [selectedElementId, setSelectedElementId] = React.useState<
+    string | null
   >(null);
+  const [loadingExplanation, setLoadingExplanation] = React.useState(false);
+  const [explanation, setExplanation] = React.useState<{
+    explanationText: string;
+    selectionPolicy: string;
+    representativePathLength: number;
+  } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const elementIndex = React.useMemo(() => {
@@ -139,16 +150,22 @@ const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }
                 relationshipTypes: data.request.includedRelationshipTypes,
               });
 
-              if (!resp?.success) throw new Error(resp?.errorMessage || 'Explanation not found.');
+              if (!resp?.success)
+                throw new Error(resp?.errorMessage || 'Explanation not found.');
               if (!resp.data.ok) throw new Error(resp.data.error);
 
               setExplanation({
                 explanationText: resp.data.explanationText,
                 selectionPolicy: resp.data.selectionPolicy,
-                representativePathLength: resp.data.representativePath.pathLength,
+                representativePathLength:
+                  resp.data.representativePath.pathLength,
               });
             } catch (e) {
-              setError(e instanceof Error ? e.message : 'Failed to retrieve explanation.');
+              setError(
+                e instanceof Error
+                  ? e.message
+                  : 'Failed to retrieve explanation.',
+              );
             } finally {
               setLoadingExplanation(false);
             }
@@ -177,15 +194,27 @@ const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }
 
       <Card size="small" title="Run Metadata">
         <Descriptions size="small" column={2} bordered>
-          <Descriptions.Item label="Request ID">{data.request.requestId}</Descriptions.Item>
-          <Descriptions.Item label="Requested At">{data.request.requestedAt}</Descriptions.Item>
-          <Descriptions.Item label="Requested By">{data.request.requestedBy}</Descriptions.Item>
+          <Descriptions.Item label="Request ID">
+            {data.request.requestId}
+          </Descriptions.Item>
+          <Descriptions.Item label="Requested At">
+            {data.request.requestedAt}
+          </Descriptions.Item>
+          <Descriptions.Item label="Requested By">
+            {data.request.requestedBy}
+          </Descriptions.Item>
           <Descriptions.Item label="Repository">
             {data.request.repositoryName ? data.request.repositoryName : '—'}
           </Descriptions.Item>
-          <Descriptions.Item label="Root Element ID">{data.request.rootElementId}</Descriptions.Item>
-          <Descriptions.Item label="Direction">{data.request.direction}</Descriptions.Item>
-          <Descriptions.Item label="Max Depth">{data.request.maxDepth}</Descriptions.Item>
+          <Descriptions.Item label="Root Element ID">
+            {data.request.rootElementId}
+          </Descriptions.Item>
+          <Descriptions.Item label="Direction">
+            {data.request.direction}
+          </Descriptions.Item>
+          <Descriptions.Item label="Max Depth">
+            {data.request.maxDepth}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -193,13 +222,25 @@ const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }
 
       <Card size="small" title="Summary">
         <Descriptions size="small" column={2} bordered>
-          <Descriptions.Item label="Total impacted">{data.summary.totalImpactedElements}</Descriptions.Item>
-          <Descriptions.Item label="Max dependency depth">{data.summary.maxDependencyDepthObserved}</Descriptions.Item>
-          <Descriptions.Item label="Severity (High)">{data.summary.severityBreakdown?.High ?? 0}</Descriptions.Item>
-          <Descriptions.Item label="Severity (Medium)">{data.summary.severityBreakdown?.Medium ?? 0}</Descriptions.Item>
-          <Descriptions.Item label="Severity (Low)">{data.summary.severityBreakdown?.Low ?? 0}</Descriptions.Item>
+          <Descriptions.Item label="Total impacted">
+            {data.summary.totalImpactedElements}
+          </Descriptions.Item>
+          <Descriptions.Item label="Max dependency depth">
+            {data.summary.maxDependencyDepthObserved}
+          </Descriptions.Item>
+          <Descriptions.Item label="Severity (High)">
+            {data.summary.severityBreakdown?.High ?? 0}
+          </Descriptions.Item>
+          <Descriptions.Item label="Severity (Medium)">
+            {data.summary.severityBreakdown?.Medium ?? 0}
+          </Descriptions.Item>
+          <Descriptions.Item label="Severity (Low)">
+            {data.summary.severityBreakdown?.Low ?? 0}
+          </Descriptions.Item>
           <Descriptions.Item label="Paths (included)">
-            {typeof data.impactPathsCount === 'number' ? data.impactPathsCount : 'Not requested'}
+            {typeof data.impactPathsCount === 'number'
+              ? data.impactPathsCount
+              : 'Not requested'}
           </Descriptions.Item>
           <Descriptions.Item label="Relationship types">
             {(data.request.includedRelationshipTypes ?? []).join(', ') || '—'}
@@ -223,21 +264,37 @@ const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }
 
       <Card
         size="small"
-        title={selectedElementId ? `Explanation: ${selectedElementId}` : 'Explanation'}
-        extra={loadingExplanation ? <Typography.Text type="secondary">Loading…</Typography.Text> : null}
+        title={
+          selectedElementId
+            ? `Explanation: ${selectedElementId}`
+            : 'Explanation'
+        }
+        extra={
+          loadingExplanation ? (
+            <Typography.Text type="secondary">Loading…</Typography.Text>
+          ) : null
+        }
       >
         {error ? <Alert type="error" showIcon message={error} /> : null}
         {!error && !explanation ? (
-          <Typography.Text type="secondary">Select “Explain” on a ranked element.</Typography.Text>
+          <Typography.Text type="secondary">
+            Select “Explain” on a ranked element.
+          </Typography.Text>
         ) : null}
         {explanation ? (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             <Descriptions size="small" column={2} bordered>
-              <Descriptions.Item label="Selection policy">{explanation.selectionPolicy}</Descriptions.Item>
-              <Descriptions.Item label="Path length">{explanation.representativePathLength}</Descriptions.Item>
+              <Descriptions.Item label="Selection policy">
+                {explanation.selectionPolicy}
+              </Descriptions.Item>
+              <Descriptions.Item label="Path length">
+                {explanation.representativePathLength}
+              </Descriptions.Item>
             </Descriptions>
             <Card size="small" type="inner" title="Explanation">
-              <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+              <Typography.Paragraph
+                style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
+              >
                 {explanation.explanationText}
               </Typography.Paragraph>
             </Card>
@@ -248,7 +305,9 @@ const ImpactResultView: React.FC<{ data: ImpactAnalysisResultData }> = ({ data }
   );
 };
 
-const DependencyResultView: React.FC<{ data: DependencyAnalysisResultData }> = ({ data }) => {
+const DependencyResultView: React.FC<{
+  data: DependencyAnalysisResultData;
+}> = ({ data }) => {
   const elementIndex = React.useMemo(() => {
     const entries = (data.elementIndex ?? []).map((e) => [e.id, e] as const);
     return new Map(entries);
@@ -289,11 +348,21 @@ const DependencyResultView: React.FC<{ data: DependencyAnalysisResultData }> = (
 
       <Card size="small" title="Scope">
         <Descriptions size="small" column={2} bordered>
-          <Descriptions.Item label="Root element">{data.rootElementId}</Descriptions.Item>
-          <Descriptions.Item label="Direction">{data.direction}</Descriptions.Item>
-          <Descriptions.Item label="Max depth">{data.maxDepth}</Descriptions.Item>
-          <Descriptions.Item label="Edges considered">{data.edgesConsidered}</Descriptions.Item>
-          <Descriptions.Item label="Reachable elements">{data.reachableCount}</Descriptions.Item>
+          <Descriptions.Item label="Root element">
+            {data.rootElementId}
+          </Descriptions.Item>
+          <Descriptions.Item label="Direction">
+            {data.direction}
+          </Descriptions.Item>
+          <Descriptions.Item label="Max depth">
+            {data.maxDepth}
+          </Descriptions.Item>
+          <Descriptions.Item label="Edges considered">
+            {data.edgesConsidered}
+          </Descriptions.Item>
+          <Descriptions.Item label="Reachable elements">
+            {data.reachableCount}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -324,7 +393,9 @@ const DependencyResultView: React.FC<{ data: DependencyAnalysisResultData }> = (
   );
 };
 
-const CoverageResultView: React.FC<{ data: CoverageAnalysisResultData }> = ({ data }) => {
+const CoverageResultView: React.FC<{ data: CoverageAnalysisResultData }> = ({
+  data,
+}) => {
   return (
     <div style={{ padding: 12 }}>
       <Typography.Title level={5} style={{ marginTop: 0 }}>
@@ -342,9 +413,15 @@ const CoverageResultView: React.FC<{ data: CoverageAnalysisResultData }> = ({ da
 
       <Card size="small" title="Totals">
         <Descriptions size="small" column={3} bordered>
-          <Descriptions.Item label="Elements">{data.totalElementCount}</Descriptions.Item>
-          <Descriptions.Item label="Relationships">{data.totalRelationshipCount}</Descriptions.Item>
-          <Descriptions.Item label="Orphaned elements">{data.orphanedElementCount}</Descriptions.Item>
+          <Descriptions.Item label="Elements">
+            {data.totalElementCount}
+          </Descriptions.Item>
+          <Descriptions.Item label="Relationships">
+            {data.totalRelationshipCount}
+          </Descriptions.Item>
+          <Descriptions.Item label="Orphaned elements">
+            {data.orphanedElementCount}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -383,6 +460,41 @@ const CoverageResultView: React.FC<{ data: CoverageAnalysisResultData }> = ({ da
 
 const AnalysisResultTab: React.FC<{ resultId: string }> = ({ resultId }) => {
   const record = getAnalysisResult(resultId);
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
+
+  const borderColor = token.colorBorder;
+  const headerBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+  const sectionBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+
+  const tableStyle = React.useMemo(
+    () => `
+    .analysis-result-grid .ant-table-thead > tr > th {
+      border-bottom: 2px solid ${borderColor} !important;
+      background: ${headerBg} !important;
+    }
+    .analysis-result-grid .ant-table-tbody > tr > td {
+      border-bottom: 1px solid ${borderColor} !important;
+      border-right: 1px solid ${token.colorBorderSecondary} !important;
+    }
+    .analysis-result-grid .ant-table-tbody > tr > td:last-child {
+      border-right: none !important;
+    }
+    .analysis-result-grid .ant-table-thead > tr > th {
+      border-right: 1px solid ${token.colorBorderSecondary} !important;
+    }
+    .analysis-result-grid .ant-table-thead > tr > th:last-child {
+      border-right: none !important;
+    }
+    .analysis-result-grid .ant-card {
+      border-color: ${borderColor} !important;
+    }
+    .analysis-result-grid .ant-card-head {
+      background: ${sectionBg} !important;
+    }
+  `,
+    [borderColor, headerBg, sectionBg, token.colorBorderSecondary],
+  );
 
   if (!record) {
     return (
@@ -401,14 +513,31 @@ const AnalysisResultTab: React.FC<{ resultId: string }> = ({ resultId }) => {
   }
 
   if (record.kind === 'impact') {
-    return <ImpactResultView data={record.data as ImpactAnalysisResultData} />;
+    return (
+      <div className="analysis-result-grid">
+        <style>{tableStyle}</style>
+        <ImpactResultView data={record.data as ImpactAnalysisResultData} />
+      </div>
+    );
   }
 
   if (record.kind === 'dependency') {
-    return <DependencyResultView data={record.data as DependencyAnalysisResultData} />;
+    return (
+      <div className="analysis-result-grid">
+        <style>{tableStyle}</style>
+        <DependencyResultView
+          data={record.data as DependencyAnalysisResultData}
+        />
+      </div>
+    );
   }
 
-  return <CoverageResultView data={record.data as CoverageAnalysisResultData} />;
+  return (
+    <div className="analysis-result-grid">
+      <style>{tableStyle}</style>
+      <CoverageResultView data={record.data as CoverageAnalysisResultData} />
+    </div>
+  );
 };
 
 export default AnalysisResultTab;

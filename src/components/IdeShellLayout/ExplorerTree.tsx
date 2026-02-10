@@ -58,6 +58,7 @@ import {
 import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
 import type { Baseline } from '../../../backend/baselines/Baseline';
 import {
+  createBaseline,
   getBaselineById,
   listBaselines,
 } from '../../../backend/baselines/BaselineStore';
@@ -1599,6 +1600,65 @@ const ExplorerTree: React.FC = () => {
     return suffixIndex === -1 ? trimmed : trimmed.slice(0, suffixIndex);
   }, []);
 
+  const openCreateBaselineModal = React.useCallback(() => {
+    let name = `Baseline ${new Date().toISOString()}`;
+    let description = '';
+
+    Modal.confirm({
+      title: 'Create Baseline',
+      okText: 'Create',
+      content: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>Name</div>
+            <Input
+              defaultValue={name}
+              placeholder="Baseline name"
+              onChange={(e) => {
+                name = e.target.value;
+              }}
+            />
+          </div>
+          <div>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>Description</div>
+            <Input.TextArea
+              rows={3}
+              placeholder="Optional description"
+              onChange={(e) => {
+                description = e.target.value;
+              }}
+            />
+          </div>
+        </div>
+      ),
+      onOk: () => {
+        const finalName = (name ?? '').trim();
+        if (!finalName) {
+          message.error('Baseline name is required.');
+          return Promise.reject();
+        }
+
+        try {
+          const baseline = createBaseline({
+            name: finalName,
+            description: (description ?? '').trim() || undefined,
+            createdBy: actor,
+          });
+
+          setRefreshToken((x) => x + 1);
+          openWorkspaceTab({ type: 'baseline', baselineId: baseline.id });
+          message.success('Baseline created.');
+          return Promise.resolve();
+        } catch (err) {
+          message.error(
+            err instanceof Error ? err.message : 'Unable to create baseline.',
+          );
+          return Promise.reject();
+        }
+      },
+    });
+  }, [actor, openWorkspaceTab, setRefreshToken]);
+
   const { treeData, elementKeyIndex } = React.useMemo(() => {
     const objectsById = eaRepository?.objects ?? new Map();
     const viewCats = groupSavedViews(views.filter((v) => v.status === 'SAVED'));
@@ -1891,44 +1951,6 @@ const ExplorerTree: React.FC = () => {
       children: businessChildren,
     };
 
-    const catalogRoot: DataNode = {
-      key: ROOT_KEYS.catalog,
-      title: 'Catalog',
-      icon: <DatabaseOutlined />,
-      children: [
-        {
-          key: 'explorer:catalog:business',
-          title: 'Business',
-          icon: <ApartmentOutlined />,
-          isLeaf: true,
-        },
-        {
-          key: 'explorer:catalog:application',
-          title: 'Application',
-          icon: <AppstoreOutlined />,
-          isLeaf: true,
-        },
-        {
-          key: 'explorer:catalog:data',
-          title: 'Data',
-          icon: <DatabaseOutlined />,
-          isLeaf: true,
-        },
-        {
-          key: 'explorer:catalog:technology',
-          title: 'Technology',
-          icon: <CloudOutlined />,
-          isLeaf: true,
-        },
-        {
-          key: 'explorer:catalog:implementation',
-          title: 'Implementation',
-          icon: <ProjectOutlined />,
-          isLeaf: true,
-        },
-      ],
-    };
-
     const applicationCollectionChildren =
       applicationGrouping === 'lifecycle'
         ? applicationsByLifecycleGrouping({
@@ -2144,6 +2166,74 @@ const ExplorerTree: React.FC = () => {
       ],
     };
 
+    const implMigRoot: DataNode = {
+      key: ROOT_KEYS.implMig,
+      title: 'Implementation & Migration',
+      icon: <DatabaseOutlined />,
+      children: [
+        collectionNode({
+          key: 'explorer:implmig:programmes',
+          title: 'Programmes',
+          icon: <ProjectOutlined />,
+          children: objectLeaves({
+            objectsById,
+            type: 'Programme',
+            icon: <ProjectOutlined />,
+          }),
+        }),
+        collectionNode({
+          key: 'explorer:implmig:projects',
+          title: 'Projects',
+          icon: <FundProjectionScreenOutlined />,
+          children: objectLeaves({
+            objectsById,
+            type: 'Project',
+            icon: <FundProjectionScreenOutlined />,
+          }),
+        }),
+        collectionNode({
+          key: 'explorer:implmig:plateaus',
+          title: 'Plateaus',
+          icon: <FundProjectionScreenOutlined />,
+          children: plateaus.map(plateauLeaf),
+        }),
+      ],
+    };
+
+    const baselinesRoot: DataNode = {
+      key: ROOT_KEYS.baselines,
+      title: 'Baselines',
+      icon: <SafetyOutlined />,
+      children:
+        baselines.length === 0
+          ? [
+              {
+                key: 'explorer:baselines:create-cta',
+                title: (
+                  <div className={styles.explorerTreeCta}>
+                    <Typography.Text strong style={{ margin: 0 }}>
+                      No baselines yet.
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ margin: 0 }}>
+                      Capture a read-only snapshot of the repository.
+                    </Typography.Text>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={openCreateBaselineModal}
+                    >
+                      Create Baseline
+                    </Button>
+                  </div>
+                ),
+                icon: <FileTextOutlined />,
+                isLeaf: true,
+                selectable: false,
+              },
+            ]
+          : baselines.map(baselineLeaf),
+    };
+
     const tree: DataNode[] = (() => {
       if (isCustomBlankCanvas) {
         return [
@@ -2162,61 +2252,34 @@ const ExplorerTree: React.FC = () => {
               },
             ],
           },
-          catalogRoot,
           viewsRoot,
+          baselinesRoot,
         ];
       }
 
       if (scope === 'Business Unit') {
         return [
-          catalogRoot,
           businessRoot,
           applicationRoot,
           technologyRoot,
+          implMigRoot,
+          viewsRoot,
+          baselinesRoot,
         ].filter((n) => n.children.length > 0);
       }
 
       if (scope === 'Domain') {
-        return [catalogRoot, businessRoot, applicationRoot].filter(
-          (n) => n.children.length > 0,
-        );
+        return [
+          businessRoot,
+          applicationRoot,
+          technologyRoot,
+          implMigRoot,
+          viewsRoot,
+          baselinesRoot,
+        ].filter((n) => n.children.length > 0);
       }
 
       if (scope === 'Programme') {
-        const implMigRoot: DataNode = {
-          key: ROOT_KEYS.implMig,
-          title: 'Implementation & Migration',
-          icon: <DatabaseOutlined />,
-          children: [
-            collectionNode({
-              key: 'explorer:implmig:programmes',
-              title: 'Programmes',
-              icon: <ProjectOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Programme',
-                icon: <ProjectOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:implmig:projects',
-              title: 'Projects',
-              icon: <FundProjectionScreenOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Project',
-                icon: <FundProjectionScreenOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:implmig:plateaus',
-              title: 'Plateaus',
-              icon: <FundProjectionScreenOutlined />,
-              children: plateaus.map(plateauLeaf),
-            }),
-          ],
-        };
-
         const programmeViewsRoot: DataNode = {
           key: ROOT_KEYS.views,
           title: 'Views',
@@ -2238,110 +2301,25 @@ const ExplorerTree: React.FC = () => {
         };
 
         return [
-          catalogRoot,
+          ...[businessRoot, applicationRoot].filter(
+            (n) => n.children.length > 0,
+          ),
+          ...(showTechnologyInProgrammeScope ? [technologyRoot] : []).filter(
+            (n) => n.children.length > 0,
+          ),
           implMigRoot,
           programmeViewsRoot,
-          ...[
-            applicationRoot,
-            businessRoot,
-            ...(showTechnologyInProgrammeScope ? [technologyRoot] : []),
-          ].filter((n) => n.children.length > 0),
+          baselinesRoot,
         ];
       }
 
       return [
-        catalogRoot,
         ...[businessRoot, applicationRoot, technologyRoot].filter(
           (n) => n.children.length > 0,
         ),
-        {
-          key: ROOT_KEYS.implMig,
-          title: 'Implementation & Migration',
-          icon: <DatabaseOutlined />,
-          children: [
-            collectionNode({
-              key: 'explorer:implmig:programmes',
-              title: 'Programmes',
-              icon: <ProjectOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Programme',
-                icon: <ProjectOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:implmig:projects',
-              title: 'Projects',
-              icon: <FundProjectionScreenOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Project',
-                icon: <FundProjectionScreenOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:implmig:plateaus',
-              title: 'Plateaus',
-              icon: <FundProjectionScreenOutlined />,
-              children: plateaus.map(plateauLeaf),
-            }),
-          ],
-        },
-        {
-          key: ROOT_KEYS.governance,
-          title: 'Governance',
-          icon: <DatabaseOutlined />,
-          children: [
-            collectionNode({
-              key: 'explorer:governance:principles',
-              title: 'Principles',
-              icon: <SafetyOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Principle',
-                icon: <SafetyOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:governance:requirements',
-              title: 'Requirements',
-              icon: <FileTextOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Requirement',
-                icon: <FileTextOutlined />,
-              }),
-            }),
-            collectionNode({
-              key: 'explorer:governance:standards',
-              title: 'Standards',
-              icon: <FileTextOutlined />,
-              children: objectLeaves({
-                objectsById,
-                type: 'Standard',
-                icon: <FileTextOutlined />,
-              }),
-            }),
-          ],
-        },
+        implMigRoot,
         viewsRoot,
-        {
-          key: ROOT_KEYS.baselines,
-          title: 'Baselines',
-          icon: <SafetyOutlined />,
-          children:
-            baselines.length === 0
-              ? [
-                  {
-                    key: 'explorer:baselines:empty',
-                    title: 'No baselines yet',
-                    icon: <FileTextOutlined />,
-                    isLeaf: true,
-                    selectable: false,
-                  },
-                ]
-              : baselines.map(baselineLeaf),
-        },
+        baselinesRoot,
       ];
     })();
 
@@ -2370,6 +2348,7 @@ const ExplorerTree: React.FC = () => {
     initializeEnterprise,
     metadata?.architectureScope,
     metadata?.referenceFramework,
+    openCreateBaselineModal,
     refreshToken,
     showTechnologyInProgrammeScope,
     userRole,
@@ -3665,6 +3644,21 @@ const ExplorerTree: React.FC = () => {
         ]);
       }
 
+      if (key === ROOT_KEYS.baselines) {
+        return withMenuOnClick([
+          {
+            key: 'create-baseline',
+            label: 'Create Baseline',
+            onClick: () => openCreateBaselineModal(),
+          },
+          {
+            key: 'refresh',
+            label: 'Refresh',
+            onClick: () => setRefreshToken((x) => x + 1),
+          },
+        ]);
+      }
+
       if (key === BUSINESS_UNIT_ENTERPRISE_PLACEHOLDER_KEY) {
         return withMenuOnClick([
           {
@@ -3893,6 +3887,7 @@ const ExplorerTree: React.FC = () => {
       initializationState?.status,
       metadata?.architectureScope,
       normalizeElementKey,
+      openCreateBaselineModal,
       openCreateTypePicker,
       openForKey,
       openPropertiesPanel,

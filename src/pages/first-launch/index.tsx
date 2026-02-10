@@ -25,6 +25,9 @@ import {
   TIME_HORIZONS,
   type TimeHorizon,
 } from '@/repository/repositoryMetadata';
+import { buildLegacyPayloadFromPackage } from '@/repository/repositoryPackageAdapter';
+import { replaceBaselines } from '../../../backend/baselines/BaselineStore';
+import { parseRepositoryPackageBytes } from '../../../backend/services/repository/importService';
 import DarkDropdown from './DarkDropdown';
 import styles from './index.module.less';
 
@@ -43,6 +46,15 @@ const readLocalStorage = (key: string): string | null => {
   } catch {
     return null;
   }
+};
+
+const base64ToBytes = (value: string): Uint8Array => {
+  const raw = atob(value);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    bytes[i] = raw.charCodeAt(i);
+  }
+  return bytes;
 };
 
 const FirstLaunch: React.FC = () => {
@@ -87,7 +99,7 @@ const FirstLaunch: React.FC = () => {
 
   const importFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const readFileAsText = async (file: File) => {
+  const _readFileAsText = async (file: File) => {
     return await file.text();
   };
 
@@ -520,13 +532,30 @@ const FirstLaunch: React.FC = () => {
   );
 
   const importRepositoryPackage = React.useCallback(
-    async (rawText: string, sourceName?: string) => {
-      const payload = JSON.parse(rawText);
+    async (rawBytes: Uint8Array, sourceName?: string) => {
+      const parsed = await parseRepositoryPackageBytes(rawBytes);
+      if (!parsed.ok) {
+        message.error(parsed.error);
+        return;
+      }
+
+      if (parsed.warnings.length > 0) {
+        message.warning(parsed.warnings[0]);
+      }
+
+      const payload = buildLegacyPayloadFromPackage(parsed.data);
       const applied = applyProjectPayload(payload);
       if (!applied.ok) {
         message.error(applied.error);
         return;
       }
+
+      const baselines = Array.isArray(parsed.data.baselines)
+        ? parsed.data.baselines
+        : Array.isArray(parsed.data.workspace?.baselines)
+          ? parsed.data.workspace.baselines
+          : [];
+      replaceBaselines(baselines);
 
       const repoState = await waitForRepositoryReady();
       const name =
@@ -617,13 +646,13 @@ const FirstLaunch: React.FC = () => {
 
   const onImportFileSelected = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.eaproj')) {
-      message.info('Please choose an .eaproj repository package.');
+    if (!file.name.toLowerCase().endsWith('.eapkg')) {
+      message.info('Please choose an .eapkg repository package.');
       return;
     }
     try {
-      const text = await readFileAsText(file);
-      await importRepositoryPackage(text, file.name);
+      const buffer = await file.arrayBuffer();
+      await importRepositoryPackage(new Uint8Array(buffer), file.name);
     } catch (e: any) {
       message.error(e?.message || 'Failed to import repository.');
     }
@@ -712,7 +741,15 @@ const FirstLaunch: React.FC = () => {
       if (!res || !res.ok) return;
       for (const item of res.items || []) {
         try {
-          await importRepositoryPackage(item.content, item.name);
+          const format = (item as any)?.format as string | undefined;
+          const content = (item as any)?.content as string | undefined;
+          if (
+            format === 'eapkg' ||
+            item.name?.toLowerCase().endsWith('.eapkg')
+          ) {
+            const bytes = base64ToBytes(content ?? '');
+            await importRepositoryPackage(bytes, item.name);
+          }
         } catch {
           // Best-effort only.
         }
@@ -723,7 +760,15 @@ const FirstLaunch: React.FC = () => {
 
     if (window.eaDesktop?.onRepositoryPackageImport) {
       window.eaDesktop.onRepositoryPackageImport((payload) => {
-        void importRepositoryPackage(payload.content, payload.name);
+        const format = (payload as any)?.format as string | undefined;
+        const content = (payload as any)?.content as string | undefined;
+        if (
+          format === 'eapkg' ||
+          payload.name?.toLowerCase().endsWith('.eapkg')
+        ) {
+          const bytes = base64ToBytes(content ?? '');
+          void importRepositoryPackage(bytes, payload.name);
+        }
       });
     }
   }, [importRepositoryPackage]);
@@ -782,7 +827,7 @@ const FirstLaunch: React.FC = () => {
           <input
             ref={importFileInputRef}
             type="file"
-            accept="application/octet-stream,.eaproj"
+            accept="application/octet-stream,.eapkg"
             style={{ display: 'none' }}
             onChange={(e) => {
               void onImportFileSelected(e.target.files?.[0]);

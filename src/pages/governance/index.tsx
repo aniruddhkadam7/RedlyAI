@@ -14,6 +14,7 @@ import {
   Table,
   Tag,
   Typography,
+  theme,
 } from 'antd';
 import React from 'react';
 import { useIdeShell } from '@/components/IdeShellLayout';
@@ -35,6 +36,7 @@ import {
   getRepositoryProgrammes,
   getRepositoryTechnologies,
 } from '@/services/ea/repository';
+import { useAppTheme } from '@/theme/ThemeContext';
 import { architectureHealthEngine } from '../../../backend/analysis/ArchitectureHealthEngine';
 import type {
   ArchitectureAssuranceReport,
@@ -129,6 +131,53 @@ const GovernanceDashboardPage: React.FC = () => {
   const { project } = useEaProject();
   const { eaRepository, metadata, updateRepositoryMetadata } =
     useEaRepository();
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
+
+  const borderColor = token.colorBorder;
+  const headerBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+  const sectionBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+
+  const governanceTableStyle = React.useMemo(
+    () => `
+    .governance-grid .ant-table-thead > tr > th {
+      border-bottom: 2px solid ${borderColor} !important;
+      background: ${headerBg} !important;
+    }
+    .governance-grid .ant-table-tbody > tr > td {
+      border-bottom: 1px solid ${borderColor} !important;
+      border-right: 1px solid ${token.colorBorderSecondary} !important;
+    }
+    .governance-grid .ant-table-tbody > tr > td:last-child {
+      border-right: none !important;
+    }
+    .governance-grid .ant-table-thead > tr > th {
+      border-right: 1px solid ${token.colorBorderSecondary} !important;
+    }
+    .governance-grid .ant-table-thead > tr > th:last-child {
+      border-right: none !important;
+    }
+    .governance-grid .ant-pro-card {
+      border-color: ${borderColor} !important;
+    }
+    .governance-grid .ant-pro-card-header {
+      background: ${sectionBg} !important;
+    }
+    .governance-grid .ant-statistic-title {
+      color: ${token.colorTextTertiary} !important;
+    }
+    .governance-grid .ant-statistic-content {
+      font-weight: 600 !important;
+    }
+  `,
+    [
+      borderColor,
+      headerBg,
+      sectionBg,
+      token.colorBorderSecondary,
+      token.colorTextTertiary,
+    ],
+  );
 
   const canChangeGovernance = true;
 
@@ -789,7 +838,8 @@ const GovernanceDashboardPage: React.FC = () => {
     : '—';
 
   return (
-    <div style={{ height: '100%', padding: 16 }}>
+    <div className="governance-grid" style={{ height: '100%', padding: 16 }}>
+      <style>{governanceTableStyle}</style>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space
           align="baseline"
@@ -1028,23 +1078,15 @@ const GovernanceDashboardPage: React.FC = () => {
               <Input placeholder="e.g., Q1 2025" allowClear />
             </Form.Item>
             <Form.Item label="Reference Baseline (optional)" name="baselineId">
-              <Input.Group compact>
-                <select
-                  style={{ width: '100%', minHeight: 32 }}
-                  value={plateauForm.getFieldValue('baselineId') ?? ''}
-                  onChange={(e) =>
-                    plateauForm.setFieldsValue({ baselineId: e.target.value })
-                  }
-                >
-                  <option value="">No baseline selected</option>
-                  {availableBaselines.map((b) => (
-                    <option
-                      key={b.id}
-                      value={b.id}
-                    >{`${b.name || b.id} (${b.id})`}</option>
-                  ))}
-                </select>
-              </Input.Group>
+              <Select
+                allowClear
+                placeholder="No baseline selected"
+                style={{ width: '100%' }}
+                options={availableBaselines.map((b) => ({
+                  label: `${b.name || b.id} (${b.id})`,
+                  value: b.id,
+                }))}
+              />
               <Typography.Text type="secondary">
                 Baseline reference is recommended to anchor the plateau.
               </Typography.Text>

@@ -37,6 +37,14 @@ import {
 } from '@/repository/architectureScopePolicy';
 import { CUSTOM_CORE_EA_SEED } from '@/repository/customFrameworkConfig';
 import type { FrameworkConfig } from '@/repository/repositoryMetadata';
+import { buildLegacyPayloadFromPackage } from '@/repository/repositoryPackageAdapter';
+import { readRepositorySnapshot } from '@/repository/repositorySnapshotStore';
+import {
+  listBaselines,
+  replaceBaselines,
+} from '../../../backend/baselines/BaselineStore';
+import { buildRepositoryPackageBytes } from '../../../backend/services/repository/exportService';
+import { parseRepositoryPackageBytes } from '../../../backend/services/repository/importService';
 
 import styles from './style.module.less';
 
@@ -50,6 +58,27 @@ const downloadTextFile = (fileName: string, text: string, mime: string) => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+};
+
+const downloadBytesFile = (fileName: string, bytes: Uint8Array) => {
+  const blob = new Blob([bytes], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+const base64ToBytes = (value: string): Uint8Array => {
+  const raw = atob(value);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    bytes[i] = raw.charCodeAt(i);
+  }
+  return bytes;
 };
 
 const safeSlug = (value: string) =>
@@ -798,17 +827,121 @@ const IdeMenuBar: React.FC = () => {
     };
   }, [eaRepository, metadata]);
 
+  const buildPackageSource = React.useCallback(() => {
+    if (!eaRepository || !metadata) return null;
+
+    const views = ViewStore.list();
+    const viewLayouts = ViewLayoutStore.listAll();
+    const repositoryName = metadata.repositoryName || 'default';
+    const designWorkspaces = DesignWorkspaceStore.list(repositoryName);
+    const snapshot = readRepositorySnapshot();
+
+    // Build element list from live UI state (canonical source)
+    const liveObjectsMap = new Map(
+      Array.from(eaRepository.objects.values()).map((o) => [o.id, o] as const),
+    );
+
+    // Cross-reference with snapshot to catch any elements only in localStorage
+    if (snapshot?.objects && Array.isArray(snapshot.objects)) {
+      for (const snapshotObj of snapshot.objects) {
+        if (snapshotObj?.id && !liveObjectsMap.has(snapshotObj.id)) {
+          liveObjectsMap.set(snapshotObj.id, snapshotObj);
+        }
+      }
+    }
+
+    // Build relationship list — merge snapshot relationships that may be missing
+    const liveRelIds = new Set(eaRepository.relationships.map((r) => r.id));
+    const mergedRelationships = [...eaRepository.relationships];
+    if (snapshot?.relationships && Array.isArray(snapshot.relationships)) {
+      for (const snapshotRel of snapshot.relationships) {
+        if (snapshotRel?.id && !liveRelIds.has(snapshotRel.id)) {
+          mergedRelationships.push(snapshotRel);
+          liveRelIds.add(snapshotRel.id);
+        }
+      }
+    }
+
+    // Cross-reference views: snapshot may have views not yet loaded into ViewStore
+    const viewIds = new Set(views.map((v) => v.id));
+    const mergedViews = [...views];
+    if (snapshot?.views && Array.isArray(snapshot.views)) {
+      for (const snapshotView of snapshot.views) {
+        if (snapshotView?.id && !viewIds.has(snapshotView.id)) {
+          mergedViews.push(snapshotView);
+          viewIds.add(snapshotView.id);
+        }
+      }
+    }
+
+    // Cross-reference view layouts from snapshot studioState
+    const mergedLayouts = { ...viewLayouts };
+    const snapshotLayouts = snapshot?.studioState?.viewLayouts ?? {};
+    for (const [viewId, positions] of Object.entries(snapshotLayouts)) {
+      if (!mergedLayouts[viewId] && positions) {
+        mergedLayouts[viewId] = positions as (typeof mergedLayouts)[string];
+      }
+    }
+
+    return {
+      toolVersion: 'dev',
+      schemaVersion: '1',
+      exportDate: new Date().toISOString(),
+      repositoryId: readLocalStorage(ACTIVE_REPO_ID_KEY) ?? undefined,
+      metadata: { ...metadata },
+      objects: Array.from(liveObjectsMap.values()).map((o) => ({
+        id: o.id,
+        type: o.type,
+        workspaceId: o.workspaceId,
+        attributes: { ...(o.attributes ?? {}) },
+      })),
+      relationships: mergedRelationships.map((r) => ({
+        id: r.id,
+        fromId: r.fromId,
+        toId: r.toId,
+        type: r.type,
+        attributes: { ...(r.attributes ?? {}) },
+      })),
+      views: mergedViews,
+      viewLayouts: mergedLayouts,
+      designWorkspaces,
+      baselines: listBaselines(),
+      importHistory: snapshot?.importHistory ?? [],
+      versionHistory: snapshot?.versionHistory ?? [],
+    };
+  }, [eaRepository, metadata]);
+
   const importRepositoryPackage = React.useCallback(
-    async (rawText: string, sourceName?: string) => {
-      const payload = JSON.parse(rawText);
+    async (rawBytes: Uint8Array, sourceName?: string) => {
+      const parsed = await parseRepositoryPackageBytes(rawBytes);
+      if (!parsed.ok) {
+        Modal.error({
+          title: 'Open Repository failed',
+          content: parsed.error,
+        });
+        return;
+      }
+
+      if (parsed.warnings.length > 0) {
+        message.warning(parsed.warnings[0]);
+      }
+
+      const payload = buildLegacyPayloadFromPackage(parsed.data);
       const applied = applyProjectPayload(payload);
       if (!applied.ok) {
         Modal.error({
-          title: 'Import Repository failed',
+          title: 'Open Repository failed',
           content: applied.error,
         });
         return;
       }
+
+      const baselines = Array.isArray(parsed.data.baselines)
+        ? parsed.data.baselines
+        : Array.isArray(parsed.data.workspace?.baselines)
+          ? parsed.data.workspace.baselines
+          : [];
+      replaceBaselines(baselines);
 
       clearAnalysisResults();
       dispatchIdeCommand({ type: 'workspace.resetTabs' });
@@ -854,27 +987,52 @@ const IdeMenuBar: React.FC = () => {
         e.target.value = '';
         if (!file) return;
 
-        console.log('[IDE] Importing repository package', {
+        console.log('[IDE] Opening repository package', {
           name: file.name,
           type: file.type,
           size: file.size,
         });
 
-        if (!file.name.toLowerCase().endsWith('.eaproj')) {
+        if (
+          !file.name.toLowerCase().endsWith('.eapkg') &&
+          !file.name.toLowerCase().endsWith('.zip')
+        ) {
           message.warning({
             content:
-              'Unsupported repository package. Please choose an .eaproj repository package.',
-            domain: 'repository',
+              'Unsupported file type. Please choose an .eapkg or .zip repository package.',
+            duration: 5,
           });
           return;
         }
 
+        if (file.size === 0) {
+          message.error('The selected file is empty.');
+          return;
+        }
+
         try {
-          const text = await file.text();
-          await importRepositoryPackage(text, file.name);
+          const buffer = await file.arrayBuffer();
+          const fileBytes = new Uint8Array(buffer);
+
+          // Validate ZIP header before passing to import
+          if (
+            fileBytes.length < 4 ||
+            fileBytes[0] !== 0x50 ||
+            fileBytes[1] !== 0x4b
+          ) {
+            Modal.error({
+              title: 'Open Repository failed',
+              content:
+                'The selected file is not a valid repository archive. ' +
+                'It does not have a ZIP header. The file may be corrupted.',
+            });
+            return;
+          }
+
+          await importRepositoryPackage(fileBytes, file.name);
         } catch (err) {
           Modal.error({
-            title: 'Import Repository failed',
+            title: 'Open Repository failed',
             content:
               err instanceof Error
                 ? err.message
@@ -893,7 +1051,17 @@ const IdeMenuBar: React.FC = () => {
       if (!res || !res.ok) return;
       for (const item of res.items || []) {
         try {
-          await importRepositoryPackage(item.content, item.name);
+          const format = (item as any)?.format as string | undefined;
+          const content = (item as any)?.content as string | undefined;
+          const raw = content ?? '';
+          if (
+            format === 'eapkg' ||
+            item.name?.toLowerCase().endsWith('.eapkg') ||
+            item.name?.toLowerCase().endsWith('.zip')
+          ) {
+            const bytes = base64ToBytes(raw);
+            await importRepositoryPackage(bytes, item.name);
+          }
         } catch {
           // Best-effort only.
         }
@@ -904,37 +1072,58 @@ const IdeMenuBar: React.FC = () => {
 
     if (window.eaDesktop?.onRepositoryPackageImport) {
       window.eaDesktop.onRepositoryPackageImport((payload) => {
-        void importRepositoryPackage(payload.content, payload.name);
+        const format = (payload as any)?.format as string | undefined;
+        const raw = (payload as any)?.content as string | undefined;
+        if (
+          format === 'eapkg' ||
+          payload.name?.toLowerCase().endsWith('.eapkg') ||
+          payload.name?.toLowerCase().endsWith('.zip')
+        ) {
+          const bytes = base64ToBytes(raw ?? '');
+          void importRepositoryPackage(bytes, payload.name);
+        }
       });
     }
   }, [importRepositoryPackage]);
 
   const handleSaveProjectAs = React.useCallback(async () => {
-    console.log('[IDE] File > Export Repository');
+    console.log('[IDE] File > Save As');
     if (!eaRepository || !metadata) return;
 
-    const payload = buildProjectPayload();
-    if (!payload) return;
+    const source = buildPackageSource();
+    if (!source) return;
 
-    if (!window.eaDesktop?.exportRepository) {
-      message.info('Export Repository is available in the desktop app.');
+    const { bytes } = await buildRepositoryPackageBytes(source);
+    const suggestedName = `ea-repository-${safeSlug(metadata.repositoryName)}.eapkg`;
+
+    // Verify ZIP header before saving
+    if (!bytes || bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+      message.error('Save failed: generated data is not a valid ZIP archive.');
       return;
     }
 
-    const suggestedName = `ea-project-${safeSlug(metadata.repositoryName)}.eaproj`;
-    const res = await window.eaDesktop.exportRepository({
-      payload,
-      suggestedName,
-    });
+    if (window.eaDesktop?.exportRepository) {
+      // Convert to plain Array<number> for reliable Electron IPC transfer.
+      // Uint8Array may lose its type during context-isolated structured clone.
+      const res = await window.eaDesktop.exportRepository({
+        bytes: Array.from(bytes),
+        suggestedName,
+      });
 
-    if (!res.ok) {
-      message.error(res.error);
+      if (!res.ok) {
+        message.error(res.error);
+        return;
+      }
+
+      if (res.canceled) return;
+      message.success('Repository saved.');
       return;
     }
 
-    if (res.canceled) return;
-    message.success('Repository exported.');
-  }, [buildProjectPayload, eaRepository, metadata]);
+    // Browser fallback — download as .eapkg
+    downloadBytesFile(suggestedName, bytes);
+    message.success('Repository saved.');
+  }, [buildPackageSource, eaRepository, metadata]);
 
   const importCsv = React.useCallback(
     async (args: {
@@ -1891,7 +2080,7 @@ const IdeMenuBar: React.FC = () => {
           },
           {
             key: 'file.open',
-            label: 'Import Repository…',
+            label: 'Open…',
             onClick: handleOpenRepo,
           },
           {
@@ -1905,7 +2094,7 @@ const IdeMenuBar: React.FC = () => {
           },
           {
             key: 'file.saveProjectAs',
-            label: 'Export Repository…',
+            label: 'Save As…',
             disabled: !hasRepo,
             onClick: handleSaveProjectAs,
           },
@@ -2279,7 +2468,7 @@ const IdeMenuBar: React.FC = () => {
       <input
         ref={openRepoInputRef}
         type="file"
-        accept="application/octet-stream,.eaproj"
+        accept=".eapkg,.zip,application/zip,application/x-zip-compressed,application/octet-stream"
         style={{ display: 'none' }}
         onChange={handleOpenRepoFileSelected}
       />

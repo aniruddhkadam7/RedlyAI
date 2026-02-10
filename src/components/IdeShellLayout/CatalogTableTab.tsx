@@ -1,10 +1,11 @@
 import type { ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
-import { Space, Typography } from 'antd';
+import { Space, Typography, theme } from 'antd';
 import React from 'react';
-import styles from './style.module.less';
-import type { ObjectType } from '@/pages/dependency-view/utils/eaMetaModel';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
+import type { ObjectType } from '@/pages/dependency-view/utils/eaMetaModel';
+import { useAppTheme } from '@/theme/ThemeContext';
+import styles from './style.module.less';
 
 export type CatalogKind =
   | 'enterprises'
@@ -99,9 +100,23 @@ const objectTypesForCatalog = (kind: CatalogKind): readonly ObjectType[] => {
     case 'databases':
       return ['Database'];
     case 'infrastructureServices':
-      return ['Technology', 'Storage', 'API', 'MessageBroker', 'IntegrationPlatform', 'CloudService'];
+      return [
+        'Technology',
+        'Storage',
+        'API',
+        'MessageBroker',
+        'IntegrationPlatform',
+        'CloudService',
+      ];
     case 'technologies':
-      return ['Technology', 'Storage', 'API', 'MessageBroker', 'IntegrationPlatform', 'CloudService'];
+      return [
+        'Technology',
+        'Storage',
+        'API',
+        'MessageBroker',
+        'IntegrationPlatform',
+        'CloudService',
+      ];
     case 'programmes':
       return ['Programme'];
     case 'projects':
@@ -140,7 +155,12 @@ const layerForObjectType = (type: ObjectType): string => {
   ) {
     return 'Business';
   }
-  if (type === 'Application' || type === 'ApplicationService' || type === 'Interface') return 'Application';
+  if (
+    type === 'Application' ||
+    type === 'ApplicationService' ||
+    type === 'Interface'
+  )
+    return 'Application';
   if (
     type === 'Technology' ||
     type === 'Node' ||
@@ -154,19 +174,29 @@ const layerForObjectType = (type: ObjectType): string => {
     type === 'CloudService'
   )
     return 'Technology';
-  if (type === 'Programme' || type === 'Project') return 'Implementation & Migration';
-  if (type === 'Principle' || type === 'Requirement' || type === 'Standard') return 'Governance';
+  if (type === 'Programme' || type === 'Project')
+    return 'Implementation & Migration';
+  if (type === 'Principle' || type === 'Requirement' || type === 'Standard')
+    return 'Governance';
   return 'Unknown';
 };
 
-const isSoftDeleted = (attributes: Record<string, unknown> | null | undefined) => Boolean((attributes as any)?._deleted === true);
+const isSoftDeleted = (
+  attributes: Record<string, unknown> | null | undefined,
+) => Boolean((attributes as any)?._deleted === true);
 
-const toText = (value: unknown): string => (typeof value === 'string' ? value : '');
+const toText = (value: unknown): string =>
+  typeof value === 'string' ? value : '';
 
 const baseColumns: ProColumns<CatalogRow>[] = [
   { title: 'ID', dataIndex: 'id', width: 240 },
   { title: 'Name', dataIndex: 'name', width: 260 },
-  { title: 'Description', dataIndex: 'description', ellipsis: true, width: 360 },
+  {
+    title: 'Description',
+    dataIndex: 'description',
+    ellipsis: true,
+    width: 360,
+  },
   { title: 'Element Type', dataIndex: 'elementType', width: 160 },
   { title: 'Layer', dataIndex: 'layer', width: 140 },
   { title: 'Lifecycle', dataIndex: 'lifecycleState', width: 140 },
@@ -176,6 +206,11 @@ const baseColumns: ProColumns<CatalogRow>[] = [
 
 const CatalogTableTab: React.FC<{ kind: CatalogKind }> = ({ kind }) => {
   const { eaRepository } = useEaRepository();
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
+
+  const borderColor = token.colorBorder;
+  const headerBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
 
   const [loading] = React.useState(false);
 
@@ -206,7 +241,9 @@ const CatalogTableTab: React.FC<{ kind: CatalogKind }> = ({ kind }) => {
       });
     }
 
-    out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    out.sort(
+      (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
     return out;
   }, [eaRepository, kind]);
 
@@ -214,23 +251,51 @@ const CatalogTableTab: React.FC<{ kind: CatalogKind }> = ({ kind }) => {
 
   return (
     <div className={styles.catalogTab}>
-      <ProTable
-        rowKey="id"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        search={false}
-        options={false}
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        headerTitle={
-          <Space size={8}>
-            <Typography.Text strong>{titleForCatalogKind(kind)}</Typography.Text>
-            <Typography.Text type="secondary">{rows.length} items</Typography.Text>
-          </Space>
+      <style>{`
+        .catalog-grid .ant-table-thead > tr > th {
+          border-bottom: 2px solid ${borderColor} !important;
+          background: ${headerBg} !important;
         }
-      />
+        .catalog-grid .ant-table-tbody > tr > td {
+          border-bottom: 1px solid ${borderColor} !important;
+          border-right: 1px solid ${token.colorBorderSecondary} !important;
+        }
+        .catalog-grid .ant-table-tbody > tr > td:last-child {
+          border-right: none !important;
+        }
+        .catalog-grid .ant-table-thead > tr > th {
+          border-right: 1px solid ${token.colorBorderSecondary} !important;
+        }
+        .catalog-grid .ant-table-thead > tr > th:last-child {
+          border-right: none !important;
+        }
+        .catalog-grid .ant-table-tbody > tr:hover > td {
+          background: ${isDark ? token.colorFillSecondary : token.colorFillQuaternary} !important;
+        }
+      `}</style>
+      <div className="catalog-grid">
+        <ProTable
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          search={false}
+          options={false}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          headerTitle={
+            <Space size={8}>
+              <Typography.Text strong>
+                {titleForCatalogKind(kind)}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                {rows.length} items
+              </Typography.Text>
+            </Space>
+          }
+        />
+      </div>
     </div>
   );
 };

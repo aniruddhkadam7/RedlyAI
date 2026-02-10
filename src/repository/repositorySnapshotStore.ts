@@ -1,12 +1,18 @@
-import type { EaRepositoryMetadata } from '@/repository/repositoryMetadata';
-import type { EaObject, EaRelationship } from '@/pages/dependency-view/utils/eaRepository';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 import type { DesignWorkspace } from '@/ea/DesignWorkspaceStore';
+import type {
+  EaObject,
+  EaRelationship,
+} from '@/pages/dependency-view/utils/eaRepository';
+import type { EaRepositoryMetadata } from '@/repository/repositoryMetadata';
 
 export const REPOSITORY_SNAPSHOT_STORAGE_KEY = 'ea.repository.snapshot.v1';
 
 export type RepositoryStudioState = {
-  viewLayouts?: Record<string, Record<string, { x: number; y: number; width?: number; height?: number }>>;
+  viewLayouts?: Record<
+    string,
+    Record<string, { x: number; y: number; width?: number; height?: number }>
+  >;
   designWorkspaces?: DesignWorkspace[];
 };
 
@@ -18,11 +24,14 @@ export type RepositorySnapshot = {
   updatedAt: string;
   views?: ViewInstance[];
   studioState?: RepositoryStudioState;
+  importHistory?: unknown[];
+  versionHistory?: unknown[];
 };
 
-const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+const canUseStorage = () =>
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
-const safeParse = <T,>(raw: string | null): T | null => {
+const safeParse = <T>(raw: string | null): T | null => {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
@@ -33,14 +42,19 @@ const safeParse = <T,>(raw: string | null): T | null => {
 
 export const readRepositorySnapshot = (): RepositorySnapshot | null => {
   if (!canUseStorage()) return null;
-  const parsed = safeParse<RepositorySnapshot>(window.localStorage.getItem(REPOSITORY_SNAPSHOT_STORAGE_KEY));
+  const parsed = safeParse<RepositorySnapshot>(
+    window.localStorage.getItem(REPOSITORY_SNAPSHOT_STORAGE_KEY),
+  );
   return parsed ?? null;
 };
 
 export const writeRepositorySnapshot = (snapshot: RepositorySnapshot): void => {
   if (!canUseStorage()) return;
   try {
-    window.localStorage.setItem(REPOSITORY_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+    window.localStorage.setItem(
+      REPOSITORY_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify(snapshot),
+    );
   } catch {
     // Best-effort only.
   }

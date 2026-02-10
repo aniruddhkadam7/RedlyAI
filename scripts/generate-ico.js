@@ -1,0 +1,189 @@
+/**
+ * Generate Windows .ico files and app icon PNGs using sharp for resizing.
+ *
+ * Produces a multi-size ICO (16, 32, 48, 64, 128, 256) for the app icon
+ * and a single-image ICO for the .eapkg file-type icon.
+ *
+ * Requires:  npm install --save-dev sharp
+ *
+ * Usage:  node scripts/generate-ico.js
+ * Output: build/icons/app.ico, app.png, eapkg-icon.ico, eapkg-icon.png
+ */
+
+const fs = require('node:fs');
+const path = require('node:path');
+const sharp = require('sharp');
+
+const ROOT = path.resolve(__dirname, '..');
+
+// Source images
+const APP_SRC = path.join(ROOT, 'build', 'icons', 'app.png');
+const EAPKG_SRC = path.join(ROOT, 'build', 'icons', 'eapkg.png');
+
+const OUT_DIR = path.join(ROOT, 'build', 'icons');
+
+// ICO sizes for application icon (standard Windows multi-size)
+const APP_ICO_SIZES = [16, 32, 48, 64, 128, 256];
+
+/* ------------------------------------------------------------------ */
+/*  ICO builder                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Build an ICO buffer from an array of PNG buffers.
+ * Each PNG must already be resized to the target dimension.
+ */
+function buildIco(pngBuffers, sizes) {
+  const imageCount = pngBuffers.length;
+  const headerSize = 6;
+  const entrySize = 16;
+  const dataStart = headerSize + entrySize * imageCount;
+
+  let totalDataSize = 0;
+  for (const buf of pngBuffers) totalDataSize += buf.length;
+  const totalSize = dataStart + totalDataSize;
+
+  const ico = Buffer.alloc(totalSize);
+  let offset = 0;
+
+  // ICONDIR
+  ico.writeUInt16LE(0, offset);
+  offset += 2; // reserved
+  ico.writeUInt16LE(1, offset);
+  offset += 2; // type: 1 = ICO
+  ico.writeUInt16LE(imageCount, offset);
+  offset += 2; // image count
+
+  // Write ICONDIRENTRY for each image, then copy PNG data
+  let dataOffset = dataStart;
+  for (let i = 0; i < imageCount; i++) {
+    const png = pngBuffers[i];
+    const s = sizes[i];
+    const icoSize = s >= 256 ? 0 : s; // 0 means 256+
+
+    ico.writeUInt8(icoSize, offset);
+    offset += 1; // width
+    ico.writeUInt8(icoSize, offset);
+    offset += 1; // height
+    ico.writeUInt8(0, offset);
+    offset += 1; // color palette
+    ico.writeUInt8(0, offset);
+    offset += 1; // reserved
+    ico.writeUInt16LE(1, offset);
+    offset += 2; // color planes
+    ico.writeUInt16LE(32, offset);
+    offset += 2; // bits per pixel
+    ico.writeUInt32LE(png.length, offset);
+    offset += 4; // image data size
+    ico.writeUInt32LE(dataOffset, offset);
+    offset += 4; // offset to data
+
+    png.copy(ico, dataOffset);
+    dataOffset += png.length;
+  }
+
+  return ico;
+}
+
+/**
+ * Build a single-image ICO from a raw PNG buffer (no resizing).
+ */
+function singlePngToIco(pngBuffer) {
+  const w = pngBuffer.readUInt32BE(16);
+  return buildIco([pngBuffer], [Math.min(w, 256)]);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main                                                               */
+/* ------------------------------------------------------------------ */
+
+async function main() {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  // ── 1. App icon (multi-size ICO) ──────────────────────────────────
+  if (!fs.existsSync(APP_SRC)) {
+    const fallback = path.join(
+      ROOT,
+      'vecteezy_a-colorful-abstract-swirl-logo-on-transparent-background_48041693.png',
+    );
+    if (fs.existsSync(fallback)) {
+      fs.copyFileSync(fallback, APP_SRC);
+    } else {
+      console.error('ERROR: app.png not found at', APP_SRC);
+      process.exit(1);
+    }
+  }
+
+  console.log('Generating multi-size app icon…');
+  const resizedPngs = [];
+  for (const size of APP_ICO_SIZES) {
+    const buf = await sharp(APP_SRC)
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+    resizedPngs.push(buf);
+  }
+
+  const appIco = buildIco(resizedPngs, APP_ICO_SIZES);
+  fs.writeFileSync(path.join(OUT_DIR, 'app.ico'), appIco);
+
+  // 256px PNG for electron-builder / Linux
+  const png256 = await sharp(APP_SRC)
+    .resize(256, 256, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+  fs.writeFileSync(path.join(OUT_DIR, 'app-256.png'), png256);
+
+  // 512px PNG for macOS / high-res
+  const png512 = await sharp(APP_SRC)
+    .resize(512, 512, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+  fs.writeFileSync(path.join(OUT_DIR, 'icon.png'), png512);
+
+  // Legacy alias
+  fs.writeFileSync(path.join(OUT_DIR, 'icon.ico'), appIco);
+
+  // ── 2. .eapkg file-type icon (single-image ICO) ──────────────────
+  if (!fs.existsSync(EAPKG_SRC)) {
+    const fallback = path.join(ROOT, 'code-file_16591933.png');
+    if (fs.existsSync(fallback)) {
+      fs.copyFileSync(fallback, EAPKG_SRC);
+    } else {
+      console.error('ERROR: eapkg.png not found at', EAPKG_SRC);
+      console.error(
+        'Place code-file_16591933.png at project root or build/icons/eapkg.png',
+      );
+      process.exit(1);
+    }
+  }
+
+  const eapkgPng = fs.readFileSync(EAPKG_SRC);
+  const eapkgIco = singlePngToIco(eapkgPng);
+  fs.writeFileSync(path.join(OUT_DIR, 'eapkg-icon.ico'), eapkgIco);
+  fs.copyFileSync(EAPKG_SRC, path.join(OUT_DIR, 'eapkg-icon.png'));
+
+  console.log('Generated:');
+  console.log(
+    `  build/icons/app.ico         (multi-size: ${APP_ICO_SIZES.join(',')})`,
+  );
+  console.log('  build/icons/app-256.png     (256px app icon)');
+  console.log('  build/icons/icon.ico        (legacy alias → app.ico)');
+  console.log('  build/icons/icon.png        (512px app icon)');
+  console.log('  build/icons/eapkg-icon.ico  (.eapkg file icon)');
+  console.log('  build/icons/eapkg-icon.png');
+}
+
+main().catch((err) => {
+  console.error('Icon generation failed:', err);
+  process.exit(1);
+});

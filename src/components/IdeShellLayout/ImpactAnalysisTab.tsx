@@ -1,20 +1,51 @@
-import React from 'react';
-import { Alert, Button, Card, Collapse, Empty, Form, InputNumber, Select, Space, Tag, Typography } from 'antd';
-import { CompressOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  CompressOutlined,
+  MinusOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
+import {
+  Alert,
+  Button,
+  Card,
+  Collapse,
+  Empty,
+  Form,
+  InputNumber,
+  Select,
+  Space,
+  Tag,
+  Typography,
+  theme,
+} from 'antd';
 import cytoscape, { type Core } from 'cytoscape';
+import React from 'react';
 import { analyzeImpactLocally } from '@/analysis/localImpactAnalysis';
+import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { message } from '@/ea/eaConsole';
+import { useIdeSelection } from '@/ide/IdeSelectionContext';
+import {
+  type ObjectType,
+  RELATIONSHIP_TYPE_DEFINITIONS,
+  type RelationshipType,
+} from '@/pages/dependency-view/utils/eaMetaModel';
+import { getTimeHorizonWindow } from '@/repository/timeHorizonPolicy';
+import { useAppTheme } from '@/theme/ThemeContext';
 import type { ImpactAnalysisRequest } from '../../../backend/analysis/ImpactAnalysisRequest';
 import type { ImpactRankedElement } from '../../../backend/analysis/ImpactRanking';
 import type { ImpactSummary } from '../../../backend/analysis/ImpactSummary';
-import { RELATIONSHIP_TYPE_DEFINITIONS, type ObjectType, type RelationshipType } from '@/pages/dependency-view/utils/eaMetaModel';
-import { useEaRepository } from '@/ea/EaRepositoryContext';
-import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import { useIdeShell } from './index';
-import { getTimeHorizonWindow } from '@/repository/timeHorizonPolicy';
-import { message } from '@/ea/eaConsole';
 
-type ResultState = { summary: ImpactSummary; ranked: ImpactRankedElement[] } | null;
-type TreeNode = { id: string; name: string; type: ObjectType | 'Unknown'; children: TreeNode[]; revisit?: boolean };
+type ResultState = {
+  summary: ImpactSummary;
+  ranked: ImpactRankedElement[];
+} | null;
+type TreeNode = {
+  id: string;
+  name: string;
+  type: ObjectType | 'Unknown';
+  children: TreeNode[];
+  revisit?: boolean;
+};
 type Direction = 'Upstream' | 'Downstream';
 
 type GraphData = {
@@ -43,11 +74,20 @@ const ImpactAnalysisTab: React.FC = () => {
   const { selection } = useIdeSelection();
   const { openPropertiesPanel } = useIdeShell();
   const [form] = Form.useForm();
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
 
-  const [upstream, setUpstream] = React.useState<ResultState>(null);
-  const [downstream, setDownstream] = React.useState<ResultState>(null);
+  const borderColor = token.colorBorder;
+  const sectionBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+  const graphBorderColor = borderColor;
+  const graphTextBg = isDark ? token.colorBgContainer : '#fff';
+
+  const [_upstream, setUpstream] = React.useState<ResultState>(null);
+  const [_downstream, setDownstream] = React.useState<ResultState>(null);
   const [running, setRunning] = React.useState(false);
-  const [downstreamTree, setDownstreamTree] = React.useState<TreeNode | null>(null);
+  const [downstreamTree, setDownstreamTree] = React.useState<TreeNode | null>(
+    null,
+  );
   const [upstreamTree, setUpstreamTree] = React.useState<TreeNode | null>(null);
   const [graphData, setGraphData] = React.useState<GraphData | null>(null);
 
@@ -55,31 +95,48 @@ const ImpactAnalysisTab: React.FC = () => {
   const cyRef = React.useRef<Core | null>(null);
 
   const elements = React.useMemo(() => {
-    if (!eaRepository) return [] as Array<{ id: string; name: string; type: string }>;
+    if (!eaRepository)
+      return [] as Array<{ id: string; name: string; type: string }>;
     return Array.from(eaRepository.objects.values())
       .filter((o) => (o.attributes as any)?._deleted !== true)
       .map((o) => {
-        const n = typeof o.attributes?.name === 'string' && o.attributes.name.trim() ? String(o.attributes.name) : o.id;
+        const n =
+          typeof o.attributes?.name === 'string' && o.attributes.name.trim()
+            ? String(o.attributes.name)
+            : o.id;
         return { id: o.id, name: n, type: o.type };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [eaRepository]);
 
   const defaultRoot = React.useMemo(() => {
-    if (selection.selectedSource === 'ImpactAnalysis' && selection.selectedElementId) return selection.selectedElementId;
+    if (
+      selection.selectedSource === 'ImpactAnalysis' &&
+      selection.selectedElementId
+    )
+      return selection.selectedElementId;
     if (selection.selectedElementId) return selection.selectedElementId;
     return elements[0]?.id ?? '';
   }, [elements, selection.selectedElementId, selection.selectedSource]);
 
   React.useEffect(() => {
-    const depthCap = getTimeHorizonWindow(metadata?.timeHorizon).maxAnalysisDepth;
+    const depthCap = getTimeHorizonWindow(
+      metadata?.timeHorizon,
+    ).maxAnalysisDepth;
     form.setFieldsValue({ root: defaultRoot || undefined, maxDepth: depthCap });
   }, [defaultRoot, form, metadata?.timeHorizon]);
 
-  const relationshipTypes = React.useMemo(() => Object.keys(RELATIONSHIP_TYPE_DEFINITIONS), []);
+  const relationshipTypes = React.useMemo(
+    () => Object.keys(RELATIONSHIP_TYPE_DEFINITIONS),
+    [],
+  );
 
   const run = React.useCallback(
-    (direction: 'Upstream' | 'Downstream', rootId: string, maxDepth: number) => {
+    (
+      direction: 'Upstream' | 'Downstream',
+      rootId: string,
+      maxDepth: number,
+    ) => {
       if (!eaRepository) return null;
       const request: ImpactAnalysisRequest = {
         requestId: `local-${direction}-${rootId}-${maxDepth}`,
@@ -102,11 +159,19 @@ const ImpactAnalysisTab: React.FC = () => {
   );
 
   const buildTree = React.useCallback(
-    (direction: Direction, rootId: string, maxDepth: number, res: ResultState): TreeNode | null => {
+    (
+      direction: Direction,
+      rootId: string,
+      maxDepth: number,
+      res: ResultState,
+    ): TreeNode | null => {
       if (!eaRepository) return null;
       if (!res) return null;
 
-      const reachableIds = new Set<string>([rootId, ...(res.ranked ?? []).map((r) => r.elementId)]);
+      const reachableIds = new Set<string>([
+        rootId,
+        ...(res.ranked ?? []).map((r) => r.elementId),
+      ]);
       if (reachableIds.size === 0) return null;
 
       const outgoing = new Map<string, string[]>();
@@ -120,14 +185,21 @@ const ImpactAnalysisTab: React.FC = () => {
         if (!fromType || !toType) return false;
         const def = RELATIONSHIP_TYPE_DEFINITIONS[relType];
         if (!def) return false;
-        if (Array.isArray(def.allowedEndpointPairs) && def.allowedEndpointPairs.length > 0) {
-          return def.allowedEndpointPairs.some((p) => p.from === fromType && p.to === toType);
+        if (
+          Array.isArray(def.allowedEndpointPairs) &&
+          def.allowedEndpointPairs.length > 0
+        ) {
+          return def.allowedEndpointPairs.some(
+            (p) => p.from === fromType && p.to === toType,
+          );
         }
         return def.fromTypes.includes(fromType) && def.toTypes.includes(toType);
       };
 
       for (const r of eaRepository.relationships ?? []) {
-        const relType = String((r as any)?.type ?? '').trim() as RelationshipType;
+        const relType = String(
+          (r as any)?.type ?? '',
+        ).trim() as RelationshipType;
         if (!relType) continue;
         if (!relationshipTypes.includes(relType)) continue;
 
@@ -139,34 +211,45 @@ const ImpactAnalysisTab: React.FC = () => {
 
         const fromObj = eaRepository.objects.get(fromId);
         const toObj = eaRepository.objects.get(toId);
-        if (!relationshipAllowedByMetamodel(relType, fromObj?.type, toObj?.type)) continue;
+        if (
+          !relationshipAllowedByMetamodel(relType, fromObj?.type, toObj?.type)
+        )
+          continue;
 
         if (reachableIds.has(fromId)) {
           if (!outgoing.has(fromId)) outgoing.set(fromId, []);
-          outgoing.get(fromId)!.push(toId);
+          outgoing.get(fromId)?.push(toId);
         }
 
         if (reachableIds.has(toId)) {
           if (!incoming.has(toId)) incoming.set(toId, []);
-          incoming.get(toId)!.push(fromId);
+          incoming.get(toId)?.push(fromId);
         }
       }
 
       const visited = new Set<string>();
 
-      const makeNode = (nodeId: string, depth: number, revisit = false): TreeNode => {
+      const makeNode = (
+        nodeId: string,
+        depth: number,
+        revisit = false,
+      ): TreeNode => {
         const obj = eaRepository.objects.get(nodeId);
         const name =
-          typeof obj?.attributes?.name === 'string' && obj.attributes.name.trim() ? String(obj.attributes.name) : nodeId;
+          typeof obj?.attributes?.name === 'string' &&
+          obj.attributes.name.trim()
+            ? String(obj.attributes.name)
+            : nodeId;
         const type = (obj?.type as ObjectType | undefined) ?? 'Unknown';
 
         if (revisit || depth >= maxDepth) {
           return { id: nodeId, name, type, children: [], revisit };
         }
 
-        const neighborIds = direction === 'Upstream'
-          ? incoming.get(nodeId) ?? []
-          : outgoing.get(nodeId) ?? [];
+        const neighborIds =
+          direction === 'Upstream'
+            ? (incoming.get(nodeId) ?? [])
+            : (outgoing.get(nodeId) ?? []);
 
         const children: TreeNode[] = [];
         for (const nId of neighborIds) {
@@ -197,13 +280,19 @@ const ImpactAnalysisTab: React.FC = () => {
       rootId: string,
       maxDepth: number,
       reachableIds: Set<string>,
-    ): { depths: Map<string, number>; edges: Array<{ from: string; to: string; rel: RelationshipType }> } => {
+    ): {
+      depths: Map<string, number>;
+      edges: Array<{ from: string; to: string; rel: RelationshipType }>;
+    } => {
       const depths = new Map<string, number>();
-      const edges: Array<{ from: string; to: string; rel: RelationshipType }> = [];
+      const edges: Array<{ from: string; to: string; rel: RelationshipType }> =
+        [];
       if (!eaRepository) return { depths, edges };
 
       depths.set(rootId, 0);
-      const queue: Array<{ id: string; depth: number }> = [{ id: rootId, depth: 0 }];
+      const queue: Array<{ id: string; depth: number }> = [
+        { id: rootId, depth: 0 },
+      ];
 
       const relationshipAllowedByMetamodel = (
         relType: RelationshipType,
@@ -212,18 +301,32 @@ const ImpactAnalysisTab: React.FC = () => {
       ) => {
         const def = RELATIONSHIP_TYPE_DEFINITIONS[relType];
         if (!def) return false;
-        if (Array.isArray(def.allowedEndpointPairs) && def.allowedEndpointPairs.length > 0) {
-          return def.allowedEndpointPairs.some((p) => p.from === fromType && p.to === toType);
+        if (
+          Array.isArray(def.allowedEndpointPairs) &&
+          def.allowedEndpointPairs.length > 0
+        ) {
+          return def.allowedEndpointPairs.some(
+            (p) => p.from === fromType && p.to === toType,
+          );
         }
-        return (!!fromType && !!toType && def.fromTypes.includes(fromType) && def.toTypes.includes(toType));
+        return (
+          !!fromType &&
+          !!toType &&
+          def.fromTypes.includes(fromType) &&
+          def.toTypes.includes(toType)
+        );
       };
 
       while (queue.length > 0) {
-        const { id, depth } = queue.shift()!;
+        const entry = queue.shift();
+        if (!entry) break;
+        const { id, depth } = entry;
         if (depth >= maxDepth) continue;
 
         for (const rel of eaRepository.relationships ?? []) {
-          const relType = String((rel as any)?.type ?? '').trim() as RelationshipType;
+          const relType = String(
+            (rel as any)?.type ?? '',
+          ).trim() as RelationshipType;
           if (!relType) continue;
           if (!relationshipTypes.includes(relType)) continue;
 
@@ -233,7 +336,10 @@ const ImpactAnalysisTab: React.FC = () => {
 
           const fromObj = eaRepository.objects.get(fromId);
           const toObj = eaRepository.objects.get(toId);
-          if (!relationshipAllowedByMetamodel(relType, fromObj?.type, toObj?.type)) continue;
+          if (
+            !relationshipAllowedByMetamodel(relType, fromObj?.type, toObj?.type)
+          )
+            continue;
 
           let neighbor: string | null = null;
           if (direction === 'Downstream' && fromId === id) neighbor = toId;
@@ -274,32 +380,65 @@ const ImpactAnalysisTab: React.FC = () => {
       const upstreamResult = run('Upstream', root, maxDepth);
 
       const downstreamState = downstreamResult
-        ? { summary: downstreamResult.impactSummary, ranked: downstreamResult.rankedImpacts }
+        ? {
+            summary: downstreamResult.impactSummary,
+            ranked: downstreamResult.rankedImpacts,
+          }
         : null;
-      const upstreamState = upstreamResult ? { summary: upstreamResult.impactSummary, ranked: upstreamResult.rankedImpacts } : null;
+      const upstreamState = upstreamResult
+        ? {
+            summary: upstreamResult.impactSummary,
+            ranked: upstreamResult.rankedImpacts,
+          }
+        : null;
 
       setDownstream(downstreamState);
       setUpstream(upstreamState);
 
-      setDownstreamTree(buildTree('Downstream', root, maxDepth, downstreamState));
+      setDownstreamTree(
+        buildTree('Downstream', root, maxDepth, downstreamState),
+      );
       setUpstreamTree(buildTree('Upstream', root, maxDepth, upstreamState));
 
       // Build graph data for visualization (read-only).
       const reachable = new Set<string>([root]);
-      (downstreamState?.ranked ?? []).forEach((r) => reachable.add(r.elementId));
-      (upstreamState?.ranked ?? []).forEach((r) => reachable.add(r.elementId));
+      for (const r of downstreamState?.ranked ?? []) reachable.add(r.elementId);
+      for (const r of upstreamState?.ranked ?? []) reachable.add(r.elementId);
 
-      const downstreamGraph = computeDepthsAndEdges('Downstream', root, maxDepth, reachable);
-      const upstreamGraph = computeDepthsAndEdges('Upstream', root, maxDepth, reachable);
+      const downstreamGraph = computeDepthsAndEdges(
+        'Downstream',
+        root,
+        maxDepth,
+        reachable,
+      );
+      const upstreamGraph = computeDepthsAndEdges(
+        'Upstream',
+        root,
+        maxDepth,
+        reachable,
+      );
 
       const nodeMap = new Map<string, GraphData['nodes'][number]>();
 
-      const addNode = (id: string, direction: GraphData['nodes'][number]['direction'], depth: number) => {
+      const addNode = (
+        id: string,
+        direction: GraphData['nodes'][number]['direction'],
+        depth: number,
+      ) => {
         const obj = eaRepository?.objects.get(id);
-        const name = typeof obj?.attributes?.name === 'string' && obj.attributes.name.trim() ? String(obj.attributes.name) : id;
+        const name =
+          typeof obj?.attributes?.name === 'string' &&
+          obj.attributes.name.trim()
+            ? String(obj.attributes.name)
+            : id;
         const type = (obj?.type as ObjectType | undefined) ?? 'Unknown';
         const existing = nodeMap.get(id);
-        const color = direction === 'Root' ? '#fa8c16' : direction === 'Downstream' ? '#4b9bff' : '#722ed1';
+        const color =
+          direction === 'Root'
+            ? '#fa8c16'
+            : direction === 'Downstream'
+              ? '#4b9bff'
+              : '#722ed1';
         if (!existing || depth < existing.depth) {
           nodeMap.set(id, { id, name, type, direction, depth, color });
         } else if (existing && direction === 'Root') {
@@ -308,19 +447,35 @@ const ImpactAnalysisTab: React.FC = () => {
       };
 
       addNode(root, 'Root', 0);
-      downstreamGraph.depths.forEach((d, id) => addNode(id, 'Downstream', d));
-      upstreamGraph.depths.forEach((d, id) => addNode(id, 'Upstream', d));
+      for (const [id, d] of downstreamGraph.depths)
+        addNode(id, 'Downstream', d);
+      for (const [id, d] of upstreamGraph.depths) addNode(id, 'Upstream', d);
 
-      const edgeColor = (direction: Direction) => (direction === 'Downstream' ? '#4b9bff' : '#722ed1');
+      const edgeColor = (direction: Direction) =>
+        direction === 'Downstream' ? '#4b9bff' : '#722ed1';
 
       const edges: GraphData['edges'] = [];
       for (const e of downstreamGraph.edges) {
         if (!nodeMap.has(e.from) || !nodeMap.has(e.to)) continue;
-        edges.push({ id: `down-${e.from}-${e.to}-${e.rel}`, from: e.from, to: e.to, type: e.rel, direction: 'Downstream', color: edgeColor('Downstream') });
+        edges.push({
+          id: `down-${e.from}-${e.to}-${e.rel}`,
+          from: e.from,
+          to: e.to,
+          type: e.rel,
+          direction: 'Downstream',
+          color: edgeColor('Downstream'),
+        });
       }
       for (const e of upstreamGraph.edges) {
         if (!nodeMap.has(e.from) || !nodeMap.has(e.to)) continue;
-        edges.push({ id: `up-${e.from}-${e.to}-${e.rel}`, from: e.from, to: e.to, type: e.rel, direction: 'Upstream', color: edgeColor('Upstream') });
+        edges.push({
+          id: `up-${e.from}-${e.to}-${e.rel}`,
+          from: e.from,
+          to: e.to,
+          type: e.rel,
+          direction: 'Upstream',
+          color: edgeColor('Upstream'),
+        });
       }
 
       setGraphData({
@@ -404,12 +559,12 @@ const ImpactAnalysisTab: React.FC = () => {
           style: {
             'background-color': 'data(color)',
             label: 'data(label)',
-            color: '#fff',
+            color: isDark ? '#e0e0e0' : '#fff',
             'font-size': 10,
             'text-wrap': 'wrap',
             'text-max-width': '160px',
             'border-width': 2,
-            'border-color': '#162447',
+            'border-color': isDark ? '#8899aa' : '#162447',
             width: (ele: any) => (ele.data('depth') === 0 ? 36 : 28),
             height: (ele: any) => (ele.data('depth') === 0 ? 36 : 28),
           },
@@ -424,7 +579,7 @@ const ImpactAnalysisTab: React.FC = () => {
             'curve-style': 'bezier',
             label: 'data(relationshipType)',
             'font-size': 8,
-            'text-background-color': '#fff',
+            'text-background-color': graphTextBg,
             'text-background-opacity': 0.7,
             'text-rotation': 'autorotate',
           },
@@ -451,7 +606,7 @@ const ImpactAnalysisTab: React.FC = () => {
       n.lock();
       n.ungrabify();
     });
-    cyRef.current.edges().forEach((e) => e.ungrabify());
+    for (const e of cyRef.current.edges()) e.ungrabify();
     cyRef.current.autoungrabify(true);
     cyRef.current.autounselectify(true);
 
@@ -459,16 +614,21 @@ const ImpactAnalysisTab: React.FC = () => {
       const node = evt.target;
       const id = node.id();
       const type = node.data('elementType');
-      openPropertiesPanel({ elementId: id, elementType: type, dock: 'right', readOnly: true });
+      openPropertiesPanel({
+        elementId: id,
+        elementType: type,
+        dock: 'right',
+        readOnly: true,
+      });
     });
 
     return () => {
       cyRef.current?.destroy();
       cyRef.current = null;
     };
-  }, [graphData, openPropertiesPanel]);
+  }, [graphData, openPropertiesPanel, isDark, graphTextBg]);
 
-  const renderList = (res: ResultState, title: string) => {
+  const _renderList = (res: ResultState, title: string) => {
     if (!res) return <Empty description={`No ${title.toLowerCase()} yet`} />;
     if (res.ranked.length === 0) {
       return <Empty description={`No ${title.toLowerCase()} found`} />;
@@ -478,16 +638,31 @@ const ImpactAnalysisTab: React.FC = () => {
   };
 
   const renderTree = (node: TreeNode | null) => {
-    if (!node || node.children.length === 0) return <Empty description="No impacts found for this element." />;
+    if (!node || node.children.length === 0)
+      return <Empty description="No impacts found for this element." />;
 
     const renderNode = (n: TreeNode): React.ReactNode => {
       return (
-        <li key={n.id} style={{ margin: '4px 0' }}>
+        <li
+          key={n.id}
+          style={{
+            margin: '4px 0',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            paddingBottom: 4,
+          }}
+        >
           <div>
             <Typography.Text
               strong
               style={{ cursor: 'pointer' }}
-              onClick={() => openPropertiesPanel({ elementId: n.id, elementType: n.type, dock: 'right', readOnly: true })}
+              onClick={() =>
+                openPropertiesPanel({
+                  elementId: n.id,
+                  elementType: n.type,
+                  dock: 'right',
+                  readOnly: true,
+                })
+              }
             >
               {n.name}
             </Typography.Text>
@@ -505,7 +680,9 @@ const ImpactAnalysisTab: React.FC = () => {
       );
     };
 
-    return <ul style={{ paddingLeft: 0, listStyle: 'none' }}>{renderNode(node)}</ul>;
+    return (
+      <ul style={{ paddingLeft: 0, listStyle: 'none' }}>{renderNode(node)}</ul>
+    );
   };
 
   if (!eaRepository) {
@@ -537,7 +714,15 @@ const ImpactAnalysisTab: React.FC = () => {
         style={{ marginBottom: 12 }}
       />
 
-      <Card size="small" title="Scope" style={{ marginBottom: 12 }}>
+      <Card
+        size="small"
+        title="Scope"
+        style={{
+          marginBottom: 12,
+          border: `1px solid ${borderColor}`,
+          background: sectionBg,
+        }}
+      >
         <Form form={form} layout="vertical">
           <Space align="end" wrap size={16}>
             <Form.Item
@@ -550,14 +735,26 @@ const ImpactAnalysisTab: React.FC = () => {
                 showSearch
                 optionFilterProp="label"
                 placeholder="Select element"
-                options={elements.map((e) => ({ value: e.id, label: `${e.name} · ${e.type} · ${e.id}` }))}
+                options={elements.map((e) => ({
+                  value: e.id,
+                  label: `${e.name} · ${e.type} · ${e.id}`,
+                }))}
               />
             </Form.Item>
-            <Form.Item label="Max depth" name="maxDepth" rules={[{ required: true }]} style={{ width: 140 }}>
+            <Form.Item
+              label="Max depth"
+              name="maxDepth"
+              rules={[{ required: true }]}
+              style={{ width: 140 }}
+            >
               <InputNumber min={1} max={25} />
             </Form.Item>
             <Form.Item label=" " colon={false}>
-              <Button type="primary" onClick={() => void execute()} loading={running}>
+              <Button
+                type="primary"
+                onClick={() => void execute()}
+                loading={running}
+              >
                 Analyze
               </Button>
             </Form.Item>
@@ -565,7 +762,12 @@ const ImpactAnalysisTab: React.FC = () => {
         </Form>
       </Card>
 
-      <Collapse defaultActiveKey={['downstream']} bordered={false} expandIconPosition="end" style={{ background: 'transparent' }}>
+      <Collapse
+        defaultActiveKey={['downstream']}
+        bordered
+        expandIconPosition="end"
+        style={{ border: `1px solid ${borderColor}` }}
+      >
         <Collapse.Panel
           key="downstream"
           header={
@@ -573,7 +775,10 @@ const ImpactAnalysisTab: React.FC = () => {
               <Typography.Title level={5} style={{ margin: 0 }}>
                 Downstream Impact
               </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
+              <Typography.Paragraph
+                type="secondary"
+                style={{ margin: '4px 0 0' }}
+              >
                 Elements supported by or dependent on the source (outgoing).
               </Typography.Paragraph>
             </div>
@@ -589,7 +794,10 @@ const ImpactAnalysisTab: React.FC = () => {
               <Typography.Title level={5} style={{ margin: 0 }}>
                 Upstream Impact
               </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
+              <Typography.Paragraph
+                type="secondary"
+                style={{ margin: '4px 0 0' }}
+              >
                 Elements that depend on or influence the source (incoming).
               </Typography.Paragraph>
             </div>
@@ -601,41 +809,82 @@ const ImpactAnalysisTab: React.FC = () => {
 
       <Card
         title="Impact graph"
-        style={{ marginTop: 16 }}
+        style={{ marginTop: 16, border: `1px solid ${borderColor}` }}
         extra={
           <Space>
-            <Button size="small" icon={<CompressOutlined />} onClick={handleFit} disabled={!graphData}>
+            <Button
+              size="small"
+              icon={<CompressOutlined />}
+              onClick={handleFit}
+              disabled={!graphData}
+            >
               Fit
             </Button>
-            <Button size="small" icon={<PlusOutlined />} onClick={() => handleZoom('in')} disabled={!graphData}>
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => handleZoom('in')}
+              disabled={!graphData}
+            >
               Zoom in
             </Button>
-            <Button size="small" icon={<MinusOutlined />} onClick={() => handleZoom('out')} disabled={!graphData}>
+            <Button
+              size="small"
+              icon={<MinusOutlined />}
+              onClick={() => handleZoom('out')}
+              disabled={!graphData}
+            >
               Zoom out
             </Button>
           </Space>
         }
       >
-        {!graphData && <Alert type="info" message="Run analysis to render the impact graph." showIcon />}
+        {!graphData && (
+          <Alert
+            type="info"
+            message="Run analysis to render the impact graph."
+            showIcon
+          />
+        )}
         {graphData && graphData.nodes.length === 0 && (
-          <Alert type="warning" message="No impacted elements found" description="Adjust depth or relationships and run again." showIcon />
+          <Alert
+            type="warning"
+            message="No impacted elements found"
+            description="Adjust depth or relationships and run again."
+            showIcon
+          />
         )}
         {graphData && graphData.nodes.length > 0 && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Typography.Paragraph style={{ marginBottom: 8 }}>
-              Root <Typography.Text code>{graphData.rootId}</Typography.Text> · Max depth {graphData.maxDepth}
+              Root <Typography.Text code>{graphData.rootId}</Typography.Text> ·
+              Max depth {graphData.maxDepth}
             </Typography.Paragraph>
             <Space wrap>
-              <Alert type="info" showIcon message="Legend" description={
-                <Space wrap>
-                  <Tag color="#fa8c16">Root</Tag>
-                  <Tag color="#4b9bff">Downstream</Tag>
-                  <Tag color="#722ed1">Upstream</Tag>
-                  <Tag color="#52c41a">Impacted (depth &gt; 0)</Tag>
-                </Space>
-              } />
+              <Alert
+                type="info"
+                showIcon
+                message="Legend"
+                description={
+                  <Space wrap>
+                    <Tag color="#fa8c16">Root</Tag>
+                    <Tag color="#4b9bff">Downstream</Tag>
+                    <Tag color="#722ed1">Upstream</Tag>
+                    <Tag color="#52c41a">Impacted (depth &gt; 0)</Tag>
+                  </Space>
+                }
+              />
             </Space>
-            <div ref={cyContainerRef} style={{ height: 520, border: '1px solid #f0f0f0', borderRadius: 4 }} aria-label="Impact graph" />
+            <div
+              role="img"
+              ref={cyContainerRef}
+              style={{
+                height: 520,
+                border: `1px solid ${graphBorderColor}`,
+                borderRadius: 4,
+              }}
+              aria-label="Impact graph"
+            />
           </Space>
         )}
       </Card>

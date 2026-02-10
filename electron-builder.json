@@ -1,0 +1,72 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.redlyai.architecturestudio",
+  "productName": "RedlyAI Architecture Studio",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": ["dist/**/*", "electron/**/*", "!node_modules/.cache"],
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
+  "fileAssociations": [
+    {
+      "ext": "eapkg",
+      "name": "EA Repository Package",
+      "description": "Enterprise Architecture Repository Package",
+      "mimeType": "application/x-eapkg",
+      "icon": "build/icons/eapkg-icon",
+      "role": "Editor"
+    }
+  ],
+  "icon": "build/icons/app",
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "build/icons/app.ico",
+    "fileAssociations": [
+      {
+        "ext": "eapkg",
+        "name": "EA Repository Package",
+        "description": "Enterprise Architecture Repository Package",
+        "icon": "build/icons/eapkg-icon.ico",
+        "role": "Editor"
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "RedlyAI Architecture Studio"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "icon": "build/icons/app.png",
+    "category": "public.app-category.developer-tools",
+    "fileAssociations": [
+      {
+        "ext": "eapkg",
+        "name": "EA Repository Package",
+        "description": "Enterprise Architecture Repository Package",
+        "icon": "build/icons/eapkg-icon.icns",
+        "role": "Editor"
+      }
+    ]
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "icon": "build/icons/app.png",
+    "category": "Development",
+    "fileAssociations": [
+      {
+        "ext": "eapkg",
+        "name": "EA Repository Package",
+        "description": "Enterprise Architecture Repository Package",
+        "mimeType": "application/x-eapkg"
+      }
+    ]
+  }
+}

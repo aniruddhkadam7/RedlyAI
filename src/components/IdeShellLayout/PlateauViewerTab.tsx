@@ -1,8 +1,18 @@
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Empty,
+  Space,
+  Typography,
+  theme,
+} from 'antd';
 import React from 'react';
-import { Alert, Button, Card, Descriptions, Empty, Space, Typography } from 'antd';
-import { getPlateauById } from '../../../backend/roadmap/PlateauStore';
-import type { Plateau } from '../../../backend/roadmap/Plateau';
+import { useAppTheme } from '@/theme/ThemeContext';
 import { getBaselineById } from '../../../backend/baselines/BaselineStore';
+import type { Plateau } from '../../../backend/roadmap/Plateau';
+import { getPlateauById } from '../../../backend/roadmap/PlateauStore';
 import { useIdeShell } from './index';
 
 export type PlateauViewerTabProps = {
@@ -22,7 +32,14 @@ const formatDateTime = (value?: string) => {
 
 const PlateauViewerTab: React.FC<PlateauViewerTabProps> = ({ plateauId }) => {
   const { openWorkspaceTab } = useIdeShell();
-  const [plateau, setPlateau] = React.useState<Plateau | null>(() => getPlateauById(plateauId));
+  const { token } = theme.useToken();
+  const { isDark } = useAppTheme();
+  const borderColor = token.colorBorder;
+  const sectionBg = isDark ? token.colorBgElevated : token.colorFillQuaternary;
+
+  const [plateau, setPlateau] = React.useState<Plateau | null>(() =>
+    getPlateauById(plateauId),
+  );
   const [baselineName, setBaselineName] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -55,7 +72,9 @@ const PlateauViewerTab: React.FC<PlateauViewerTabProps> = ({ plateauId }) => {
   const stateRefDesc = () => {
     if (!plateau.stateRef) return '-';
     if (plateau.stateRef.kind === 'baseline') {
-      return baselineName ? `${baselineName} (${plateau.stateRef.baselineId})` : plateau.stateRef.baselineId;
+      return baselineName
+        ? `${baselineName} (${plateau.stateRef.baselineId})`
+        : plateau.stateRef.baselineId;
     }
     return plateau.stateRef.label || 'External state';
   };
@@ -74,19 +93,43 @@ const PlateauViewerTab: React.FC<PlateauViewerTabProps> = ({ plateauId }) => {
           <Typography.Title level={4} style={{ margin: 0 }}>
             {plateau.name || 'Plateau'}
           </Typography.Title>
-          <Typography.Text type="secondary">{plateau.description || 'No description provided.'}</Typography.Text>
+          <Typography.Text type="secondary">
+            {plateau.description || 'No description provided.'}
+          </Typography.Text>
         </div>
 
-        <Card size="small" title="Plateau details">
+        <Card
+          size="small"
+          title="Plateau details"
+          style={{ border: `1px solid ${borderColor}`, background: sectionBg }}
+        >
           <Descriptions size="small" column={2} bordered>
-            <Descriptions.Item label="Plateau id">{plateau.id}</Descriptions.Item>
-            <Descriptions.Item label="Occurs at">{formatDateTime(plateau.occursAt)}</Descriptions.Item>
-            <Descriptions.Item label="Created at">{formatDateTime(plateau.createdAt)}</Descriptions.Item>
-            <Descriptions.Item label="Created by">{plateau.createdBy || 'N/A'}</Descriptions.Item>
-            <Descriptions.Item label="State reference">{stateRefDesc()}</Descriptions.Item>
+            <Descriptions.Item label="Plateau id">
+              {plateau.id}
+            </Descriptions.Item>
+            <Descriptions.Item label="Occurs at">
+              {formatDateTime(plateau.occursAt)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Created at">
+              {formatDateTime(plateau.createdAt)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Created by">
+              {plateau.createdBy || 'N/A'}
+            </Descriptions.Item>
+            <Descriptions.Item label="State reference">
+              {stateRefDesc()}
+            </Descriptions.Item>
             {plateau.stateRef?.kind === 'baseline' ? (
               <Descriptions.Item label="Actions">
-                <Button type="link" onClick={() => openWorkspaceTab({ type: 'baseline', baselineId: plateau.stateRef.baselineId })}>
+                <Button
+                  type="link"
+                  onClick={() =>
+                    openWorkspaceTab({
+                      type: 'baseline',
+                      baselineId: plateau.stateRef.baselineId,
+                    })
+                  }
+                >
                   Open referenced baseline (read-only)
                 </Button>
               </Descriptions.Item>
