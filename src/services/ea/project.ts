@@ -1,4 +1,4 @@
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
 export type EaProject = {
   id: string;

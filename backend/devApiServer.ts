@@ -9,6 +9,7 @@ import express, {
 
 import { initNeo4jGraphFromEnv } from './graph/Neo4jBootstrap';
 import { createCatalogRouter } from './modules/catalog/catalog.routes';
+import { createImportRouter } from './modules/catalog/import/import.routes';
 
 type Handler = (req: Request, res: Response, next?: NextFunction) => unknown;
 
@@ -109,6 +110,7 @@ const bootstrap = async () => {
     loadMockFile(file);
   }
 
+  app.use('/api', createImportRouter());
   app.use('/api', createCatalogRouter());
 
   // Fallback 404 for any unhandled /api route.

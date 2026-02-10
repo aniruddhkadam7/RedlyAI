@@ -3,8 +3,6 @@ import {
   AppstoreOutlined,
   ArrowsAltOutlined,
   CloseOutlined,
-  CloudOutlined,
-  DeleteOutlined,
   DragOutlined,
   EditOutlined,
   EllipsisOutlined,
@@ -13,7 +11,6 @@ import {
   LogoutOutlined,
   NodeIndexOutlined,
   PlusSquareOutlined,
-  SelectOutlined,
   ShrinkOutlined,
 } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
@@ -59,9 +56,7 @@ import {
   type CreatedConnection,
   clearConnectionFeedbackClasses,
   getConnectionFeedback,
-  getConnectionFeedbackStyles,
   InlineConnectionPalette,
-  resolveConnection,
   resolveConnectionsForSource,
 } from '@/ea/connectionResolution';
 import type {
@@ -77,25 +72,27 @@ import type {
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { eaConsole, message } from '@/ea/eaConsole';
 import {
-  buildGovernanceDebt,
-  TRACEABILITY_CHECK_IDS,
-} from '@/ea/governanceValidation';
+  emitElementCreated,
+  emitElementDeleted,
+  emitElementUpdated,
+  emitRelationshipCreated,
+  emitRelationshipDeleted,
+  emitRelationshipsChanged,
+  emitRelationshipUpdated,
+  emitRepositoryChanged,
+} from '@/ea/repositoryEvents';
+
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import {
   EA_LAYERS,
   type EaLayer,
-  type EaObjectTypeDefinition,
   OBJECT_TYPE_DEFINITIONS,
   type ObjectType,
   RELATIONSHIP_TYPE_DEFINITIONS,
   type RelationshipType,
 } from '@/pages/dependency-view/utils/eaMetaModel';
 import type { EaRepository } from '@/pages/dependency-view/utils/eaRepository';
-import {
-  ENABLE_RBAC,
-  hasRepositoryPermission,
-  type RepositoryRole,
-} from '@/repository/accessControl';
+import type { RepositoryRole } from '@/repository/accessControl';
 import { recordAuditEvent } from '@/repository/auditLog';
 import {
   isCustomFrameworkModelingEnabled,
@@ -410,7 +407,7 @@ const generateElementId = (type: ObjectType): string => {
 const GRID_SIZE = 20;
 const ALIGN_THRESHOLD = 6;
 const LARGE_GRAPH_THRESHOLD = 200;
-const DRAG_THROTTLE_MS = 50;
+const _DRAG_THROTTLE_MS = 50;
 const MAX_LAYOUT_HISTORY = 50;
 const REPO_SNAPSHOT_KEY = 'ea.repository.snapshot.v1';
 const DRAFT_EDGE_ID = '__draft_edge__';
@@ -728,7 +725,7 @@ const FREE_SHAPE_DEFINITIONS: Array<{
   },
 ];
 
-const FREE_CONNECTOR_DEFINITIONS: Array<{
+const _FREE_CONNECTOR_DEFINITIONS: Array<{
   kind: FreeConnectorKind;
   label: string;
   icon: string;
@@ -756,7 +753,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
   onRequestCloseViewSwitch,
   designWorkspace,
   onUpdateWorkspace,
-  onDeleteWorkspace,
+  onDeleteWorkspace: _onDeleteWorkspace,
   onExit,
   viewContext,
 }) => {
@@ -788,23 +785,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
       'anonymous';
     return buildStudioRightPanelWidthKey(rawId);
   }, [initialState?.currentUser?.name, initialState?.currentUser?.userid]);
-  const userRole: RepositoryRole = React.useMemo(() => {
-    if (!ENABLE_RBAC) return 'Owner';
-    const access = initialState?.currentUser?.access;
-    if (access === 'admin') return 'Owner';
-    if (access === 'architect' || access === 'user') return 'Architect';
-    return 'Viewer';
-  }, [initialState?.currentUser?.access]);
-  const canEditView = React.useMemo(
-    () => hasRepositoryPermission(userRole, 'editView'),
-    [userRole],
-  );
+  const userRole: RepositoryRole = 'Owner';
+  const _canEditView = true;
   const allowAnyRelationship = false;
-  const hasModelingAccess =
-    hasRepositoryPermission(userRole, 'createElement') ||
-    hasRepositoryPermission(userRole, 'editElement') ||
-    hasRepositoryPermission(userRole, 'createRelationship') ||
-    hasRepositoryPermission(userRole, 'editRelationship');
+  const hasModelingAccess = true;
   const commitContextLocked = React.useMemo(() => {
     const key = selection?.activeDocument?.key ?? '';
     return (
@@ -1104,10 +1088,10 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return name || 'Untitled View';
   }, [activeViewName]);
   const activeViewDisplayLabel = activeViewTitle;
-  const governanceMode = metadata?.governanceMode ?? 'Advisory';
-  const viewEditLocked = governanceMode === 'Strict' && !canEditView;
-  const viewReadOnly =
-    Boolean(activeViewTab?.readOnly ?? viewContext?.readOnly) || viewEditLocked;
+  const viewEditLocked = false;
+  const viewReadOnly = Boolean(
+    activeViewTab?.readOnly ?? viewContext?.readOnly,
+  );
   const [studioModeLevel, setStudioModeLevel] =
     React.useState<StudioMode>('Model');
   const [presentationView, setPresentationView] = React.useState(false);
@@ -7492,12 +7476,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       return;
     }
 
-    if (!hasModelingAccess) {
-      message.error(
-        'Commit blocked: repository is read-only or you lack modeling permission.',
-      );
-      return;
-    }
+    // permission removed — full access mode
 
     if (commitContextLocked) {
       message.error(
@@ -7712,6 +7691,57 @@ const StudioShell: React.FC<StudioShellProps> = ({
         });
         return;
       }
+
+      addedElements.forEach((el) => {
+        emitElementCreated({
+          elementId: el.id,
+          elementType: el.type,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      modifiedElements.forEach((el) => {
+        emitElementUpdated({
+          elementId: el.id,
+          elementType: el.type,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      removedElements.forEach((el) => {
+        emitElementDeleted({
+          elementId: el.id,
+          elementType: el.type,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      addedRelationships.forEach((rel) => {
+        emitRelationshipCreated({
+          relationshipId: rel.id,
+          relationshipType: rel.type,
+          sourceId: rel.fromId,
+          targetId: rel.toId,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      modifiedRelationships.forEach((rel) => {
+        emitRelationshipUpdated({
+          relationshipId: rel.id,
+          relationshipType: rel.type,
+          sourceId: rel.fromId,
+          targetId: rel.toId,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      removedRelationships.forEach((rel) => {
+        emitRelationshipDeleted({
+          relationshipId: rel.id,
+          relationshipType: rel.type,
+          sourceId: rel.fromId,
+          targetId: rel.toId,
+          workspaceId: metadata?.repositoryName,
+        });
+      });
+      emitRepositoryChanged();
+      emitRelationshipsChanged();
     }
 
     recordAuditEvent({
@@ -7820,8 +7850,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
     message.success('Workspace committed and locked.');
     message.success('View updated from committed workspace changes.');
     try {
-      window.dispatchEvent(new Event('ea:repositoryChanged'));
-      window.dispatchEvent(new Event('ea:relationshipsChanged'));
+      emitRepositoryChanged();
+      emitRelationshipsChanged();
       window.dispatchEvent(new Event('ea:viewsChanged'));
     } catch {
       // Best-effort only.
@@ -10497,17 +10527,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     }
   }, [stagedElements, stagedRelationships]);
 
-  const governance = React.useMemo(() => {
-    if (!eaRepository) return null;
-    try {
-      return buildGovernanceDebt(eaRepository, new Date(), {
-        lifecycleCoverage: metadata?.lifecycleCoverage ?? null,
-        governanceMode: metadata?.governanceMode ?? null,
-      });
-    } catch {
-      return null;
-    }
-  }, [eaRepository, metadata?.governanceMode, metadata?.lifecycleCoverage]);
+  const governance = null as ReturnType<any> | null;
 
   const validationSummary = React.useMemo(() => {
     if (!governance) return null;
@@ -11549,14 +11569,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       });
       return;
     }
-    const isOwner = userRole === 'Owner';
-    const isCreator = activeView.createdBy === actor;
-    if (!isOwner && !isCreator) {
-      message.warning(
-        'Only the view creator or repository owner can delete this view.',
-      );
-      return;
-    }
+    // permission removed — all users can delete views
     Modal.confirm({
       title: 'Delete view?',
       content:
@@ -14662,9 +14675,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
           description="Workspace will be locked as COMMITTED and cannot be reopened for edits."
           style={{ marginBottom: 12 }}
         />
-        {stagedValidationErrors.length > 0 ||
-        (governanceMode !== 'Advisory' &&
-          (validationSummary?.warningCount ?? 0) > 0) ? (
+        {stagedValidationErrors.length > 0 ? (
           <Alert
             type="error"
             showIcon
@@ -14674,11 +14685,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
                 {stagedValidationErrors.slice(0, 6).map((err) => (
                   <li key={err}>{err}</li>
                 ))}
-                {governanceMode !== 'Advisory'
-                  ? (validationSummary?.warningHighlights ?? []).map((warn) => (
-                      <li key={warn}>{warn}</li>
-                    ))
-                  : null}
               </ul>
             }
             style={{ marginBottom: 12 }}

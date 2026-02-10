@@ -1,5 +1,10 @@
-export type ArchitectureScope = 'Enterprise' | 'Business Unit' | 'Domain' | 'Programme';
+export type ArchitectureScope =
+  | 'Enterprise'
+  | 'Business Unit'
+  | 'Domain'
+  | 'Programme';
 export type ReferenceFramework = 'Custom';
+/** @deprecated Governance modes removed. System operates in full access mode. */
 export type GovernanceMode = 'Strict' | 'Advisory';
 export type LifecycleCoverage = 'As-Is' | 'To-Be' | 'Both';
 export type TimeHorizon = 'Current' | '1–3 years' | 'Strategic';
@@ -27,7 +32,8 @@ export type EaRepositoryMetadata = {
   referenceFramework: ReferenceFramework;
   /** Optional: enable multiple frameworks at once (union of allowed types). */
   enabledFrameworks?: ReferenceFramework[];
-  governanceMode: GovernanceMode;
+  /** @deprecated Governance modes removed. Kept for data compatibility. */
+  governanceMode?: GovernanceMode;
   lifecycleCoverage: LifecycleCoverage;
   timeHorizon: TimeHorizon;
 
@@ -49,22 +55,37 @@ export const ARCHITECTURE_SCOPES: ArchitectureScope[] = [
 
 export const REFERENCE_FRAMEWORKS: ReferenceFramework[] = ['Custom'];
 
+/** @deprecated Governance modes removed. */
 export const GOVERNANCE_MODES: GovernanceMode[] = ['Strict', 'Advisory'];
 
-export const LIFECYCLE_COVERAGE_OPTIONS: LifecycleCoverage[] = ['As-Is', 'To-Be', 'Both'];
+export const LIFECYCLE_COVERAGE_OPTIONS: LifecycleCoverage[] = [
+  'As-Is',
+  'To-Be',
+  'Both',
+];
 
-export const TIME_HORIZONS: TimeHorizon[] = ['Current', '1–3 years', 'Strategic'];
+export const TIME_HORIZONS: TimeHorizon[] = [
+  'Current',
+  '1–3 years',
+  'Strategic',
+];
 
 export const validateRepositoryMetadata = (
   value: unknown,
-): { ok: true; metadata: EaRepositoryMetadata } | { ok: false; error: string } => {
+):
+  | { ok: true; metadata: EaRepositoryMetadata }
+  | { ok: false; error: string } => {
   const v = value as any;
 
-  const repositoryName = typeof v?.repositoryName === 'string' ? v.repositoryName.trim() : '';
-  if (!repositoryName) return { ok: false, error: 'Repository Name is required.' };
+  const repositoryName =
+    typeof v?.repositoryName === 'string' ? v.repositoryName.trim() : '';
+  if (!repositoryName)
+    return { ok: false, error: 'Repository Name is required.' };
 
-  const organizationName = typeof v?.organizationName === 'string' ? v.organizationName.trim() : '';
-  if (!organizationName) return { ok: false, error: 'Organization Name is required.' };
+  const organizationName =
+    typeof v?.organizationName === 'string' ? v.organizationName.trim() : '';
+  if (!organizationName)
+    return { ok: false, error: 'Organization Name is required.' };
 
   const industry = typeof v?.industry === 'string' ? v.industry.trim() : '';
 
@@ -78,15 +99,16 @@ export const validateRepositoryMetadata = (
     return { ok: false, error: 'Reference Framework is required.' };
   }
 
-  const enabledFrameworksRaw = Array.isArray(v?.enabledFrameworks) ? (v.enabledFrameworks as unknown[]) : [];
+  const enabledFrameworksRaw = Array.isArray(v?.enabledFrameworks)
+    ? (v.enabledFrameworks as unknown[])
+    : [];
   const enabledFrameworks = enabledFrameworksRaw
     .map((f) => String(f) as ReferenceFramework)
     .filter((f) => REFERENCE_FRAMEWORKS.includes(f));
 
-  const governanceMode = v?.governanceMode as GovernanceMode;
-  if (!GOVERNANCE_MODES.includes(governanceMode)) {
-    return { ok: false, error: 'Governance Mode is required.' };
-  }
+  // Governance mode removed — default to 'Advisory' for data compatibility.
+  const governanceMode: GovernanceMode =
+    (v?.governanceMode as GovernanceMode) || 'Advisory';
 
   const lifecycleCoverage = v?.lifecycleCoverage as LifecycleCoverage;
   if (!LIFECYCLE_COVERAGE_OPTIONS.includes(lifecycleCoverage)) {
@@ -98,15 +120,23 @@ export const validateRepositoryMetadata = (
     return { ok: false, error: 'Time Horizon is required.' };
   }
 
-  const ownerUserId = typeof v?.owner?.userId === 'string' ? v.owner.userId.trim() : '';
-  const ownerDisplayName = typeof v?.owner?.displayName === 'string' ? v.owner.displayName.trim() : '';
+  const ownerUserId =
+    typeof v?.owner?.userId === 'string' ? v.owner.userId.trim() : '';
+  const ownerDisplayName =
+    typeof v?.owner?.displayName === 'string' ? v.owner.displayName.trim() : '';
   if (!ownerUserId) {
     return { ok: false, error: 'Owner assignment is required.' };
   }
 
-  const createdAt = typeof v?.createdAt === 'string' && v.createdAt.trim() ? v.createdAt : new Date().toISOString();
+  const createdAt =
+    typeof v?.createdAt === 'string' && v.createdAt.trim()
+      ? v.createdAt
+      : new Date().toISOString();
 
-  const frameworkConfig = (v?.frameworkConfig && typeof v.frameworkConfig === 'object') ? (v.frameworkConfig as FrameworkConfig) : undefined;
+  const frameworkConfig =
+    v?.frameworkConfig && typeof v.frameworkConfig === 'object'
+      ? (v.frameworkConfig as FrameworkConfig)
+      : undefined;
 
   return {
     ok: true,
@@ -116,11 +146,15 @@ export const validateRepositoryMetadata = (
       industry: industry || undefined,
       architectureScope,
       referenceFramework,
-      enabledFrameworks: enabledFrameworks.length > 0 ? enabledFrameworks : undefined,
-      governanceMode,
+      enabledFrameworks:
+        enabledFrameworks.length > 0 ? enabledFrameworks : undefined,
+      governanceMode: governanceMode || 'Advisory',
       lifecycleCoverage,
       timeHorizon,
-      owner: { userId: ownerUserId, displayName: ownerDisplayName || undefined },
+      owner: {
+        userId: ownerUserId,
+        displayName: ownerDisplayName || undefined,
+      },
       frameworkConfig,
       createdAt,
     },

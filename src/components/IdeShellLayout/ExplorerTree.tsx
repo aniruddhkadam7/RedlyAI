@@ -1,4 +1,4 @@
-import {
+﻿import {
   ApartmentOutlined,
   AppstoreOutlined,
   CheckOutlined,
@@ -55,7 +55,6 @@ import {
   isCustomFrameworkModelingEnabled,
   isObjectTypeEnabledForFramework,
 } from '@/repository/customFrameworkConfig';
-import { guardInitializationForModeling } from '@/repository/elementCreationPolicy';
 import { isObjectTypeAllowedForReferenceFramework } from '@/repository/referenceFrameworkPolicy';
 import type { Baseline } from '../../../backend/baselines/Baseline';
 import {
@@ -227,11 +226,6 @@ const getRootKeyForType = (type: ObjectType): string | null => {
 
 const BUSINESS_UNIT_ENTERPRISE_PLACEHOLDER_KEY =
   'explorer:business:enterprises:root-placeholder';
-
-const normalizeId = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-
-// GLOBAL RULE: Roadmaps describe change over time. Roadmaps never modify architecture truth. Truth is modified only in the active repository workspace.
-const PLANNING_READONLY_MESSAGE = '';
 
 const isSoftDeleted = (
   attributes: Record<string, unknown> | null | undefined,
@@ -582,26 +576,7 @@ const relationshipHierarchy = (args: {
   return roots;
 };
 
-const capabilityHierarchy = (args: {
-  objectsById: Map<
-    string,
-    { id: string; type: ObjectType; attributes: Record<string, unknown> }
-  >;
-  relationships: RelationshipRecord[];
-  icon: React.ReactNode;
-}): DataNode[] => {
-  const { objectsById, relationships, icon } = args;
-  return relationshipHierarchy({
-    objectsById,
-    relationships,
-    allowedTypes: ['Capability', 'CapabilityCategory', 'SubCapability'],
-    allowedRelationshipTypes: ['DECOMPOSES_TO', 'COMPOSED_OF'],
-    iconForType: () => icon,
-    keySuffix: 'capability-hierarchy',
-  });
-};
-
-const enterpriseHierarchy = (args: {
+const _enterpriseHierarchy = (args: {
   objectsById: Map<
     string,
     { id: string; type: ObjectType; attributes: Record<string, unknown> }
@@ -621,7 +596,7 @@ const enterpriseHierarchy = (args: {
   });
 };
 
-const enterpriseCapabilityHierarchy = (args: {
+const _enterpriseCapabilityHierarchy = (args: {
   objectsById: Map<
     string,
     { id: string; type: ObjectType; attributes: Record<string, unknown> }
@@ -646,7 +621,7 @@ const enterpriseCapabilityHierarchy = (args: {
   });
 };
 
-const programmeHierarchy = (args: {
+const _programmeHierarchy = (args: {
   objectsById: Map<
     string,
     { id: string; type: ObjectType; attributes: Record<string, unknown> }
@@ -723,7 +698,7 @@ const applicationsByLifecycleGrouping = (args: {
   return nodes;
 };
 
-const technologiesByLayerGrouping = (args: {
+const _technologiesByLayerGrouping = (args: {
   objectsById: Map<
     string,
     { id: string; type: ObjectType; attributes: Record<string, unknown> }
@@ -903,8 +878,12 @@ const inferHierarchyRelationshipType = (
 
 const ExplorerTree: React.FC = () => {
   const { initialState } = useModel('@@initialState');
-  const { selection, setSelection, setSelectedElement, setActiveElement } =
-    useIdeSelection();
+  const {
+    selection,
+    setSelection,
+    setSelectedElement,
+    setActiveElement: _setActiveElement,
+  } = useIdeSelection();
   const {
     openRouteTab,
     openWorkspaceTab,
@@ -913,7 +892,7 @@ const ExplorerTree: React.FC = () => {
   } = useIdeShell();
   const {
     eaRepository,
-    setEaRepository,
+    setEaRepository: _setEaRepository,
     trySetEaRepository,
     metadata,
     initializationState,
@@ -924,7 +903,7 @@ const ExplorerTree: React.FC = () => {
 
   const [relationshipModalOpen, setRelationshipModalOpen] =
     React.useState(false);
-  const [relationshipSource, setRelationshipSource] = React.useState<{
+  const [relationshipSource, _setRelationshipSource] = React.useState<{
     id: string;
     type: ObjectType;
     name: string;
@@ -1040,74 +1019,6 @@ const ExplorerTree: React.FC = () => {
     );
     return filtered.map((t) => ({ value: t, label: titleForObjectType(t) }));
   }, [isTypeAllowedByScope, isTypeEnabledByFramework]);
-
-  const openCreateTypePicker = React.useCallback(
-    (allowedTypes?: readonly ObjectType[]) => {
-      message.info(
-        'Create new elements from the EA Toolbox. Explorer is for browsing and reuse.',
-      );
-      return;
-      if (isReadOnlyMode) {
-        message.warning('Read-only mode: creation is disabled.');
-        return;
-      }
-      if (!eaRepository) {
-        message.warning('No repository loaded. Create a repository first.');
-        return;
-      }
-      const allowedSet =
-        allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null;
-      const options = allowedSet
-        ? creatableTypeOptions.filter((opt) =>
-            allowedSet.has(opt.value as ObjectType),
-          )
-        : creatableTypeOptions;
-      if (options.length === 0) {
-        message.warning(
-          'No element types are enabled for creation in the current framework/scope.',
-        );
-        return;
-      }
-      let selectedType: ObjectType | '' = '';
-      Modal.confirm({
-        title: 'Create element',
-        okText: 'Next',
-        cancelText: 'Cancel',
-        content: (
-          <Form layout="vertical">
-            <Form.Item label="Element Type" required>
-              <Select
-                placeholder="Select element type"
-                options={options}
-                onChange={(v) => {
-                  selectedType = v as ObjectType;
-                }}
-              />
-            </Form.Item>
-          </Form>
-        ),
-        onOk: () => {
-          if (!selectedType) {
-            message.error('Select an element type.');
-            return Promise.reject();
-          }
-          return new Promise<void>((resolve) => {
-            setTimeout(() => {
-              createObject(selectedType);
-              resolve();
-            }, 0);
-          });
-        },
-      });
-    },
-    [
-      createObject,
-      creatableTypeOptions,
-      eaRepository,
-      isReadOnlyMode,
-      permissionGuard,
-    ],
-  );
 
   const [refreshToken, setRefreshToken] = React.useState(0);
   const { openSeedSampleDataModal, isRepoEmpty, hasRepository } =
@@ -1225,6 +1136,57 @@ const ExplorerTree: React.FC = () => {
     (label: string) => (isReadOnlyMode ? `${label} (read-only)` : label),
     [isReadOnlyMode],
   );
+
+  const storedExpansionRef = React.useRef(false);
+  const [expandedKeys, setExpandedKeys] = React.useState<React.Key[]>(() => {
+    try {
+      const raw = localStorage.getItem('ea.explorer.expandedKeys');
+      if (raw) {
+        const parsed = JSON.parse(raw) as React.Key[];
+        if (Array.isArray(parsed)) {
+          storedExpansionRef.current = true;
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore storage failures
+    }
+    const enabledFrameworks =
+      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
+        ? metadata.enabledFrameworks
+        : metadata?.referenceFramework
+          ? [metadata.referenceFramework]
+          : [];
+    if (
+      enabledFrameworks.length === 1 &&
+      enabledFrameworks[0] === 'Custom' &&
+      !customModelingEnabled
+    ) {
+      return [ROOT_KEYS.views];
+    }
+    const scope = metadata?.architectureScope ?? null;
+    if (scope === 'Enterprise') return [...ENTERPRISE_FULLY_EXPANDED_KEYS];
+    if (scope === 'Business Unit')
+      return [ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology];
+    if (scope === 'Domain') return [ROOT_KEYS.business, ROOT_KEYS.application];
+    if (scope === 'Programme')
+      return [
+        ROOT_KEYS.implMig,
+        'explorer:implmig:programmes',
+        'explorer:implmig:plateaus',
+        ROOT_KEYS.views,
+        'explorer:views:roadmaps',
+      ];
+    return [
+      ROOT_KEYS.business,
+      ROOT_KEYS.application,
+      ROOT_KEYS.technology,
+      ROOT_KEYS.implMig,
+      'explorer:implmig:plateaus',
+      ROOT_KEYS.governance,
+      ROOT_KEYS.views,
+    ];
+  });
 
   const initializationGuard = React.useCallback((_: any) => false, []);
 
@@ -1510,7 +1472,7 @@ const ExplorerTree: React.FC = () => {
               : o.id;
           return {
             value: o.id,
-            label: `${displayName} · ${o.type} · ${o.id}`,
+            label: `${displayName} ┬╖ ${o.type} ┬╖ ${o.id}`,
             type: o.type,
           };
         })
@@ -1523,57 +1485,6 @@ const ExplorerTree: React.FC = () => {
       normalizeDomainId,
     ],
   );
-
-  const storedExpansionRef = React.useRef(false);
-  const [expandedKeys, setExpandedKeys] = React.useState<React.Key[]>(() => {
-    try {
-      const raw = localStorage.getItem('ea.explorer.expandedKeys');
-      if (raw) {
-        const parsed = JSON.parse(raw) as React.Key[];
-        if (Array.isArray(parsed)) {
-          storedExpansionRef.current = true;
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore storage failures
-    }
-    const enabledFrameworks =
-      metadata?.enabledFrameworks && metadata.enabledFrameworks.length > 0
-        ? metadata.enabledFrameworks
-        : metadata?.referenceFramework
-          ? [metadata.referenceFramework]
-          : [];
-    if (
-      enabledFrameworks.length === 1 &&
-      enabledFrameworks[0] === 'Custom' &&
-      !customModelingEnabled
-    ) {
-      return [ROOT_KEYS.views];
-    }
-    const scope = metadata?.architectureScope ?? null;
-    if (scope === 'Enterprise') return [...ENTERPRISE_FULLY_EXPANDED_KEYS];
-    if (scope === 'Business Unit')
-      return [ROOT_KEYS.business, ROOT_KEYS.application, ROOT_KEYS.technology];
-    if (scope === 'Domain') return [ROOT_KEYS.business, ROOT_KEYS.application];
-    if (scope === 'Programme')
-      return [
-        ROOT_KEYS.implMig,
-        'explorer:implmig:programmes',
-        'explorer:implmig:plateaus',
-        ROOT_KEYS.views,
-        'explorer:views:roadmaps',
-      ];
-    return [
-      ROOT_KEYS.business,
-      ROOT_KEYS.application,
-      ROOT_KEYS.technology,
-      ROOT_KEYS.implMig,
-      'explorer:implmig:plateaus',
-      ROOT_KEYS.governance,
-      ROOT_KEYS.views,
-    ];
-  });
 
   React.useEffect(() => {
     // Recompute default expansion when creating/loading a repository.
@@ -2549,49 +2460,7 @@ const ExplorerTree: React.FC = () => {
     [],
   );
 
-  const handleTreeKeyDown = React.useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      const selected = selectedKeysFromContext[0];
-      if (typeof selected !== 'string') return;
-
-      if (event.key === 'ArrowRight') {
-        const meta = nodeMetaByKey.get(selected);
-        if (meta?.hasChildren && !expandedKeys.includes(selected)) {
-          toggleExpandedKey(selected, 'expand');
-          event.preventDefault();
-        }
-      }
-
-      if (event.key === 'ArrowLeft') {
-        if (expandedKeys.includes(selected)) {
-          toggleExpandedKey(selected, 'collapse');
-          event.preventDefault();
-        } else {
-          const parent = parentByKey.get(selected);
-          if (parent) {
-            setSelection({ kind: 'repository', keys: [parent] });
-            event.preventDefault();
-          }
-        }
-      }
-
-      if (event.key === 'Enter') {
-        openForKey(selected, { openMode: 'replace' });
-        event.preventDefault();
-      }
-    },
-    [
-      expandedKeys,
-      nodeMetaByKey,
-      openForKey,
-      parentByKey,
-      selectedKeysFromContext,
-      setSelection,
-      toggleExpandedKey,
-    ],
-  );
-
-  const handleDrop: TreeProps['onDrop'] = React.useCallback(
+  const _handleDrop: TreeProps['onDrop'] = React.useCallback(
     (info) => {
       if (!eaRepository) return;
       if (!hierarchyEditingEnabled) return;
@@ -2629,7 +2498,7 @@ const ExplorerTree: React.FC = () => {
         parentData.elementType,
         childData.elementType,
       );
-      if (!relationshipType) return; // Invalid endpoint pair for hierarchy changes → silent no-op.
+      if (!relationshipType) return; // Invalid endpoint pair for hierarchy changes ΓåÆ silent no-op.
 
       const existingHierarchyRels = eaRepository.relationships.filter(
         (r) => r.toId === childData.elementId,
@@ -2717,7 +2586,6 @@ const ExplorerTree: React.FC = () => {
       message.info(
         'Create new elements from the EA Toolbox. Explorer is for browsing and reuse.',
       );
-      return;
       if (isReadOnlyMode) {
         message.warning('Read-only mode: creation is disabled.');
         return;
@@ -3072,6 +2940,67 @@ const ExplorerTree: React.FC = () => {
     ],
   );
 
+  const openCreateTypePicker = React.useCallback(
+    (allowedTypes?: readonly ObjectType[]) => {
+      message.info(
+        'Create new elements from the EA Toolbox. Explorer is for browsing and reuse.',
+      );
+      if (isReadOnlyMode) {
+        message.warning('Read-only mode: creation is disabled.');
+        return;
+      }
+      if (!eaRepository) {
+        message.warning('No repository loaded. Create a repository first.');
+        return;
+      }
+      const allowedSet =
+        allowedTypes && allowedTypes.length > 0 ? new Set(allowedTypes) : null;
+      const options = allowedSet
+        ? creatableTypeOptions.filter((opt) =>
+            allowedSet.has(opt.value as ObjectType),
+          )
+        : creatableTypeOptions;
+      if (options.length === 0) {
+        message.warning(
+          'No element types are enabled for creation in the current framework/scope.',
+        );
+        return;
+      }
+      let selectedType: ObjectType | '' = '';
+      Modal.confirm({
+        title: 'Create element',
+        okText: 'Next',
+        cancelText: 'Cancel',
+        content: (
+          <Form layout="vertical">
+            <Form.Item label="Element Type" required>
+              <Select
+                placeholder="Select element type"
+                options={options}
+                onChange={(v) => {
+                  selectedType = v as ObjectType;
+                }}
+              />
+            </Form.Item>
+          </Form>
+        ),
+        onOk: () => {
+          if (!selectedType) {
+            message.error('Select an element type.');
+            return Promise.reject();
+          }
+          return new Promise<void>((resolve) => {
+            setTimeout(() => {
+              createObject(selectedType);
+              resolve();
+            }, 0);
+          });
+        },
+      });
+    },
+    [createObject, creatableTypeOptions, eaRepository, isReadOnlyMode],
+  );
+
   const duplicateObject = React.useCallback(
     (id: string) => {
       if (isReadOnlyMode) {
@@ -3198,7 +3127,7 @@ const ExplorerTree: React.FC = () => {
         const target = eaRepository.objects.get(r.toId);
         const sourceName = source ? nameForObject(source) : r.fromId;
         const targetName = target ? nameForObject(target) : r.toId;
-        return `${sourceName} —${r.type}→ ${targetName}`;
+        return `${sourceName} ΓÇö${r.type}ΓåÆ ${targetName}`;
       });
       let removeRelationships = false;
 
@@ -3224,7 +3153,9 @@ const ExplorerTree: React.FC = () => {
                     <li key={line}>{line}</li>
                   ))}
                   {impactedCount > impactedPreview.length ? (
-                    <li>…and {impactedCount - impactedPreview.length} more</li>
+                    <li>
+                      ΓÇªand {impactedCount - impactedPreview.length} more
+                    </li>
                   ) : null}
                 </ul>
               )}
@@ -3313,7 +3244,7 @@ const ExplorerTree: React.FC = () => {
     [actor, permissionGuard, userRole],
   );
 
-  const renameView = React.useCallback(
+  const _renameView = React.useCallback(
     (viewId: string) => {
       if (permissionGuard('editView')) return;
       const view = ViewStore.get(viewId);
@@ -3358,7 +3289,7 @@ const ExplorerTree: React.FC = () => {
     [permissionGuard],
   );
 
-  const duplicateView = React.useCallback(
+  const _duplicateView = React.useCallback(
     (viewId: string) => {
       if (permissionGuard('editView')) return;
       const view = ViewStore.get(viewId);
@@ -3405,7 +3336,7 @@ const ExplorerTree: React.FC = () => {
   );
 
   const openForKey = React.useCallback(
-    (key: string, opts?: { openMode?: 'new' | 'replace' }) => {
+    (key: string, _opts?: { openMode?: 'new' | 'replace' }) => {
       const scope = metadata?.architectureScope ?? null;
       if (key === ROOT_KEYS.catalog) {
         openRouteTab('/catalog/business');
@@ -3558,8 +3489,9 @@ const ExplorerTree: React.FC = () => {
       if (key.startsWith('explorer:views:')) {
         if (key === 'explorer:views:roadmaps') {
           const roadmaps = listRoadmaps();
-          if (roadmaps.length > 0) {
-            openWorkspaceTab({ type: 'roadmap', roadmapId: roadmaps[0]!.id });
+          const first = roadmaps[0];
+          if (first) {
+            openWorkspaceTab({ type: 'roadmap', roadmapId: first.id });
           }
           return;
         }
@@ -3633,6 +3565,48 @@ const ExplorerTree: React.FC = () => {
       openWorkspaceTab,
       setSelectedElement,
       setSelection,
+    ],
+  );
+
+  const handleTreeKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const selected = selectedKeysFromContext[0];
+      if (typeof selected !== 'string') return;
+
+      if (event.key === 'ArrowRight') {
+        const meta = nodeMetaByKey.get(selected);
+        if (meta?.hasChildren && !expandedKeys.includes(selected)) {
+          toggleExpandedKey(selected, 'expand');
+          event.preventDefault();
+        }
+      }
+
+      if (event.key === 'ArrowLeft') {
+        if (expandedKeys.includes(selected)) {
+          toggleExpandedKey(selected, 'collapse');
+          event.preventDefault();
+        } else {
+          const parent = parentByKey.get(selected);
+          if (parent) {
+            setSelection({ kind: 'repository', keys: [parent] });
+            event.preventDefault();
+          }
+        }
+      }
+
+      if (event.key === 'Enter') {
+        openForKey(selected, { openMode: 'replace' });
+        event.preventDefault();
+      }
+    },
+    [
+      expandedKeys,
+      nodeMetaByKey,
+      openForKey,
+      parentByKey,
+      selectedKeysFromContext,
+      setSelection,
+      toggleExpandedKey,
     ],
   );
 
@@ -4134,7 +4108,7 @@ const ExplorerTree: React.FC = () => {
             <div>
               <Typography.Text type="secondary">Source Element</Typography.Text>
               <Input
-                value={`${relationshipSource.name} · ${relationshipSource.type} · ${relationshipSource.id}`}
+                value={`${relationshipSource.name} ┬╖ ${relationshipSource.type} ┬╖ ${relationshipSource.id}`}
                 disabled
                 style={{ marginTop: 4 }}
               />
@@ -4158,10 +4132,9 @@ const ExplorerTree: React.FC = () => {
                     if (!isValidRelationshipType(t)) return false;
                     const relDef = RELATIONSHIP_TYPE_DEFINITIONS[t];
                     return Boolean(
-                      relDef &&
-                        relDef.fromTypes.includes(
-                          relationshipSource.type as ObjectType,
-                        ),
+                      relDef?.fromTypes.includes(
+                        relationshipSource.type as ObjectType,
+                      ),
                     );
                   }) as RelationshipType[];
                   return allowed.map((t) => ({ value: t, label: t }));
@@ -4269,10 +4242,10 @@ const ExplorerTree: React.FC = () => {
                 {baselinePreview.createdAt}
               </Descriptions.Item>
               <Descriptions.Item label="Created by">
-                {baselinePreview.createdBy ?? '—'}
+                {baselinePreview.createdBy ?? 'ΓÇö'}
               </Descriptions.Item>
               <Descriptions.Item label="Description">
-                {baselinePreview.description ?? '—'}
+                {baselinePreview.description ?? 'ΓÇö'}
               </Descriptions.Item>
               <Descriptions.Item label="Elements captured">
                 {baselinePreview.elements.length}

@@ -1,4 +1,4 @@
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
 import type { InteroperabilityReadinessResult } from '../../../backend/interoperability';
 import type { ExportScope } from '../../../backend/interoperability/ExportScope';

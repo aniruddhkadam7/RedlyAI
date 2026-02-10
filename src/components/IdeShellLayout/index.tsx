@@ -23,7 +23,6 @@ import {
   Empty,
   Input,
   Layout,
-  Modal,
   Radio,
   Space,
   Tabs,
@@ -50,14 +49,10 @@ import {
 import { useEaProject } from '@/ea/EaProjectContext';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
 import { message } from '@/ea/eaConsole';
-import { validateStrictGovernance } from '@/ea/strictGovernance';
+// governance removed
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import { IDE_COMMAND_EVENT, type IdeCommand } from '@/ide/ideCommands';
-import {
-  ENABLE_RBAC,
-  hasRepositoryPermission,
-  type RepositoryRole,
-} from '@/repository/accessControl';
+import type { RepositoryRole } from '@/repository/accessControl';
 import {
   isGapAnalysisAllowedForLifecycleCoverage,
   isRoadmapAllowedForLifecycleCoverage,
@@ -562,21 +557,9 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
   const { project } = useEaProject();
   const { eaRepository, metadata } = useEaRepository();
   const repositoryName = metadata?.repositoryName || 'default';
-  const userRole: RepositoryRole = React.useMemo(() => {
-    if (!ENABLE_RBAC) return 'Owner';
-    const access = initialState?.currentUser?.access;
-    if (access === 'admin') return 'Owner';
-    if (access === 'architect' || access === 'user') return 'Architect';
-    return 'Viewer';
-  }, [initialState?.currentUser?.access]);
-
-  const canModel =
-    hasRepositoryPermission(userRole, 'createElement') ||
-    hasRepositoryPermission(userRole, 'editElement') ||
-    hasRepositoryPermission(userRole, 'createRelationship') ||
-    hasRepositoryPermission(userRole, 'editRelationship');
-
-  const canEditView = hasRepositoryPermission(userRole, 'editView');
+  const userRole: RepositoryRole = 'Owner';
+  const canModel = true;
+  const canEditView = true;
   const cssVars = React.useMemo(() => {
     const baseVars: Record<string, string> = {
       '--ide-bg-layout': token.colorBgLayout,
@@ -1482,29 +1465,7 @@ const IdeShellLayout: React.FC<IdeShellLayoutProps> = ({
       return false;
     }
 
-    const governanceCheck = validateStrictGovernance(eaRepository, {
-      governanceMode: metadata.governanceMode,
-      lifecycleCoverage: metadata.lifecycleCoverage,
-    });
-
-    if (!governanceCheck.ok) {
-      Modal.error({
-        title: 'Studio entry blocked by governance',
-        content: (
-          <div>
-            <div>{governanceCheck.violation.message}</div>
-            {governanceCheck.violation.highlights.length > 0 && (
-              <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 18 }}>
-                {governanceCheck.violation.highlights.map((h) => (
-                  <li key={h}>{h}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ),
-      });
-      return false;
-    }
+    // Governance check removed – always allow studio entry.
 
     return true;
   }, [eaRepository, metadata, studioEntryDisabled, userRole]);

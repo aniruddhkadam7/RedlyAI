@@ -1,4 +1,4 @@
-import { hasRepositoryPermission, type RepositoryPermission, type RepositoryRole } from './accessControl';
+import type { RepositoryPermission, RepositoryRole } from './accessControl';
 import type { GovernanceMode } from './repositoryMetadata';
 
 /**
@@ -36,7 +36,12 @@ import type { GovernanceMode } from './repositoryMetadata';
  * Validates that element creation is coming from an allowed source.
  * This is a runtime guard that can be called before element creation.
  */
-export type ElementCreationSource = 'toolbox' | 'explorer-context-menu' | 'canvas' | 'ai-agent' | 'unknown';
+export type ElementCreationSource =
+  | 'toolbox'
+  | 'explorer-context-menu'
+  | 'canvas'
+  | 'ai-agent'
+  | 'unknown';
 
 export interface ElementCreationGuard {
   ok: boolean;
@@ -70,12 +75,15 @@ export type ModelingAccessDecision =
     };
 
 /** Context lock guard for Baseline / Plateau / Roadmap scoped actions. */
-export type ContextLockGuard = { locked: false } | { locked: true; reason?: string };
+export type ContextLockGuard =
+  | { locked: false }
+  | { locked: true; reason?: string };
 
 /** Returns a standard lock guard for Baseline / Plateau / Roadmap contexts (read-only for all roles). */
 export const CONTEXT_LOCKED: ContextLockGuard = {
   locked: true,
-  reason: 'Context is locked (Baseline/Plateau/Roadmap). All roles are read-only; governance is not consulted.',
+  reason:
+    'Context is locked (Baseline/Plateau/Roadmap). All roles are read-only; governance is not consulted.',
 };
 
 export type PermissionChainOutcome =
@@ -91,7 +99,9 @@ export type PermissionChainOutcome =
  * Check if element creation is allowed from the given source.
  * Only 'toolbox' is allowed.
  */
-export function validateElementCreationSource(source: ElementCreationSource): ElementCreationGuard {
+export function validateElementCreationSource(
+  source: ElementCreationSource,
+): ElementCreationGuard {
   if (source === 'toolbox') {
     return { ok: true, source };
   }
@@ -108,7 +118,8 @@ export function validateElementCreationSource(source: ElementCreationSource): El
     return {
       ok: false,
       source,
-      reason: 'Element creation on canvas is not allowed. Use Explorer context menu instead.',
+      reason:
+        'Element creation on canvas is not allowed. Use Explorer context menu instead.',
     };
   }
 
@@ -116,7 +127,8 @@ export function validateElementCreationSource(source: ElementCreationSource): El
     return {
       ok: false,
       source,
-      reason: 'AI-generated canvas elements must be reverted. Use Explorer context menu to create elements.',
+      reason:
+        'AI-generated canvas elements must be reverted. Use Explorer context menu to create elements.',
     };
   }
 
@@ -132,7 +144,14 @@ export function validateElementCreationSource(source: ElementCreationSource): El
  */
 export const ELEMENT_CREATION_POLICY = {
   allowedSource: 'toolbox' as const,
-  blockedSources: ['explorer-context-menu', 'canvas', 'ai-agent', 'drag-drop', 'double-click', 'keyboard'] as const,
+  blockedSources: [
+    'explorer-context-menu',
+    'canvas',
+    'ai-agent',
+    'drag-drop',
+    'double-click',
+    'keyboard',
+  ] as const,
   diagramMode: 'toolbox-create' as const,
   requiredFields: ['id', 'type', 'elementType', 'createdAt', 'name'] as const,
 } as const;
@@ -148,7 +167,9 @@ export function guardInitializationForModeling(
     return { ok: true };
   }
 
-  const reason = initialization.reason || 'Repository is UNINITIALIZED. Initialize the Enterprise root to unlock modeling.';
+  const reason =
+    initialization.reason ||
+    'Repository is UNINITIALIZED. Initialize the Enterprise root to unlock modeling.';
   return {
     ok: false,
     reason,
@@ -157,58 +178,23 @@ export function guardInitializationForModeling(
 
 /**
  * Combine access control and governance mode into an effective modeling decision.
- * Order of evaluation:
- * 1) Access control (role / permissions)
- * 2) Governance mode (Strict vs Advisory)
- *
- * Examples:
- * - Viewer + Advisory => read-only (governance not consulted because access denies writes)
- * - Architect + Strict => write with blocking validation (governance consulted after access allows writes)
+ * Governance modes removed — always returns write access with advisory validation.
  */
 export function evaluateModelingAccessWithGovernance(
-  role: RepositoryRole,
-  governanceMode: GovernanceMode | null | undefined,
+  _role: RepositoryRole,
+  _governanceMode: GovernanceMode | null | undefined,
 ): ModelingAccessDecision {
-  const canMutate =
-    hasRepositoryPermission(role, 'createElement') ||
-    hasRepositoryPermission(role, 'editElement') ||
-    hasRepositoryPermission(role, 'deleteElement') ||
-    hasRepositoryPermission(role, 'createRelationship') ||
-    hasRepositoryPermission(role, 'editRelationship') ||
-    hasRepositoryPermission(role, 'deleteRelationship');
-
-  if (!canMutate) {
-    return {
-      access: 'read-only',
-      governanceMode: governanceMode ?? 'Unknown',
-      reason: 'Access control denies write; governance mode not evaluated.',
-    };
-  }
-
-  const mode = governanceMode ?? 'Advisory';
-  if (mode === 'Strict') {
-    return {
-      access: 'write',
-      governanceMode: 'Strict',
-      validation: 'blocking',
-      reason: 'Access control allows write; Strict governance applies blocking validation.',
-    };
-  }
-
   return {
     access: 'write',
     governanceMode: 'Advisory',
     validation: 'advisory',
-    reason: 'Access control allows write; Advisory governance applies non-blocking validation.',
+    reason: 'Full access mode — governance restrictions removed.',
   };
 }
 
 /**
  * Enforce ordered permission checks for any user action.
- * Order (mandatory, short-circuit):
- * 1) Context Lock (Baseline / Plateau / Roadmap)
- * 2) Role Permission (Owner / Architect / Viewer)
- * 3) Governance Mode (Strict / Advisory)
+ * Governance modes removed — only context lock is enforced.
  */
 export function enforceOrderedPermissionChain(args: {
   contextLock: ContextLockGuard;
@@ -220,23 +206,17 @@ export function enforceOrderedPermissionChain(args: {
     return {
       ok: false,
       failedAt: 'context-lock',
-      reason: args.contextLock.reason || 'Action blocked: context is locked (baseline/plateau/roadmap). All roles are read-only.',
+      reason:
+        args.contextLock.reason ||
+        'Action blocked: context is locked (baseline/plateau/roadmap). All roles are read-only.',
     };
   }
 
-  if (!hasRepositoryPermission(args.role, args.permission)) {
-    return {
-      ok: false,
-      failedAt: 'role-permission',
-      reason: 'Action blocked: role lacks required permission.',
-    };
-  }
-
-  const mode = args.governanceMode ?? 'Advisory';
   return {
     ok: true,
-    governanceMode: mode,
-    validation: mode === 'Strict' ? 'blocking' : 'advisory',
-    reason: 'Checks passed (context lock > role permission > governance). Apply validation accordingly.',
+    governanceMode: 'Advisory',
+    validation: 'advisory',
+    reason:
+      'Full access mode — governance restrictions removed. Only context lock is enforced.',
   };
 }

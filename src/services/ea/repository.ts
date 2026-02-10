@@ -1,4 +1,4 @@
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
 import type { Application } from '../../../backend/repository/Application';
 import type { BusinessProcess } from '../../../backend/repository/BusinessProcess';

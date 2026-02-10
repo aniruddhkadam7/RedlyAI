@@ -2,7 +2,9 @@ import {
   ColumnWidthOutlined,
   DownloadOutlined,
   FilterOutlined,
+  HistoryOutlined,
   SearchOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { Button, Input, Popover, Tag, Typography } from 'antd';
 import React from 'react';
@@ -18,6 +20,8 @@ type CatalogToolbarProps = {
   columnMenu: React.ReactNode;
   bulkActions: React.ReactNode;
   onExport: () => void;
+  onImportCsv?: () => void;
+  onImportHistory?: () => void;
 };
 
 const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
@@ -30,6 +34,8 @@ const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
   columnMenu,
   bulkActions,
   onExport,
+  onImportCsv,
+  onImportHistory,
 }) => (
   <div className={styles.registryHeader}>
     <div className={styles.registryTitle}>
@@ -59,6 +65,16 @@ const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
       <Button icon={<DownloadOutlined />} onClick={onExport}>
         Export
       </Button>
+      {onImportCsv && (
+        <Button icon={<UploadOutlined />} onClick={onImportCsv}>
+          Import CSV
+        </Button>
+      )}
+      {onImportHistory && (
+        <Button icon={<HistoryOutlined />} onClick={onImportHistory}>
+          Import History
+        </Button>
+      )}
       {bulkActions}
     </div>
   </div>

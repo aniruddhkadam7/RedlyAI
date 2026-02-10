@@ -3,6 +3,13 @@ import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
 import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
+import {
+  emitElementDeleted,
+  emitElementUpdated,
+  emitRelationshipDeleted,
+  emitRelationshipsChanged,
+  emitRepositoryChanged,
+} from '@/ea/repositoryEvents';
 import type {
   CatalogDomain,
   CatalogElement,
@@ -134,17 +141,49 @@ const buildViewUsage = (views: ViewInstance[]) => {
 };
 
 export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
-  const { eaRepository, trySetEaRepository } = useEaRepository();
+  const { eaRepository, trySetEaRepository, metadata } = useEaRepository();
+  const workspaceId = metadata?.repositoryName ?? '';
+
+  const isInWorkspace = React.useCallback(
+    (obj: {
+      id: string;
+      type: string;
+      attributes?: Record<string, unknown>;
+      workspaceId?: string;
+    }) => {
+      if (!workspaceId) return true;
+      const objWorkspaceId =
+        (obj as any).workspaceId ?? (obj.attributes as any)?.workspaceId;
+      if (!objWorkspaceId) return true;
+      return String(objWorkspaceId) === workspaceId;
+    },
+    [workspaceId],
+  );
+
+  const workspaceObjectIds = React.useMemo(() => {
+    if (!eaRepository) return new Set<string>();
+    const ids = new Set<string>();
+    for (const obj of eaRepository.objects.values()) {
+      if (!isInWorkspace(obj)) continue;
+      ids.add(obj.id);
+    }
+    return ids;
+  }, [eaRepository, isInWorkspace]);
 
   const relationshipCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
     if (!eaRepository) return counts;
     for (const rel of eaRepository.relationships) {
+      if (
+        !workspaceObjectIds.has(rel.fromId) ||
+        !workspaceObjectIds.has(rel.toId)
+      )
+        continue;
       counts.set(rel.fromId, (counts.get(rel.fromId) ?? 0) + 1);
       counts.set(rel.toId, (counts.get(rel.toId) ?? 0) + 1);
     }
     return counts;
-  }, [eaRepository]);
+  }, [eaRepository, workspaceObjectIds]);
 
   const views = React.useMemo(() => ViewStore.list(), []);
 
@@ -157,6 +196,7 @@ export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
 
     for (const obj of eaRepository.objects.values()) {
       if (isSoftDeleted(obj.attributes)) continue;
+      if (!isInWorkspace(obj)) continue;
       if (!allowedTypes.has(obj.type)) continue;
 
       const attributes = obj.attributes ?? {};
@@ -198,7 +238,14 @@ export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
       matchesFilters(row, query.filter),
     );
     return sortRows(filtered, query.sort);
-  }, [domain, eaRepository, relationshipCounts, viewUsage, query]);
+  }, [
+    domain,
+    eaRepository,
+    isInWorkspace,
+    relationshipCounts,
+    viewUsage,
+    query,
+  ]);
 
   const updateElementAttributes = React.useCallback(
     (elementId: string, patch: Record<string, unknown>) => {
@@ -209,20 +256,21 @@ export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
       if (!updated.ok) return updated;
       const applied = trySetEaRepository(next);
       if (!applied.ok) return applied;
-      try {
-        window.dispatchEvent(new Event('ea:repositoryChanged'));
-      } catch {
-        // Best-effort only.
-      }
+      emitElementUpdated({ elementId: id, workspaceId });
+      emitRepositoryChanged();
       return { ok: true } as const;
     },
-    [eaRepository, trySetEaRepository],
+    [eaRepository, trySetEaRepository, workspaceId],
   );
 
   const removeElements = React.useCallback(
     (elementIds: string[]) => {
       if (!eaRepository)
         return { ok: false, error: 'Repository not loaded.' } as const;
+      const removedRelationships = eaRepository.relationships.filter(
+        (rel) =>
+          elementIds.includes(rel.fromId) || elementIds.includes(rel.toId),
+      );
       const next = eaRepository.clone();
       const idSet = new Set(elementIds.map((id) => String(id)));
 
@@ -259,8 +307,20 @@ export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
         });
       });
 
+      elementIds.forEach((id) => {
+        emitElementDeleted({ elementId: id, workspaceId });
+      });
+      removedRelationships.forEach((rel) => {
+        emitRelationshipDeleted({
+          relationshipId: rel.id,
+          relationshipType: rel.type,
+          sourceId: rel.fromId,
+          targetId: rel.toId,
+          workspaceId,
+        });
+      });
+      emitRelationshipsChanged();
       try {
-        window.dispatchEvent(new Event('ea:relationshipsChanged'));
         window.dispatchEvent(new Event('ea:viewsChanged'));
       } catch {
         // Best-effort only.
@@ -268,7 +328,7 @@ export const useCatalog = (domain: CatalogDomain, query: CatalogQueryState) => {
 
       return { ok: true } as const;
     },
-    [eaRepository, trySetEaRepository],
+    [eaRepository, trySetEaRepository, workspaceId],
   );
 
   return {

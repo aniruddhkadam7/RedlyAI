@@ -1,32 +1,42 @@
+import { useModel } from '@umijs/max';
+import {
+  Button,
+  Checkbox,
+  Input,
+  List,
+  Menu,
+  Modal,
+  Select,
+  Typography,
+} from 'antd';
 import React from 'react';
 import { v4 as uuid } from 'uuid';
-import { useModel } from '@umijs/max';
-import { Button, Checkbox, Input, List, Menu, Modal, Select, Typography } from 'antd';
 import * as XLSX from 'xlsx';
-
+import {
+  clearAnalysisResults,
+  getAnalysisResult,
+} from '@/analysis/analysisResultsStore';
+import { useIdeShell } from '@/components/IdeShellLayout';
+import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
+import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
+import { DesignWorkspaceStore } from '@/ea/DesignWorkspaceStore';
 import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { message } from '@/ea/eaConsole';
+import { useSeedSampleData } from '@/ea/useSeedSampleData';
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import { dispatchIdeCommand } from '@/ide/ideCommands';
-import { clearAnalysisResults, getAnalysisResult } from '@/analysis/analysisResultsStore';
-import { useIdeShell } from '@/components/IdeShellLayout';
-
 import { applyEaImportBatch } from '@/pages/dependency-view/utils/eaImportUtils';
-import { parseAndValidateCapabilitiesCsv } from '@/pages/dependency-view/utils/parseCapabilitiesCsv';
 import { parseAndValidateApplicationsCsv } from '@/pages/dependency-view/utils/parseApplicationsCsv';
+import { parseAndValidateCapabilitiesCsv } from '@/pages/dependency-view/utils/parseCapabilitiesCsv';
 import { parseAndValidateDependenciesCsv } from '@/pages/dependency-view/utils/parseDependenciesCsv';
-import { parseAndValidateTechnologyCsv } from '@/pages/dependency-view/utils/parseTechnologyCsv';
 import { parseAndValidateProgrammesCsv } from '@/pages/dependency-view/utils/parseProgrammesCsv';
-import { getReadOnlyReason, isAnyObjectTypeWritableForScope } from '@/repository/architectureScopePolicy';
-
-import { buildGovernanceDebt } from '@/ea/governanceValidation';
-import { appendGovernanceLog } from '@/ea/governanceLog';
-import { useSeedSampleData } from '@/ea/useSeedSampleData';
+import { parseAndValidateTechnologyCsv } from '@/pages/dependency-view/utils/parseTechnologyCsv';
+import {
+  getReadOnlyReason,
+  isAnyObjectTypeWritableForScope,
+} from '@/repository/architectureScopePolicy';
 import { CUSTOM_CORE_EA_SEED } from '@/repository/customFrameworkConfig';
 import type { FrameworkConfig } from '@/repository/repositoryMetadata';
-import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
-import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
-import { DesignWorkspaceStore } from '@/ea/DesignWorkspaceStore';
-import { message } from '@/ea/eaConsole';
 
 import styles from './style.module.less';
 
@@ -131,7 +141,10 @@ const findTerm = (text: string, terms: readonly string[]): string | null => {
   const normalized = String(text ?? '').toLowerCase();
   if (!normalized.trim()) return null;
   for (const term of terms) {
-    const pattern = new RegExp(`\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`, 'i');
+    const pattern = new RegExp(
+      `\\b${term.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\b`,
+      'i',
+    );
     if (pattern.test(normalized)) return term;
   }
   return null;
@@ -141,22 +154,15 @@ const isVerbBasedProcessName = (name: string): boolean => {
   const trimmed = String(name ?? '').trim();
   if (!trimmed) return false;
   const first = trimmed.split(/\s+/)[0];
-  return PROCESS_VERBS.some((verb) => verb.toLowerCase() === first.toLowerCase());
+  return PROCESS_VERBS.some(
+    (verb) => verb.toLowerCase() === first.toLowerCase(),
+  );
 };
 
 const ACTIVE_REPO_ID_KEY = 'ea.repository.activeId';
 const ACTIVE_REPO_NAME_KEY = 'ea.repository.activeName';
 const PROJECT_DIRTY_KEY = 'ea.project.dirty';
 const PROJECT_STATUS_EVENT = 'ea:projectStatusChanged';
-
-const safeParseJson = <T,>(raw: string | null, fallback: T): T => {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-};
 
 const readLocalStorage = (key: string): string | null => {
   try {
@@ -166,7 +172,9 @@ const readLocalStorage = (key: string): string | null => {
   }
 };
 
-const parseSelectedEntityId = (selectionKey: string | undefined): string | null => {
+const parseSelectedEntityId = (
+  selectionKey: string | undefined,
+): string | null => {
   if (!selectionKey) return null;
   const idx = selectionKey.lastIndexOf(':entity:');
   if (idx < 0) return null;
@@ -198,7 +206,6 @@ const IdeMenuBar: React.FC = () => {
   const {
     eaRepository,
     metadata,
-    setEaRepository,
     trySetEaRepository,
     createNewRepository,
     loadRepositoryFromJsonText,
@@ -216,29 +223,59 @@ const IdeMenuBar: React.FC = () => {
 
   const hasRepo = Boolean(eaRepository && metadata);
   const isReadOnlyMode = false;
-  const selectedEntityId = hasRepo ? parseSelectedEntityId(selection.keys?.[0]) : null;
+  const selectedEntityId = hasRepo
+    ? parseSelectedEntityId(selection.keys?.[0])
+    : null;
   const selectedEntityType =
-    hasRepo && selectedEntityId ? ((eaRepository?.objects.get(selectedEntityId)?.type ?? null) as string | null) : null;
-  const selectedEntityReadOnlyReason = getReadOnlyReason(metadata?.architectureScope, selectedEntityType);
+    hasRepo && selectedEntityId
+      ? ((eaRepository?.objects.get(selectedEntityId)?.type ?? null) as
+          | string
+          | null)
+      : null;
+  const selectedEntityReadOnlyReason = getReadOnlyReason(
+    metadata?.architectureScope,
+    selectedEntityType,
+  );
   const canEditSelectedEntity = !selectedEntityReadOnlyReason;
 
-  const canImportCapabilities = isAnyObjectTypeWritableForScope(metadata?.architectureScope, 'Capability');
-  const canImportTechnology = isAnyObjectTypeWritableForScope(metadata?.architectureScope, 'Technology');
-  const canImportProgrammes = isAnyObjectTypeWritableForScope(metadata?.architectureScope, 'Programme');
+  const canImportCapabilities = isAnyObjectTypeWritableForScope(
+    metadata?.architectureScope,
+    'Capability',
+  );
+  const canImportTechnology = isAnyObjectTypeWritableForScope(
+    metadata?.architectureScope,
+    'Technology',
+  );
+  const canImportProgrammes = isAnyObjectTypeWritableForScope(
+    metadata?.architectureScope,
+    'Programme',
+  );
 
   const [newRepoOpen, setNewRepoOpen] = React.useState(false);
-  const [newRepoDraft, setNewRepoDraft] = React.useState<NewRepoDraft>(DEFAULT_NEW_REPO);
+  const [newRepoDraft, setNewRepoDraft] =
+    React.useState<NewRepoDraft>(DEFAULT_NEW_REPO);
   const [customSeedModalOpen, setCustomSeedModalOpen] = React.useState(false);
-  const lastFrameworkRef = React.useRef<NewRepoDraft['referenceFramework']>('ArchiMate');
+  const lastFrameworkRef =
+    React.useRef<NewRepoDraft['referenceFramework']>('ArchiMate');
 
   const [openRepoModalOpen, setOpenRepoModalOpen] = React.useState(false);
-  const [openRepoSelection, setOpenRepoSelection] = React.useState<string | null>(null);
-  const [managedRepositories, setManagedRepositories] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [openRepoSelection, setOpenRepoSelection] = React.useState<
+    string | null
+  >(null);
+  const [managedRepositories, setManagedRepositories] = React.useState<
+    Array<{ id: string; name: string }>
+  >([]);
 
   const openRepoInputRef = React.useRef<HTMLInputElement | null>(null);
-  const importCapabilitiesInputRef = React.useRef<HTMLInputElement | null>(null);
-  const importApplicationsInputRef = React.useRef<HTMLInputElement | null>(null);
-  const importDependenciesInputRef = React.useRef<HTMLInputElement | null>(null);
+  const importCapabilitiesInputRef = React.useRef<HTMLInputElement | null>(
+    null,
+  );
+  const importApplicationsInputRef = React.useRef<HTMLInputElement | null>(
+    null,
+  );
+  const importDependenciesInputRef = React.useRef<HTMLInputElement | null>(
+    null,
+  );
   const importTechnologyInputRef = React.useRef<HTMLInputElement | null>(null);
   const importProgrammesInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -248,16 +285,26 @@ const IdeMenuBar: React.FC = () => {
   const [findOpen, setFindOpen] = React.useState(false);
   const [findQuery, setFindQuery] = React.useState('');
 
-  const handleNewRepoFrameworkChange = React.useCallback((value: NewRepoDraft['referenceFramework']) => {
-    if (value === 'Custom') {
-      setCustomSeedModalOpen(true);
-      setNewRepoDraft((p) => ({ ...p, referenceFramework: lastFrameworkRef.current }));
-      return;
-    }
+  const handleNewRepoFrameworkChange = React.useCallback(
+    (value: NewRepoDraft['referenceFramework']) => {
+      if (value === 'Custom') {
+        setCustomSeedModalOpen(true);
+        setNewRepoDraft((p) => ({
+          ...p,
+          referenceFramework: lastFrameworkRef.current,
+        }));
+        return;
+      }
 
-    lastFrameworkRef.current = value;
-    setNewRepoDraft((p) => ({ ...p, referenceFramework: value, frameworkConfig: undefined }));
-  }, []);
+      lastFrameworkRef.current = value;
+      setNewRepoDraft((p) => ({
+        ...p,
+        referenceFramework: value,
+        frameworkConfig: undefined,
+      }));
+    },
+    [],
+  );
 
   const handleNewRepo = React.useCallback(() => {
     console.log('[IDE] File > New EA Repository');
@@ -265,174 +312,13 @@ const IdeMenuBar: React.FC = () => {
     setNewRepoOpen(true);
   }, []);
 
-  const handleConfirmNewRepo = React.useCallback(() => {
-    console.log('[IDE] Creating new repository', newRepoDraft);
-
-    const org = newRepoDraft.organizationName.trim();
-    if (!org) {
-      message.error('Organization name is required.');
-      return;
-    }
-
-    // Map to repository metadata (enterprise-friendly defaults).
-    const repositoryName = `${org} EA Repository`;
-
-    const res = createNewRepository({
-      repositoryName,
-      organizationName: org,
-      industry: newRepoDraft.industry.trim() || undefined,
-      architectureScope: newRepoDraft.architectureScope,
-      referenceFramework: newRepoDraft.referenceFramework,
-      frameworkConfig: newRepoDraft.referenceFramework === 'Custom' ? newRepoDraft.frameworkConfig : undefined,
-      governanceMode: 'Strict',
-      lifecycleCoverage: 'Both',
-      timeHorizon: newRepoDraft.timeHorizon,
-    });
-
-    if (!res.ok) {
-      message.error(res.error);
-      return;
-    }
-
-    // Clear editor/analysis context explicitly.
-    clearAnalysisResults();
-    dispatchIdeCommand({ type: 'workspace.resetTabs' });
-    setSelection({ kind: 'none', keys: [] });
-
-    setNewRepoOpen(false);
-    const repositoryId = uuid();
-    updateProjectStatus({ repositoryId, repositoryName: repositoryName, dirty: false });
-    message.success('Repository created.');
-  }, [createNewRepository, newRepoDraft, setSelection, updateProjectStatus]);
-
-  const handleOpenRepo = React.useCallback(() => {
-    console.log('[IDE] File > Import Repository');
-    openRepoInputRef.current?.click();
-  }, []);
-
-  const applyProjectPayload = React.useCallback(
-    (payload: any) => {
-      const snapshot = payload?.repository?.snapshot ?? null;
-      if (!snapshot || typeof snapshot !== 'object') {
-        return { ok: false, error: 'Invalid repository data: missing snapshot.' } as const;
-      }
-
-      const snapshotText = JSON.stringify(snapshot);
-      const loadRes = loadRepositoryFromJsonText(snapshotText);
-      if (!loadRes.ok) return loadRes;
-
-      const snapshotViews = Array.isArray((snapshot as any)?.views) ? (snapshot as any).views : [];
-      const viewItems = snapshotViews.length > 0 ? snapshotViews : Array.isArray(payload?.views?.items) ? payload.views.items : [];
-      const snapshotStudio = (snapshot as any)?.studioState ?? null;
-      const viewLayouts = snapshotStudio?.viewLayouts ?? payload?.studioState?.viewLayouts ?? {};
-
-      const existingViews = ViewStore.list();
-      for (const v of existingViews) {
-        ViewLayoutStore.remove(v.id);
-      }
-
-      ViewStore.replaceAll(viewItems);
-
-      for (const v of viewItems as Array<{ id?: string }>) {
-        const id = String(v?.id ?? '').trim();
-        if (!id) continue;
-        const layout = viewLayouts?.[id];
-        if (layout && typeof layout === 'object') {
-          ViewLayoutStore.set(id, layout as Record<string, { x: number; y: number }>);
-        } else {
-          ViewLayoutStore.remove(id);
-        }
-      }
-
-      const repositoryName = snapshot?.metadata?.repositoryName || 'default';
-      const designWorkspaces = Array.isArray(snapshotStudio?.designWorkspaces)
-        ? snapshotStudio.designWorkspaces
-        : Array.isArray(payload?.studioState?.designWorkspaces)
-          ? payload.studioState.designWorkspaces
-          : [];
-      DesignWorkspaceStore.replaceAll(repositoryName, designWorkspaces);
-
-      const ideLayout = payload?.studioState?.ideLayout ?? null;
-      if (ideLayout && typeof ideLayout === 'object') {
-        const map: Array<[string, string | null | undefined]> = [
-          ['ide.activity', ideLayout.activity],
-          ['ide.sidebar.open', ideLayout.sidebarOpen],
-          ['ide.sidebar.width', ideLayout.sidebarWidth],
-          ['ide.bottom.open', ideLayout.bottomOpen],
-          ['ide.bottom.height', ideLayout.bottomHeight],
-          ['ide.panel.dock', ideLayout.panelDock],
-          ['ide.panel.right.width', ideLayout.rightPanelWidth],
-        ];
-        for (const [key, value] of map) {
-          if (value === null || value === undefined) continue;
-          try {
-            localStorage.setItem(key, String(value));
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      const prefs = payload?.studioState?.preferences ?? null;
-      if (prefs && typeof prefs === 'object') {
-        const prefMap: Array<[string, string | null | undefined]> = [
-          ['ea.applicationGrouping', prefs.applicationGrouping],
-          ['ea.programmeScope.showTechnology', prefs.programmeScopeShowTechnology],
-          ['ea.seed.banner.dismissed', prefs.seedBannerDismissed],
-          ['ea.catalogDefined', prefs.catalogDefined],
-        ];
-        for (const [key, value] of prefMap) {
-          if (value === null || value === undefined) continue;
-          try {
-            localStorage.setItem(key, String(value));
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      try {
-        window.dispatchEvent(new Event('ea:viewsChanged'));
-        window.dispatchEvent(new Event('ea:workspacesChanged'));
-      } catch {
-        // Best-effort only.
-      }
-
-      return { ok: true } as const;
-    },
-    [loadRepositoryFromJsonText],
-  );
-
-  const confirmStudioExit = React.useCallback(() => {
-    return new Promise<'save' | 'discard' | 'cancel'>((resolve) => {
-      const modal = Modal.confirm({
-        title: 'Studio workspace has unsaved changes',
-        content: 'Save or discard your workspace before opening another repository.',
-        okText: 'Save',
-        cancelText: 'Cancel',
-        onOk: () => resolve('save'),
-        onCancel: () => resolve('cancel'),
-        footer: (_, { OkBtn, CancelBtn }) => (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button
-              danger
-              onClick={() => {
-                modal.destroy();
-                resolve('discard');
-              }}
-            >
-              Discard
-            </Button>
-            <CancelBtn />
-            <OkBtn />
-          </div>
-        ),
-      });
-    });
-  }, []);
-
   const updateProjectStatus = React.useCallback(
-    (opts: { repositoryId?: string | null; repositoryName?: string | null; dirty?: boolean | null; clear?: boolean }) => {
+    (opts: {
+      repositoryId?: string | null;
+      repositoryName?: string | null;
+      dirty?: boolean | null;
+      clear?: boolean;
+    }) => {
       if (opts.clear) {
         try {
           localStorage.removeItem(ACTIVE_REPO_ID_KEY);
@@ -472,7 +358,10 @@ const IdeMenuBar: React.FC = () => {
 
         if (typeof opts.dirty === 'boolean') {
           try {
-            localStorage.setItem(PROJECT_DIRTY_KEY, opts.dirty ? 'true' : 'false');
+            localStorage.setItem(
+              PROJECT_DIRTY_KEY,
+              opts.dirty ? 'true' : 'false',
+            );
           } catch {
             // ignore
           }
@@ -488,23 +377,230 @@ const IdeMenuBar: React.FC = () => {
     [],
   );
 
-  const requestStudioAction = React.useCallback((action: 'save' | 'discard') => {
-    return new Promise<boolean>((resolve) => {
-      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const onDone = (ev: Event) => {
-        const e = ev as CustomEvent<{ requestId?: string }>;
-        if (e.detail?.requestId !== requestId) return;
-        window.removeEventListener('ea:studio.action.completed', onDone as EventListener);
-        resolve(true);
-      };
-      window.addEventListener('ea:studio.action.completed', onDone as EventListener);
-      window.dispatchEvent(new CustomEvent('ea:studio.action', { detail: { requestId, action } }));
+  const handleConfirmNewRepo = React.useCallback(() => {
+    console.log('[IDE] Creating new repository', newRepoDraft);
+
+    const org = newRepoDraft.organizationName.trim();
+    if (!org) {
+      message.error('Organization name is required.');
+      return;
+    }
+
+    // Map to repository metadata (enterprise-friendly defaults).
+    const repositoryName = `${org} EA Repository`;
+
+    const res = createNewRepository({
+      repositoryName,
+      organizationName: org,
+      industry: newRepoDraft.industry.trim() || undefined,
+      architectureScope: newRepoDraft.architectureScope,
+      referenceFramework: newRepoDraft.referenceFramework,
+      frameworkConfig:
+        newRepoDraft.referenceFramework === 'Custom'
+          ? newRepoDraft.frameworkConfig
+          : undefined,
+      governanceMode: 'Strict',
+      lifecycleCoverage: 'Both',
+      timeHorizon: newRepoDraft.timeHorizon,
+    });
+
+    if (!res.ok) {
+      message.error(res.error);
+      return;
+    }
+
+    // Clear editor/analysis context explicitly.
+    clearAnalysisResults();
+    dispatchIdeCommand({ type: 'workspace.resetTabs' });
+    setSelection({ kind: 'none', keys: [] });
+
+    setNewRepoOpen(false);
+    const repositoryId = uuid();
+    updateProjectStatus({
+      repositoryId,
+      repositoryName: repositoryName,
+      dirty: false,
+    });
+    message.success('Repository created.');
+  }, [createNewRepository, newRepoDraft, setSelection, updateProjectStatus]);
+
+  const handleOpenRepo = React.useCallback(() => {
+    console.log('[IDE] File > Import Repository');
+    openRepoInputRef.current?.click();
+  }, []);
+
+  const applyProjectPayload = React.useCallback(
+    (payload: any) => {
+      const snapshot = payload?.repository?.snapshot ?? null;
+      if (!snapshot || typeof snapshot !== 'object') {
+        return {
+          ok: false,
+          error: 'Invalid repository data: missing snapshot.',
+        } as const;
+      }
+
+      const snapshotText = JSON.stringify(snapshot);
+      const loadRes = loadRepositoryFromJsonText(snapshotText);
+      if (!loadRes.ok) return loadRes;
+
+      const snapshotViews = Array.isArray((snapshot as any)?.views)
+        ? (snapshot as any).views
+        : [];
+      const viewItems =
+        snapshotViews.length > 0
+          ? snapshotViews
+          : Array.isArray(payload?.views?.items)
+            ? payload.views.items
+            : [];
+      const snapshotStudio = (snapshot as any)?.studioState ?? null;
+      const viewLayouts =
+        snapshotStudio?.viewLayouts ?? payload?.studioState?.viewLayouts ?? {};
+
+      const existingViews = ViewStore.list();
+      for (const v of existingViews) {
+        ViewLayoutStore.remove(v.id);
+      }
+
+      ViewStore.replaceAll(viewItems);
+
+      for (const v of viewItems as Array<{ id?: string }>) {
+        const id = String(v?.id ?? '').trim();
+        if (!id) continue;
+        const layout = viewLayouts?.[id];
+        if (layout && typeof layout === 'object') {
+          ViewLayoutStore.set(
+            id,
+            layout as Record<string, { x: number; y: number }>,
+          );
+        } else {
+          ViewLayoutStore.remove(id);
+        }
+      }
+
+      const repositoryName = snapshot?.metadata?.repositoryName || 'default';
+      const designWorkspaces = Array.isArray(snapshotStudio?.designWorkspaces)
+        ? snapshotStudio.designWorkspaces
+        : Array.isArray(payload?.studioState?.designWorkspaces)
+          ? payload.studioState.designWorkspaces
+          : [];
+      DesignWorkspaceStore.replaceAll(repositoryName, designWorkspaces);
+
+      const ideLayout = payload?.studioState?.ideLayout ?? null;
+      if (ideLayout && typeof ideLayout === 'object') {
+        const map: Array<[string, string | null | undefined]> = [
+          ['ide.activity', ideLayout.activity],
+          ['ide.sidebar.open', ideLayout.sidebarOpen],
+          ['ide.sidebar.width', ideLayout.sidebarWidth],
+          ['ide.bottom.open', ideLayout.bottomOpen],
+          ['ide.bottom.height', ideLayout.bottomHeight],
+          ['ide.panel.dock', ideLayout.panelDock],
+          ['ide.panel.right.width', ideLayout.rightPanelWidth],
+        ];
+        for (const [key, value] of map) {
+          if (value === null || value === undefined) continue;
+          try {
+            localStorage.setItem(key, String(value));
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const prefs = payload?.studioState?.preferences ?? null;
+      if (prefs && typeof prefs === 'object') {
+        const prefMap: Array<[string, string | null | undefined]> = [
+          ['ea.applicationGrouping', prefs.applicationGrouping],
+          [
+            'ea.programmeScope.showTechnology',
+            prefs.programmeScopeShowTechnology,
+          ],
+          ['ea.seed.banner.dismissed', prefs.seedBannerDismissed],
+          ['ea.catalogDefined', prefs.catalogDefined],
+        ];
+        for (const [key, value] of prefMap) {
+          if (value === null || value === undefined) continue;
+          try {
+            localStorage.setItem(key, String(value));
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      try {
+        window.dispatchEvent(new Event('ea:viewsChanged'));
+        window.dispatchEvent(new Event('ea:workspacesChanged'));
+      } catch {
+        // Best-effort only.
+      }
+
+      return { ok: true } as const;
+    },
+    [loadRepositoryFromJsonText],
+  );
+
+  const confirmStudioExit = React.useCallback(() => {
+    return new Promise<'save' | 'discard' | 'cancel'>((resolve) => {
+      const modal = Modal.confirm({
+        title: 'Studio workspace has unsaved changes',
+        content:
+          'Save or discard your workspace before opening another repository.',
+        okText: 'Save',
+        cancelText: 'Cancel',
+        onOk: () => resolve('save'),
+        onCancel: () => resolve('cancel'),
+        footer: (_, { OkBtn, CancelBtn }) => (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button
+              danger
+              onClick={() => {
+                modal.destroy();
+                resolve('discard');
+              }}
+            >
+              Discard
+            </Button>
+            <CancelBtn />
+            <OkBtn />
+          </div>
+        ),
+      });
     });
   }, []);
 
+  const requestStudioAction = React.useCallback(
+    (action: 'save' | 'discard') => {
+      return new Promise<boolean>((resolve) => {
+        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const onDone = (ev: Event) => {
+          const e = ev as CustomEvent<{ requestId?: string }>;
+          if (e.detail?.requestId !== requestId) return;
+          window.removeEventListener(
+            'ea:studio.action.completed',
+            onDone as EventListener,
+          );
+          resolve(true);
+        };
+        window.addEventListener(
+          'ea:studio.action.completed',
+          onDone as EventListener,
+        );
+        window.dispatchEvent(
+          new CustomEvent('ea:studio.action', {
+            detail: { requestId, action },
+          }),
+        );
+      });
+    },
+    [],
+  );
+
   const handleOpenProject = React.useCallback(async () => {
     console.log('[IDE] File > Open Repository');
-    if (!window.eaDesktop?.listManagedRepositories || !window.eaDesktop?.loadManagedRepository) {
+    if (
+      !window.eaDesktop?.listManagedRepositories ||
+      !window.eaDesktop?.loadManagedRepository
+    ) {
       message.info('Open Repository is available in the desktop app.');
       return;
     }
@@ -528,104 +624,17 @@ const IdeMenuBar: React.FC = () => {
       return;
     }
 
-    setManagedRepositories(res.items.map((item) => ({ id: item.id, name: item.name })));
+    setManagedRepositories(
+      res.items.map((item) => ({ id: item.id, name: item.name })),
+    );
     setOpenRepoSelection(res.items[0]?.id ?? null);
     setOpenRepoModalOpen(true);
   }, [confirmStudioExit, requestStudioAction, studioMode]);
 
-  const handleOpenRepoFileSelected: React.ChangeEventHandler<HTMLInputElement> = React.useCallback(
-    async (e) => {
-      const file = e.target.files?.[0];
-      e.target.value = '';
-      if (!file) return;
-
-      console.log('[IDE] Importing repository package', { name: file.name, type: file.type, size: file.size });
-
-      if (!file.name.toLowerCase().endsWith('.eaproj')) {
-        message.warning({
-          content: 'Unsupported repository package. Please choose an .eaproj repository package.',
-          domain: 'repository',
-        });
-        return;
-      }
-
-      try {
-        const text = await file.text();
-        await importRepositoryPackage(text, file.name);
-      } catch (err) {
-        Modal.error({
-          title: 'Import Repository failed',
-          content: err instanceof Error ? err.message : 'Failed to read repository package.',
-        });
-      }
-    },
-    [importRepositoryPackage],
-  );
-
-  const importRepositoryPackage = React.useCallback(
-    async (rawText: string, sourceName?: string) => {
-      const payload = JSON.parse(rawText);
-      const applied = applyProjectPayload(payload);
-      if (!applied.ok) {
-        Modal.error({ title: 'Import Repository failed', content: applied.error });
-        return;
-      }
-
-      clearAnalysisResults();
-      dispatchIdeCommand({ type: 'workspace.resetTabs' });
-      dispatchIdeCommand({ type: 'studio.exit' });
-      setSelection({ kind: 'none', keys: [] });
-
-      const repositoryName =
-        payload?.meta?.repositoryName ||
-        payload?.repository?.metadata?.repositoryName ||
-        sourceName ||
-        'Imported Repository';
-      const repositoryId = uuid();
-      updateProjectStatus({ repositoryId, repositoryName, dirty: false });
-
-      if (window.eaDesktop?.saveManagedRepository) {
-        const nextPayload = buildProjectPayload();
-        if (nextPayload) {
-          const saveRes = await window.eaDesktop.saveManagedRepository({ payload: nextPayload, repositoryId });
-          if (!saveRes.ok) {
-            message.error(saveRes.error);
-            return;
-          }
-        }
-      }
-
-      message.success('Repository imported.');
-    },
-    [applyProjectPayload, buildProjectPayload, setSelection, updateProjectStatus],
-  );
-
-  React.useEffect(() => {
-    if (!window.eaDesktop?.consumePendingRepositoryImports) return;
-
-    const consumePending = async () => {
-      const res = await window.eaDesktop?.consumePendingRepositoryImports();
-      if (!res || !res.ok) return;
-      for (const item of res.items || []) {
-        try {
-          await importRepositoryPackage(item.content, item.name);
-        } catch {
-          // Best-effort only.
-        }
-      }
-    };
-
-    void consumePending();
-
-    if (window.eaDesktop?.onRepositoryPackageImport) {
-      window.eaDesktop.onRepositoryPackageImport((payload) => {
-        void importRepositoryPackage(payload.content, payload.name);
-      });
-    }
-  }, [importRepositoryPackage]);
-
   const handleConfirmOpenManagedRepository = React.useCallback(async () => {
-    const target = managedRepositories.find((repo) => repo.id === openRepoSelection);
+    const target = managedRepositories.find(
+      (repo) => repo.id === openRepoSelection,
+    );
     if (!target) {
       message.info('Select a repository to open.');
       return;
@@ -642,7 +651,10 @@ const IdeMenuBar: React.FC = () => {
       return;
     }
     if (!res.content) {
-      Modal.error({ title: 'Open Repository failed', content: 'Empty repository data.' });
+      Modal.error({
+        title: 'Open Repository failed',
+        content: 'Empty repository data.',
+      });
       return;
     }
 
@@ -650,7 +662,10 @@ const IdeMenuBar: React.FC = () => {
       const payload = JSON.parse(res.content);
       const applied = applyProjectPayload(payload);
       if (!applied.ok) {
-        Modal.error({ title: 'Open Repository failed', content: applied.error });
+        Modal.error({
+          title: 'Open Repository failed',
+          content: applied.error,
+        });
         return;
       }
 
@@ -665,20 +680,35 @@ const IdeMenuBar: React.FC = () => {
         target.name ||
         'EA Repository';
 
-      updateProjectStatus({ repositoryId: res.repositoryId ?? target.id, repositoryName: name, dirty: false });
+      updateProjectStatus({
+        repositoryId: res.repositoryId ?? target.id,
+        repositoryName: name,
+        dirty: false,
+      });
       message.success('Repository opened.');
       setOpenRepoModalOpen(false);
     } catch (err) {
-      Modal.error({ title: 'Open Repository failed', content: err instanceof Error ? err.message : 'Invalid repository data.' });
+      Modal.error({
+        title: 'Open Repository failed',
+        content:
+          err instanceof Error ? err.message : 'Invalid repository data.',
+      });
     }
-  }, [applyProjectPayload, managedRepositories, openRepoSelection, setSelection, updateProjectStatus]);
+  }, [
+    applyProjectPayload,
+    managedRepositories,
+    openRepoSelection,
+    setSelection,
+    updateProjectStatus,
+  ]);
 
   const handleCloseRepository = React.useCallback(() => {
     console.log('[IDE] File > Close Repository');
 
     Modal.confirm({
       title: 'Close repository?',
-      content: 'This unloads the current repository context (no browser close).',
+      content:
+        'This unloads the current repository context (no browser close).',
       okText: 'Close',
       cancelText: 'Cancel',
       onOk: () => {
@@ -713,7 +743,9 @@ const IdeMenuBar: React.FC = () => {
       },
       preferences: {
         applicationGrouping: readLocalStorage('ea.applicationGrouping'),
-        programmeScopeShowTechnology: readLocalStorage('ea.programmeScope.showTechnology'),
+        programmeScopeShowTechnology: readLocalStorage(
+          'ea.programmeScope.showTechnology',
+        ),
         seedBannerDismissed: readLocalStorage('ea.seed.banner.dismissed'),
         catalogDefined: readLocalStorage('ea.catalogDefined'),
       },
@@ -766,6 +798,117 @@ const IdeMenuBar: React.FC = () => {
     };
   }, [eaRepository, metadata]);
 
+  const importRepositoryPackage = React.useCallback(
+    async (rawText: string, sourceName?: string) => {
+      const payload = JSON.parse(rawText);
+      const applied = applyProjectPayload(payload);
+      if (!applied.ok) {
+        Modal.error({
+          title: 'Import Repository failed',
+          content: applied.error,
+        });
+        return;
+      }
+
+      clearAnalysisResults();
+      dispatchIdeCommand({ type: 'workspace.resetTabs' });
+      dispatchIdeCommand({ type: 'studio.exit' });
+      setSelection({ kind: 'none', keys: [] });
+
+      const repositoryName =
+        payload?.meta?.repositoryName ||
+        payload?.repository?.metadata?.repositoryName ||
+        sourceName ||
+        'Imported Repository';
+      const repositoryId = uuid();
+      updateProjectStatus({ repositoryId, repositoryName, dirty: false });
+
+      if (window.eaDesktop?.saveManagedRepository) {
+        const nextPayload = buildProjectPayload();
+        if (nextPayload) {
+          const saveRes = await window.eaDesktop.saveManagedRepository({
+            payload: nextPayload,
+            repositoryId,
+          });
+          if (!saveRes.ok) {
+            message.error(saveRes.error);
+            return;
+          }
+        }
+      }
+
+      message.success('Repository imported.');
+    },
+    [
+      applyProjectPayload,
+      buildProjectPayload,
+      setSelection,
+      updateProjectStatus,
+    ],
+  );
+
+  const handleOpenRepoFileSelected: React.ChangeEventHandler<HTMLInputElement> =
+    React.useCallback(
+      async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        console.log('[IDE] Importing repository package', {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+
+        if (!file.name.toLowerCase().endsWith('.eaproj')) {
+          message.warning({
+            content:
+              'Unsupported repository package. Please choose an .eaproj repository package.',
+            domain: 'repository',
+          });
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          await importRepositoryPackage(text, file.name);
+        } catch (err) {
+          Modal.error({
+            title: 'Import Repository failed',
+            content:
+              err instanceof Error
+                ? err.message
+                : 'Failed to read repository package.',
+          });
+        }
+      },
+      [importRepositoryPackage],
+    );
+
+  React.useEffect(() => {
+    if (!window.eaDesktop?.consumePendingRepositoryImports) return;
+
+    const consumePending = async () => {
+      const res = await window.eaDesktop?.consumePendingRepositoryImports();
+      if (!res || !res.ok) return;
+      for (const item of res.items || []) {
+        try {
+          await importRepositoryPackage(item.content, item.name);
+        } catch {
+          // Best-effort only.
+        }
+      }
+    };
+
+    void consumePending();
+
+    if (window.eaDesktop?.onRepositoryPackageImport) {
+      window.eaDesktop.onRepositoryPackageImport((payload) => {
+        void importRepositoryPackage(payload.content, payload.name);
+      });
+    }
+  }, [importRepositoryPackage]);
+
   const handleSaveProjectAs = React.useCallback(async () => {
     console.log('[IDE] File > Export Repository');
     if (!eaRepository || !metadata) return;
@@ -797,13 +940,18 @@ const IdeMenuBar: React.FC = () => {
     async (args: {
       label: string;
       file: File;
-      parse: (
-        csvText: string,
-      ) =>
-        | { ok: true; apply: () => { ok: true } | { ok: false; error: string }; summary: string }
+      parse: (csvText: string) =>
+        | {
+            ok: true;
+            apply: () => { ok: true } | { ok: false; error: string };
+            summary: string;
+          }
         | { ok: false; errors: string[] };
     }) => {
-      console.log('[IDE] Import', args.label, { name: args.file.name, size: args.file.size });
+      console.log('[IDE] Import', args.label, {
+        name: args.file.name,
+        size: args.file.size,
+      });
 
       const fileToCsv = async (file: File) => {
         const lower = file.name.toLowerCase();
@@ -816,7 +964,7 @@ const IdeMenuBar: React.FC = () => {
         if (!sheetName) throw new Error('Excel file has no sheets.');
         const sheet = workbook.Sheets[sheetName];
         // Use explicit newline to avoid unterminated string issues in bundler parsing.
-        return XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: "\n" });
+        return XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
       };
 
       try {
@@ -827,8 +975,8 @@ const IdeMenuBar: React.FC = () => {
             title: `${args.label} failed`,
             content: (
               <div style={{ maxHeight: 240, overflow: 'auto' }}>
-                {(res.errors ?? []).slice(0, 50).map((e, idx) => (
-                  <div key={idx}>{e}</div>
+                {(res.errors ?? []).slice(0, 50).map((e) => (
+                  <div key={e}>{e}</div>
                 ))}
                 {(res.errors ?? []).length > 50 ? <div>…</div> : null}
               </div>
@@ -853,7 +1001,9 @@ const IdeMenuBar: React.FC = () => {
   const handleImportCapabilitiesCsv = React.useCallback(() => {
     console.log('[IDE] File > Import > Capabilities CSV');
     if (!canImportCapabilities) {
-      message.warning('Capabilities are read-only in the current architecture scope.');
+      message.warning(
+        'Capabilities are read-only in the current architecture scope.',
+      );
       return;
     }
     importCapabilitiesInputRef.current?.click();
@@ -877,7 +1027,9 @@ const IdeMenuBar: React.FC = () => {
   const handleImportProgrammesCsv = React.useCallback(() => {
     console.log('[IDE] File > Import > Programmes CSV');
     if (!canImportProgrammes) {
-      message.warning('Programmes are read-only in the current architecture scope.');
+      message.warning(
+        'Programmes are read-only in the current architecture scope.',
+      );
       return;
     }
     importProgrammesInputRef.current?.click();
@@ -916,131 +1068,13 @@ const IdeMenuBar: React.FC = () => {
       };
 
       const fileName = `ea-repository-${safeSlug(metadata.repositoryName)}.json`;
-      downloadTextFile(fileName, JSON.stringify(snapshot, null, 2), 'application/json;charset=utf-8');
+      downloadTextFile(
+        fileName,
+        JSON.stringify(snapshot, null, 2),
+        'application/json;charset=utf-8',
+      );
       message.success('Repository snapshot exported.');
     };
-
-    // GovernanceMode behavior:
-    // - Strict: block export when mandatory attributes are missing OR invalid relationships are detected
-    // - Advisory: allow export with warnings (non-blocking)
-    try {
-      const nowDate = new Date();
-
-      const debt = buildGovernanceDebt(eaRepository, nowDate);
-      const {
-        mandatoryFindingCount,
-        invalidRelationshipInsertCount,
-        relationshipErrorCount,
-        relationshipWarningCount,
-        total,
-      } = debt.summary;
-
-      const hasBlockingStrictViolations =
-        mandatoryFindingCount > 0 || relationshipErrorCount > 0 || invalidRelationshipInsertCount > 0;
-
-      const mandatoryDetails = debt.repoReport.findings
-        .slice(0, 5)
-        .map((f) => `• ${f.message} (${f.elementId})`)
-        .join('\n');
-      const mandatoryMore = debt.repoReport.findings.length > 5 ? `\n… and ${debt.repoReport.findings.length - 5} more.` : '';
-
-      const relationshipErrorFindings = debt.relationshipReport.findings.filter(
-        (f) => f.severity === 'ERROR' || f.severity === 'BLOCKER',
-      );
-      const relationshipErrorDetails = relationshipErrorFindings
-        .slice(0, 5)
-        .map((f) => `• ${f.message} (${f.subjectId})`)
-        .join('\n');
-      const relationshipErrorMore =
-        relationshipErrorFindings.length > 5 ? `\n… and ${relationshipErrorFindings.length - 5} more.` : '';
-
-      const invalidRelationshipDetails = debt.invalidRelationshipInserts
-        .slice(0, 5)
-        .map((s) => `• ${s.message}`)
-        .join('\n');
-      const invalidRelationshipMore =
-        debt.invalidRelationshipInserts.length > 5
-          ? `\n… and ${debt.invalidRelationshipInserts.length - 5} more.`
-          : '';
-
-      const renderDetails = (mode: 'Strict' | 'Advisory') => (
-        <div>
-          <div>
-            Mandatory attribute findings: <strong>{mandatoryFindingCount}</strong>
-          </div>
-          <div>
-            Invalid relationship inserts: <strong>{invalidRelationshipInsertCount}</strong>
-          </div>
-          <div>
-            Relationship errors: <strong>{relationshipErrorCount}</strong>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontWeight: 600 }}>Details</div>
-            {mandatoryFindingCount > 0 ? (
-              <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
-                {mandatoryDetails + mandatoryMore}
-              </pre>
-            ) : null}
-            {invalidRelationshipInsertCount > 0 ? (
-              <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
-                {invalidRelationshipDetails + invalidRelationshipMore}
-              </pre>
-            ) : null}
-            {relationshipErrorCount > 0 ? (
-              <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
-                {relationshipErrorDetails + relationshipErrorMore}
-              </pre>
-            ) : null}
-            {relationshipWarningCount > 0 ? (
-              <div style={{ marginTop: 8, opacity: 0.8 }}>Relationship warnings: {relationshipWarningCount}</div>
-            ) : null}
-            <div style={{ marginTop: 8, opacity: 0.8 }}>Mode: {mode}</div>
-          </div>
-        </div>
-      );
-
-      if (metadata.governanceMode === 'Strict' && hasBlockingStrictViolations) {
-        appendGovernanceLog({
-          type: 'export.blocked',
-          governanceMode: 'Strict',
-          repositoryName: metadata.repositoryName,
-          architectureScope: metadata.architectureScope ?? undefined,
-          summary: debt.summary,
-          highlights: [
-            ...debt.repoReport.findings.slice(0, 3).map((f) => `Mandatory: ${f.message} (${f.elementId})`),
-            ...debt.relationshipReport.findings.slice(0, 3).map((f) => `Relationship: ${f.message} (${f.subjectId})`),
-            ...debt.invalidRelationshipInserts.slice(0, 3).map((s) => `Relationship insert: ${s.message}`),
-          ],
-        });
-
-        message.error({
-          content: 'Save blocked by governance (Strict mode): Fix mandatory attributes and invalid relationships before exporting a snapshot.',
-          domain: 'governance',
-        });
-        return;
-      }
-
-      if (metadata.governanceMode === 'Advisory' && total > 0) {
-        appendGovernanceLog({
-          type: 'export.warned',
-          governanceMode: 'Advisory',
-          repositoryName: metadata.repositoryName,
-          architectureScope: metadata.architectureScope ?? undefined,
-          summary: debt.summary,
-          highlights: [
-            ...debt.repoReport.findings.slice(0, 3).map((f) => `Mandatory: ${f.message} (${f.elementId})`),
-            ...debt.relationshipReport.findings.slice(0, 3).map((f) => `Relationship: ${f.message} (${f.subjectId})`),
-            ...debt.invalidRelationshipInserts.slice(0, 3).map((s) => `Relationship insert: ${s.message}`),
-          ],
-        });
-        message.warning({
-          content: `Exported with governance warnings (Advisory). ${total} issue(s) detected.`,
-          domain: 'governance',
-        });
-      }
-    } catch {
-      // Best-effort only.
-    }
 
     doExport();
   }, [eaRepository, metadata]);
@@ -1065,7 +1099,15 @@ const IdeMenuBar: React.FC = () => {
     const ranked = Array.isArray(data?.rankedImpacts) ? data.rankedImpacts : [];
 
     // Minimal enterprise-friendly CSV (keeps exports predictable even if internal shapes evolve).
-    const header = ['elementId', 'score', 'severity', 'paths', 'hardPaths', 'softOnlyPaths', 'maxDepthObserved'];
+    const header = [
+      'elementId',
+      'score',
+      'severity',
+      'paths',
+      'hardPaths',
+      'softOnlyPaths',
+      'maxDepthObserved',
+    ];
     const rows: string[][] = ranked.map((r: any) => [
       String(r.elementId ?? ''),
       String(r.score?.computedScore ?? 0),
@@ -1081,7 +1123,9 @@ const IdeMenuBar: React.FC = () => {
         row
           .map((cell: string) => {
             const s = String(cell ?? '');
-            return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+            return s.includes(',') || s.includes('"') || s.includes('\n')
+              ? `"${s.replace(/"/g, '""')}"`
+              : s;
           })
           .join(','),
       )
@@ -1096,7 +1140,8 @@ const IdeMenuBar: React.FC = () => {
     console.log('[IDE] File > Exit');
     Modal.confirm({
       title: 'Exit workspace context?',
-      content: 'This unloads repository, analysis, and selection context. The browser tab remains open.',
+      content:
+        'This unloads repository, analysis, and selection context. The browser tab remains open.',
       okText: 'Unload',
       cancelText: 'Cancel',
       onOk: () => {
@@ -1128,7 +1173,8 @@ const IdeMenuBar: React.FC = () => {
     }
     if (!eaRepository || !selectedEntityId) return;
 
-    const objType = (eaRepository.objects.get(selectedEntityId)?.type ?? null) as string | null;
+    const objType = (eaRepository.objects.get(selectedEntityId)?.type ??
+      null) as string | null;
     const reason = getReadOnlyReason(metadata?.architectureScope, objType);
     if (reason) {
       message.warning(reason);
@@ -1136,10 +1182,18 @@ const IdeMenuBar: React.FC = () => {
     }
 
     const obj = eaRepository.objects.get(selectedEntityId);
-    const currentName = typeof obj?.attributes?.name === 'string' ? String(obj?.attributes?.name) : '';
+    const currentName =
+      typeof obj?.attributes?.name === 'string'
+        ? String(obj?.attributes?.name)
+        : '';
     setRenameValue(currentName || selectedEntityId);
     setRenameOpen(true);
-  }, [eaRepository, isReadOnlyMode, metadata?.architectureScope, selectedEntityId]);
+  }, [
+    eaRepository,
+    isReadOnlyMode,
+    metadata?.architectureScope,
+    selectedEntityId,
+  ]);
 
   const handleConfirmRename = React.useCallback(() => {
     if (isReadOnlyMode) {
@@ -1149,7 +1203,8 @@ const IdeMenuBar: React.FC = () => {
     }
     if (!eaRepository || !selectedEntityId) return;
 
-    const objType = (eaRepository.objects.get(selectedEntityId)?.type ?? null) as string | null;
+    const objType = (eaRepository.objects.get(selectedEntityId)?.type ??
+      null) as string | null;
     const reason = getReadOnlyReason(metadata?.architectureScope, objType);
     if (reason) {
       message.warning(reason);
@@ -1166,14 +1221,18 @@ const IdeMenuBar: React.FC = () => {
     if (objType === 'Capability') {
       const offending = findTerm(nextName, TECHNICAL_TERMS);
       if (offending) {
-        message.error(`Capability names must not include technical term "${offending}".`);
+        message.error(
+          `Capability names must not include technical term "${offending}".`,
+        );
         return;
       }
     }
 
     if (objType === 'BusinessProcess') {
       if (!isVerbBasedProcessName(nextName)) {
-        message.error('BusinessProcess names must start with a verb (e.g., "Place Order").');
+        message.error(
+          'BusinessProcess names must start with a verb (e.g., "Place Order").',
+        );
         return;
       }
     }
@@ -1181,7 +1240,9 @@ const IdeMenuBar: React.FC = () => {
     if (objType === 'Application') {
       const offending = findTerm(nextName, PHYSICAL_TERMS);
       if (offending) {
-        message.error(`Application names must be logical (no physical term "${offending}").`);
+        message.error(
+          `Application names must be logical (no physical term "${offending}").`,
+        );
         return;
       }
     }
@@ -1204,7 +1265,14 @@ const IdeMenuBar: React.FC = () => {
 
     setRenameOpen(false);
     message.success('Element renamed.');
-  }, [eaRepository, isReadOnlyMode, metadata?.architectureScope, renameValue, selectedEntityId, trySetEaRepository]);
+  }, [
+    eaRepository,
+    isReadOnlyMode,
+    metadata?.architectureScope,
+    renameValue,
+    selectedEntityId,
+    trySetEaRepository,
+  ]);
 
   const handleDeleteSelectedElement = React.useCallback(() => {
     console.log('[IDE] Edit > Delete Selected Element');
@@ -1214,23 +1282,32 @@ const IdeMenuBar: React.FC = () => {
     }
     if (!eaRepository || !selectedEntityId) return;
 
-    const objType = (eaRepository.objects.get(selectedEntityId)?.type ?? null) as string | null;
+    const objType = (eaRepository.objects.get(selectedEntityId)?.type ??
+      null) as string | null;
     const reason = getReadOnlyReason(metadata?.architectureScope, objType);
     if (reason) {
       message.warning(reason);
       return;
     }
 
-    const rels = eaRepository.relationships.filter((r) => r.fromId === selectedEntityId || r.toId === selectedEntityId);
+    const rels = eaRepository.relationships.filter(
+      (r) => r.fromId === selectedEntityId || r.toId === selectedEntityId,
+    );
     const relPreview = rels.slice(0, 10).map((r) => {
       const source = eaRepository.objects.get(r.fromId);
       const target = eaRepository.objects.get(r.toId);
-      const sourceName = source && typeof source.attributes?.name === 'string' && source.attributes.name.trim()
-        ? String(source.attributes.name)
-        : r.fromId;
-      const targetName = target && typeof target.attributes?.name === 'string' && target.attributes.name.trim()
-        ? String(target.attributes.name)
-        : r.toId;
+      const sourceName =
+        source &&
+        typeof source.attributes?.name === 'string' &&
+        source.attributes.name.trim()
+          ? String(source.attributes.name)
+          : r.fromId;
+      const targetName =
+        target &&
+        typeof target.attributes?.name === 'string' &&
+        target.attributes.name.trim()
+          ? String(target.attributes.name)
+          : r.toId;
       return `${sourceName} —${r.type}→ ${targetName}`;
     });
     let removeRelationships = false;
@@ -1243,7 +1320,9 @@ const IdeMenuBar: React.FC = () => {
             Element: <strong>{selectedEntityId}</strong>
           </div>
           <div>
-            <Typography.Text type="secondary">Impacted relationships ({rels.length})</Typography.Text>
+            <Typography.Text type="secondary">
+              Impacted relationships ({rels.length})
+            </Typography.Text>
             {rels.length === 0 ? (
               <Typography.Text type="secondary" style={{ display: 'block' }}>
                 None
@@ -1275,10 +1354,15 @@ const IdeMenuBar: React.FC = () => {
         const draft = eaRepository.clone();
         draft.objects.delete(selectedEntityId);
         if (removeRelationships) {
-          draft.relationships = draft.relationships.filter((r) => r.fromId !== selectedEntityId && r.toId !== selectedEntityId);
+          draft.relationships = draft.relationships.filter(
+            (r) => r.fromId !== selectedEntityId && r.toId !== selectedEntityId,
+          );
         }
 
-        console.log('[IDE] Deleted element', { id: selectedEntityId, removedRelationships: removeRelationships ? rels.length : 0 });
+        console.log('[IDE] Deleted element', {
+          id: selectedEntityId,
+          removedRelationships: removeRelationships ? rels.length : 0,
+        });
 
         const applied = trySetEaRepository(draft);
         if (!applied.ok) return;
@@ -1287,7 +1371,14 @@ const IdeMenuBar: React.FC = () => {
         message.success('Element deleted.');
       },
     });
-  }, [eaRepository, isReadOnlyMode, metadata?.architectureScope, selectedEntityId, setSelection, trySetEaRepository]);
+  }, [
+    eaRepository,
+    isReadOnlyMode,
+    metadata?.architectureScope,
+    selectedEntityId,
+    setSelection,
+    trySetEaRepository,
+  ]);
 
   const handleFindElement = React.useCallback(() => {
     console.log('[IDE] Edit > Find Element');
@@ -1365,7 +1456,9 @@ const IdeMenuBar: React.FC = () => {
       byType.set(String(o.type), (byType.get(String(o.type)) ?? 0) + 1);
     }
 
-    const lines = [...byType.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const lines = [...byType.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
 
     Modal.info({
       title: 'Repository Statistics',
@@ -1391,7 +1484,10 @@ const IdeMenuBar: React.FC = () => {
 
   const handleToolsImportWizard = React.useCallback(() => {
     console.log('[IDE] Tools > Import / Export');
-    dispatchIdeCommand({ type: 'navigation.openRoute', path: '/interoperability' });
+    dispatchIdeCommand({
+      type: 'navigation.openRoute',
+      path: '/interoperability',
+    });
     message.info('Opening Import / Export wizard…');
   }, []);
 
@@ -1399,7 +1495,8 @@ const IdeMenuBar: React.FC = () => {
     console.log('[IDE] Tools > Cache / State Reset');
     Modal.confirm({
       title: 'Reset IDE layout + caches?',
-      content: 'Resets dock sizes/panels and clears UI-only caches. Repository data is not deleted.',
+      content:
+        'Resets dock sizes/panels and clears UI-only caches. Repository data is not deleted.',
       okText: 'Reset',
       cancelText: 'Cancel',
       onOk: () => {
@@ -1428,7 +1525,9 @@ const IdeMenuBar: React.FC = () => {
     Modal.info({
       title: 'Developer Diagnostics',
       content: (
-        <pre style={{ maxHeight: 320, overflow: 'auto' }}>{JSON.stringify(payload, null, 2)}</pre>
+        <pre style={{ maxHeight: 320, overflow: 'auto' }}>
+          {JSON.stringify(payload, null, 2)}
+        </pre>
       ),
     });
   }, [hasRepo, metadata, selection]);
@@ -1464,7 +1563,8 @@ const IdeMenuBar: React.FC = () => {
   const handleHelpDocs = React.useCallback(() => {
     console.log('[IDE] Help > Documentation');
     message.info({
-      content: 'Documentation link placeholder. External documentation URL not configured yet.',
+      content:
+        'Documentation link placeholder. External documentation URL not configured yet.',
       domain: 'system',
     });
   }, []);
@@ -1505,7 +1605,9 @@ const IdeMenuBar: React.FC = () => {
         <div>
           <div>Enterprise Architecture IDE</div>
           <div>License: See LICENSE</div>
-          <div>Build environment: {String(process.env.NODE_ENV || 'unknown')}</div>
+          <div>
+            Build environment: {String(process.env.NODE_ENV || 'unknown')}
+          </div>
         </div>
       ),
     });
@@ -1513,8 +1615,13 @@ const IdeMenuBar: React.FC = () => {
 
   // CSV import bindings (reuse existing parsing logic from dependency-view utilities).
   const parseAndApplyCsv = React.useMemo(() => {
-    const readLifecycleState = (attrs: Record<string, unknown> | null | undefined): string => {
-      const raw = (attrs as any)?.lifecycleState ?? (attrs as any)?.lifecycle_state ?? (attrs as any)?.lifecyclestate;
+    const readLifecycleState = (
+      attrs: Record<string, unknown> | null | undefined,
+    ): string => {
+      const raw =
+        (attrs as any)?.lifecycleState ??
+        (attrs as any)?.lifecycle_state ??
+        (attrs as any)?.lifecyclestate;
       return typeof raw === 'string' ? raw.trim() : '';
     };
     return {
@@ -1523,15 +1630,22 @@ const IdeMenuBar: React.FC = () => {
           label: 'Import Capabilities CSV',
           file,
           parse: (csvText) => {
-            if (!eaRepository) return { ok: false as const, errors: ['No repository loaded.'] };
-            const result = parseAndValidateCapabilitiesCsv(csvText, { repository: eaRepository });
+            if (!eaRepository)
+              return { ok: false as const, errors: ['No repository loaded.'] };
+            const result = parseAndValidateCapabilitiesCsv(csvText, {
+              repository: eaRepository,
+            });
             if (!result.ok) return result;
 
             const lifecycleMissing = result.capabilities
-              .map((c: any, idx: number) => ({ idx, state: readLifecycleState(c.attributes) }))
+              .map((c: any, idx: number) => ({
+                idx,
+                state: readLifecycleState(c.attributes),
+              }))
               .filter((row) => !row.state)
               .map((row) => `Row ${row.idx + 2}: lifecycleState is required.`);
-            if (lifecycleMissing.length > 0) return { ok: false as const, errors: lifecycleMissing };
+            if (lifecycleMissing.length > 0)
+              return { ok: false as const, errors: lifecycleMissing };
 
             const objects = result.capabilities.map((c: any) => ({
               id: c.id,
@@ -1545,10 +1659,19 @@ const IdeMenuBar: React.FC = () => {
 
             const relationships = result.capabilities
               .filter((c: any) => Boolean(c.parentId))
-              .map((c: any) => ({ fromId: c.parentId, toId: c.id, type: 'DECOMPOSES_TO' as const, attributes: {} }));
+              .map((c: any) => ({
+                fromId: c.parentId,
+                toId: c.id,
+                type: 'DECOMPOSES_TO' as const,
+                attributes: {},
+              }));
 
-            const applyResult = applyEaImportBatch(eaRepository, { objects, relationships });
-            if (!applyResult.ok) return { ok: false as const, errors: applyResult.errors };
+            const applyResult = applyEaImportBatch(eaRepository, {
+              objects,
+              relationships,
+            });
+            if (!applyResult.ok)
+              return { ok: false as const, errors: applyResult.errors };
 
             return {
               ok: true as const,
@@ -1563,7 +1686,8 @@ const IdeMenuBar: React.FC = () => {
           label: 'Import Applications CSV',
           file,
           parse: (csvText) => {
-            if (!eaRepository) return { ok: false as const, errors: ['No repository loaded.'] };
+            if (!eaRepository)
+              return { ok: false as const, errors: ['No repository loaded.'] };
             const result = parseAndValidateApplicationsCsv(csvText);
             if (!result.ok) return result;
 
@@ -1574,7 +1698,10 @@ const IdeMenuBar: React.FC = () => {
 
             const errors: string[] = [];
             for (const row of result.applications as any[]) {
-              const lifecycleState = typeof row.lifecycleState === 'string' ? row.lifecycleState.trim() : '';
+              const lifecycleState =
+                typeof row.lifecycleState === 'string'
+                  ? row.lifecycleState.trim()
+                  : '';
               if (!lifecycleState) {
                 errors.push(`Row ${row._row}: lifecycleState is required.`);
                 continue;
@@ -1592,7 +1719,9 @@ const IdeMenuBar: React.FC = () => {
               if (!res.ok) errors.push(res.error);
             }
 
-            draft.relationships = draft.relationships.filter((r) => draft.objects.has(r.fromId) && draft.objects.has(r.toId));
+            draft.relationships = draft.relationships.filter(
+              (r) => draft.objects.has(r.fromId) && draft.objects.has(r.toId),
+            );
             if (errors.length > 0) return { ok: false as const, errors };
 
             return {
@@ -1608,31 +1737,45 @@ const IdeMenuBar: React.FC = () => {
           label: 'Import Dependencies CSV',
           file,
           parse: (csvText) => {
-            if (!eaRepository) return { ok: false as const, errors: ['No repository loaded.'] };
+            if (!eaRepository)
+              return { ok: false as const, errors: ['No repository loaded.'] };
 
             const existingApplicationIds = new Set<string>();
             for (const obj of eaRepository.objects.values()) {
-              if (obj.type === 'Application') existingApplicationIds.add(obj.id);
+              if (obj.type === 'Application')
+                existingApplicationIds.add(obj.id);
             }
             if (existingApplicationIds.size === 0) {
               return {
                 ok: false as const,
-                errors: ['Cannot import dependencies: no Application objects exist in the repository.'],
+                errors: [
+                  'Cannot import dependencies: no Application objects exist in the repository.',
+                ],
               };
             }
 
-            const result = parseAndValidateDependenciesCsv(csvText, { existingApplicationIds });
+            const result = parseAndValidateDependenciesCsv(csvText, {
+              existingApplicationIds,
+            });
             if (!result.ok) return result;
 
-            const relationships = (result.dependencies as any[]).map((d: any) => ({
-              fromId: d.from,
-              toId: d.to,
-              type: 'INTEGRATES_WITH' as const,
-              attributes: { dependencyStrength: d.dependencyStrength, dependencyType: d.dependencyType },
-            }));
+            const relationships = (result.dependencies as any[]).map(
+              (d: any) => ({
+                fromId: d.from,
+                toId: d.to,
+                type: 'INTEGRATES_WITH' as const,
+                attributes: {
+                  dependencyStrength: d.dependencyStrength,
+                  dependencyType: d.dependencyType,
+                },
+              }),
+            );
 
-            const applyResult = applyEaImportBatch(eaRepository, { relationships });
-            if (!applyResult.ok) return { ok: false as const, errors: applyResult.errors };
+            const applyResult = applyEaImportBatch(eaRepository, {
+              relationships,
+            });
+            if (!applyResult.ok)
+              return { ok: false as const, errors: applyResult.errors };
 
             return {
               ok: true as const,
@@ -1647,15 +1790,20 @@ const IdeMenuBar: React.FC = () => {
           label: 'Import Technology CSV',
           file,
           parse: (csvText) => {
-            if (!eaRepository) return { ok: false as const, errors: ['No repository loaded.'] };
+            if (!eaRepository)
+              return { ok: false as const, errors: ['No repository loaded.'] };
             const result = parseAndValidateTechnologyCsv(csvText);
             if (!result.ok) return result;
 
             const lifecycleMissing = (result.technologies as any[])
-              .map((t: any, idx: number) => ({ idx, state: readLifecycleState(t.attributes) }))
+              .map((t: any, idx: number) => ({
+                idx,
+                state: readLifecycleState(t.attributes),
+              }))
               .filter((row) => !row.state)
               .map((row) => `Row ${row.idx + 2}: lifecycleState is required.`);
-            if (lifecycleMissing.length > 0) return { ok: false as const, errors: lifecycleMissing };
+            if (lifecycleMissing.length > 0)
+              return { ok: false as const, errors: lifecycleMissing };
 
             const objects = (result.technologies as any[]).map((t: any) => ({
               id: t.id,
@@ -1667,7 +1815,8 @@ const IdeMenuBar: React.FC = () => {
             }));
 
             const applyResult = applyEaImportBatch(eaRepository, { objects });
-            if (!applyResult.ok) return { ok: false as const, errors: applyResult.errors };
+            if (!applyResult.ok)
+              return { ok: false as const, errors: applyResult.errors };
 
             return {
               ok: true as const,
@@ -1682,15 +1831,20 @@ const IdeMenuBar: React.FC = () => {
           label: 'Import Programmes CSV',
           file,
           parse: (csvText) => {
-            if (!eaRepository) return { ok: false as const, errors: ['No repository loaded.'] };
+            if (!eaRepository)
+              return { ok: false as const, errors: ['No repository loaded.'] };
             const result = parseAndValidateProgrammesCsv(csvText);
             if (!result.ok) return result;
 
             const lifecycleMissing = (result.programmes as any[])
-              .map((p: any, idx: number) => ({ idx, state: readLifecycleState(p.attributes) }))
+              .map((p: any, idx: number) => ({
+                idx,
+                state: readLifecycleState(p.attributes),
+              }))
               .filter((row) => !row.state)
               .map((row) => `Row ${row.idx + 2}: lifecycleState is required.`);
-            if (lifecycleMissing.length > 0) return { ok: false as const, errors: lifecycleMissing };
+            if (lifecycleMissing.length > 0)
+              return { ok: false as const, errors: lifecycleMissing };
 
             const objects = (result.programmes as any[]).map((p: any) => ({
               id: p.id,
@@ -1702,7 +1856,8 @@ const IdeMenuBar: React.FC = () => {
             }));
 
             const applyResult = applyEaImportBatch(eaRepository, { objects });
-            if (!applyResult.ok) return { ok: false as const, errors: applyResult.errors };
+            if (!applyResult.ok)
+              return { ok: false as const, errors: applyResult.errors };
 
             return {
               ok: true as const,
@@ -1727,16 +1882,33 @@ const IdeMenuBar: React.FC = () => {
         children: [
           {
             key: 'file.new',
-            label: <span title="Use the Repository Hub to create or open repositories.">New EA Repository</span>,
+            label: (
+              <span title="Use the Repository Hub to create or open repositories.">
+                New EA Repository
+              </span>
+            ),
             onClick: handleNewRepo,
           },
-          { key: 'file.open', label: 'Import Repository…', onClick: handleOpenRepo },
+          {
+            key: 'file.open',
+            label: 'Import Repository…',
+            onClick: handleOpenRepo,
+          },
           {
             key: 'file.openProject',
-            label: <span title="Use the Repository Hub to create or open repositories.">Open Repository…</span>,
+            label: (
+              <span title="Use the Repository Hub to create or open repositories.">
+                Open Repository…
+              </span>
+            ),
             onClick: handleOpenProject,
           },
-          { key: 'file.saveProjectAs', label: 'Export Repository…', disabled: !hasRepo, onClick: handleSaveProjectAs },
+          {
+            key: 'file.saveProjectAs',
+            label: 'Export Repository…',
+            disabled: !hasRepo,
+            onClick: handleSaveProjectAs,
+          },
           { type: 'divider' as const },
           {
             key: 'file.close',
@@ -1755,8 +1927,16 @@ const IdeMenuBar: React.FC = () => {
                 disabled: !canImportCapabilities,
                 onClick: handleImportCapabilitiesCsv,
               },
-              { key: 'file.import.apps', label: 'Import Applications CSV…', onClick: handleImportApplicationsCsv },
-              { key: 'file.import.deps', label: 'Import Dependencies CSV…', onClick: handleImportDependenciesCsv },
+              {
+                key: 'file.import.apps',
+                label: 'Import Applications CSV…',
+                onClick: handleImportApplicationsCsv,
+              },
+              {
+                key: 'file.import.deps',
+                label: 'Import Dependencies CSV…',
+                onClick: handleImportDependenciesCsv,
+              },
               {
                 key: 'file.import.tech',
                 label: 'Import Technology CSV…',
@@ -1776,8 +1956,16 @@ const IdeMenuBar: React.FC = () => {
             label: 'Export',
             disabled: !hasRepo,
             children: [
-              { key: 'file.export.snapshot', label: 'Export Repository Snapshot (JSON)', onClick: handleExportRepositorySnapshot },
-              { key: 'file.export.impact', label: 'Export Impact Analysis (CSV)', onClick: handleExportImpactAnalysisCsv },
+              {
+                key: 'file.export.snapshot',
+                label: 'Export Repository Snapshot (JSON)',
+                onClick: handleExportRepositorySnapshot,
+              },
+              {
+                key: 'file.export.impact',
+                label: 'Export Impact Analysis (CSV)',
+                onClick: handleExportImpactAnalysisCsv,
+              },
             ],
           },
           { type: 'divider' as const },
@@ -1789,39 +1977,87 @@ const IdeMenuBar: React.FC = () => {
         label: 'Edit',
         disabled: editMenuDisabled,
         children: [
-          { key: 'edit.undo', label: 'Undo', disabled: !hasRepo || !canUndo, onClick: handleUndo },
-          { key: 'edit.redo', label: 'Redo', disabled: !hasRepo || !canRedo, onClick: handleRedo },
+          {
+            key: 'edit.undo',
+            label: 'Undo',
+            disabled: !hasRepo || !canUndo,
+            onClick: handleUndo,
+          },
+          {
+            key: 'edit.redo',
+            label: 'Redo',
+            disabled: !hasRepo || !canRedo,
+            onClick: handleRedo,
+          },
           { type: 'divider' as const },
           {
             key: 'edit.rename',
             label: 'Rename Selected Element…',
-            disabled: isReadOnlyMode || !selectedEntityId || !canEditSelectedEntity,
+            disabled:
+              isReadOnlyMode || !selectedEntityId || !canEditSelectedEntity,
             onClick: handleRenameSelectedElement,
           },
           {
             key: 'edit.delete',
             label: 'Delete Selected Element…',
-            disabled: isReadOnlyMode || !selectedEntityId || !canEditSelectedEntity,
+            disabled:
+              isReadOnlyMode || !selectedEntityId || !canEditSelectedEntity,
             onClick: handleDeleteSelectedElement,
             danger: true,
           },
           { type: 'divider' as const },
-          { key: 'edit.find', label: 'Find Element…', onClick: handleFindElement },
-          { key: 'edit.pref', label: 'Preferences', onClick: handlePreferences },
+          {
+            key: 'edit.find',
+            label: 'Find Element…',
+            onClick: handleFindElement,
+          },
+          {
+            key: 'edit.pref',
+            label: 'Preferences',
+            onClick: handlePreferences,
+          },
         ],
       },
       {
         key: 'view',
         label: 'View',
         children: [
-          { key: 'view.explorer', label: 'Toggle Explorer', onClick: handleToggleExplorer },
-          { key: 'view.diagrams', label: 'Toggle Diagrams Panel', onClick: handleToggleDiagrams },
-          { key: 'view.analysis', label: 'Toggle Analysis Panel', onClick: handleToggleAnalysis },
-          { key: 'view.gov', label: 'Toggle Governance Panel', onClick: handleToggleGovernance },
-          { key: 'view.bottom', label: 'Toggle Bottom Panel', onClick: handleToggleBottomPanel },
+          {
+            key: 'view.explorer',
+            label: 'Toggle Explorer',
+            onClick: handleToggleExplorer,
+          },
+          {
+            key: 'view.diagrams',
+            label: 'Toggle Diagrams Panel',
+            onClick: handleToggleDiagrams,
+          },
+          {
+            key: 'view.analysis',
+            label: 'Toggle Analysis Panel',
+            onClick: handleToggleAnalysis,
+          },
+          {
+            key: 'view.gov',
+            label: 'Toggle Governance Panel',
+            onClick: handleToggleGovernance,
+          },
+          {
+            key: 'view.bottom',
+            label: 'Toggle Bottom Panel',
+            onClick: handleToggleBottomPanel,
+          },
           { type: 'divider' as const },
-          { key: 'view.reset', label: 'Reset Layout', onClick: handleResetLayout },
-          { key: 'view.full', label: 'Fullscreen Workspace', onClick: handleFullscreenWorkspace },
+          {
+            key: 'view.reset',
+            label: 'Reset Layout',
+            onClick: handleResetLayout,
+          },
+          {
+            key: 'view.full',
+            label: 'Fullscreen Workspace',
+            onClick: handleFullscreenWorkspace,
+          },
         ],
       },
       {
@@ -1829,35 +2065,82 @@ const IdeMenuBar: React.FC = () => {
         label: 'Governance',
         disabled: governanceMenuDisabled,
         children: [
-          { key: 'gov.principles', label: 'Architecture Principles', onClick: () => handleGovernancePlaceholder('Architecture Principles') },
-          { key: 'gov.standards', label: 'Standards & Policies', onClick: () => handleGovernancePlaceholder('Standards & Policies') },
-          { key: 'gov.rules', label: 'Compliance Rules', onClick: () => handleGovernancePlaceholder('Compliance Rules') },
-          { key: 'gov.checks', label: 'Validation Checks', onClick: () => handleGovernancePlaceholder('Validation Checks') },
-          { key: 'gov.audit', label: 'Audit Log', onClick: () => handleGovernancePlaceholder('Audit Log (read-only)') },
+          {
+            key: 'gov.principles',
+            label: 'Architecture Principles',
+            onClick: () =>
+              handleGovernancePlaceholder('Architecture Principles'),
+          },
+          {
+            key: 'gov.standards',
+            label: 'Standards & Policies',
+            onClick: () => handleGovernancePlaceholder('Standards & Policies'),
+          },
+          {
+            key: 'gov.rules',
+            label: 'Compliance Rules',
+            onClick: () => handleGovernancePlaceholder('Compliance Rules'),
+          },
+          {
+            key: 'gov.checks',
+            label: 'Validation Checks',
+            onClick: () => handleGovernancePlaceholder('Validation Checks'),
+          },
+          {
+            key: 'gov.audit',
+            label: 'Audit Log',
+            onClick: () => handleGovernancePlaceholder('Audit Log (read-only)'),
+          },
           { type: 'divider' as const },
-          { key: 'gov.dashboard', label: 'Governance Dashboard', onClick: handleGovernanceDashboard },
+          {
+            key: 'gov.dashboard',
+            label: 'Governance Dashboard',
+            onClick: handleGovernanceDashboard,
+          },
         ],
       },
       {
         key: 'tools',
         label: 'Tools',
         children: [
-          { key: 'tools.import', label: 'Import / Export (CSV / Excel)', onClick: handleToolsImportWizard },
+          {
+            key: 'tools.import',
+            label: 'Import / Export (CSV / Excel)',
+            onClick: handleToolsImportWizard,
+          },
           {
             key: 'tools.csv',
             label: 'CSV Validator',
             onClick: () => {
               console.log('[IDE] Tools > CSV Validator');
               message.info({
-                content: 'CSV Validator: use File → Import to validate entity-specific CSVs. A dedicated validator UI is planned.',
+                content:
+                  'CSV Validator: use File → Import to validate entity-specific CSVs. A dedicated validator UI is planned.',
                 domain: 'repository',
               });
             },
           },
-          { key: 'tools.seed', label: 'Seed Sample Architecture', onClick: openSeedSampleDataModal },
-          { key: 'tools.stats', label: 'Repository Statistics', onClick: handleToolsRepositoryStats, disabled: !hasRepo },
-          { key: 'tools.meta', label: 'Schema / Metamodel Viewer', onClick: handleToolsMetamodelViewer },
-          { key: 'tools.reset', label: 'Cache / State Reset', onClick: handleToolsCacheReset },
+          {
+            key: 'tools.seed',
+            label: 'Seed Sample Architecture',
+            onClick: openSeedSampleDataModal,
+          },
+          {
+            key: 'tools.stats',
+            label: 'Repository Statistics',
+            onClick: handleToolsRepositoryStats,
+            disabled: !hasRepo,
+          },
+          {
+            key: 'tools.meta',
+            label: 'Schema / Metamodel Viewer',
+            onClick: handleToolsMetamodelViewer,
+          },
+          {
+            key: 'tools.reset',
+            label: 'Cache / State Reset',
+            onClick: handleToolsCacheReset,
+          },
           { type: 'divider' as const },
           {
             key: 'tools.devtools',
@@ -1877,10 +2160,22 @@ const IdeMenuBar: React.FC = () => {
         key: 'help',
         label: 'Help',
         children: [
-          { key: 'help.welcome', label: 'Welcome / Getting Started', onClick: handleHelpWelcome },
+          {
+            key: 'help.welcome',
+            label: 'Welcome / Getting Started',
+            onClick: handleHelpWelcome,
+          },
           { key: 'help.docs', label: 'Documentation', onClick: handleHelpDocs },
-          { key: 'help.keys', label: 'Keyboard Shortcuts', onClick: handleHelpShortcuts },
-          { key: 'help.ver', label: 'Version Info', onClick: handleHelpVersion },
+          {
+            key: 'help.keys',
+            label: 'Keyboard Shortcuts',
+            onClick: handleHelpShortcuts,
+          },
+          {
+            key: 'help.ver',
+            label: 'Version Info',
+            onClick: handleHelpVersion,
+          },
           { type: 'divider' as const },
           { key: 'help.about', label: 'About', onClick: handleHelpAbout },
         ],
@@ -1934,13 +2229,15 @@ const IdeMenuBar: React.FC = () => {
   );
 
   const findMatches = React.useMemo(() => {
-    if (!eaRepository) return [] as Array<{ id: string; type: string; name: string }>;
+    if (!eaRepository)
+      return [] as Array<{ id: string; type: string; name: string }>;
     const q = findQuery.trim().toLowerCase();
     if (!q) return [];
 
     const out: Array<{ id: string; type: string; name: string }> = [];
     for (const o of eaRepository.objects.values()) {
-      const name = typeof o.attributes?.name === 'string' ? String(o.attributes.name) : '';
+      const name =
+        typeof o.attributes?.name === 'string' ? String(o.attributes.name) : '';
       const hay = `${o.id} ${name} ${o.type}`.toLowerCase();
       if (!hay.includes(q)) continue;
       out.push({ id: o.id, type: String(o.type), name: name || o.id });
@@ -1950,12 +2247,14 @@ const IdeMenuBar: React.FC = () => {
   }, [eaRepository, findQuery]);
 
   // File input handlers (CSV)
-  const onCsvSelected = (parser: (file: File) => Promise<void>) => async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    await parser(file);
-  };
+  const onCsvSelected =
+    (parser: (file: File) => Promise<void>) =>
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      await parser(file);
+    };
 
   return (
     <div className={styles.root}>
@@ -1965,12 +2264,14 @@ const IdeMenuBar: React.FC = () => {
         theme="light"
         selectable={false}
         items={items as any}
-        disabled={fileMenuDisabled ? true : false}
+        disabled={fileMenuDisabled}
       />
 
       <div className={styles.right}>
         <span className={styles.hint}>
-          {hasRepo ? `Repository: ${metadata?.organizationName ?? 'Loaded'}` : 'No repository loaded'}
+          {hasRepo
+            ? `Repository: ${metadata?.organizationName ?? 'Loaded'}`
+            : 'No repository loaded'}
         </span>
       </div>
 
@@ -1983,11 +2284,41 @@ const IdeMenuBar: React.FC = () => {
         onChange={handleOpenRepoFileSelected}
       />
 
-      <input ref={importCapabilitiesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.capabilities)} />
-      <input ref={importApplicationsInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.applications)} />
-      <input ref={importDependenciesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.dependencies)} />
-      <input ref={importTechnologyInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.technology)} />
-      <input ref={importProgrammesInputRef} type="file" accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls" style={{ display: 'none' }} onChange={onCsvSelected(parseAndApplyCsv.programmes)} />
+      <input
+        ref={importCapabilitiesInputRef}
+        type="file"
+        accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onCsvSelected(parseAndApplyCsv.capabilities)}
+      />
+      <input
+        ref={importApplicationsInputRef}
+        type="file"
+        accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onCsvSelected(parseAndApplyCsv.applications)}
+      />
+      <input
+        ref={importDependenciesInputRef}
+        type="file"
+        accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onCsvSelected(parseAndApplyCsv.dependencies)}
+      />
+      <input
+        ref={importTechnologyInputRef}
+        type="file"
+        accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onCsvSelected(parseAndApplyCsv.technology)}
+      />
+      <input
+        ref={importProgrammesInputRef}
+        type="file"
+        accept="text/csv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={onCsvSelected(parseAndApplyCsv.programmes)}
+      />
 
       <Modal
         title="Open Repository"
@@ -2003,7 +2334,10 @@ const IdeMenuBar: React.FC = () => {
         <Select
           style={{ width: '100%' }}
           placeholder="Select a repository"
-          options={managedRepositories.map((item) => ({ value: item.id, label: item.name }))}
+          options={managedRepositories.map((item) => ({
+            value: item.id,
+            label: item.name,
+          }))}
           value={openRepoSelection ?? undefined}
           onChange={(value) => setOpenRepoSelection(value)}
         />
@@ -2023,7 +2357,12 @@ const IdeMenuBar: React.FC = () => {
             <div style={{ marginBottom: 6 }}>Organization name</div>
             <Input
               value={newRepoDraft.organizationName}
-              onChange={(e) => setNewRepoDraft((p) => ({ ...p, organizationName: e.target.value }))}
+              onChange={(e) =>
+                setNewRepoDraft((p) => ({
+                  ...p,
+                  organizationName: e.target.value,
+                }))
+              }
               placeholder="e.g. Contoso"
             />
           </div>
@@ -2031,7 +2370,9 @@ const IdeMenuBar: React.FC = () => {
             <div style={{ marginBottom: 6 }}>Industry</div>
             <Input
               value={newRepoDraft.industry}
-              onChange={(e) => setNewRepoDraft((p) => ({ ...p, industry: e.target.value }))}
+              onChange={(e) =>
+                setNewRepoDraft((p) => ({ ...p, industry: e.target.value }))
+              }
               placeholder="e.g. Financial Services"
             />
           </div>
@@ -2040,7 +2381,10 @@ const IdeMenuBar: React.FC = () => {
             <Select
               value={newRepoDraft.architectureScope}
               onChange={(value) =>
-                setNewRepoDraft((p) => ({ ...p, architectureScope: value as NewRepoDraft['architectureScope'] }))
+                setNewRepoDraft((p) => ({
+                  ...p,
+                  architectureScope: value as NewRepoDraft['architectureScope'],
+                }))
               }
               options={[
                 { value: 'Enterprise', label: 'Enterprise' },
@@ -2066,7 +2410,12 @@ const IdeMenuBar: React.FC = () => {
             <div style={{ marginBottom: 6 }}>Time horizon</div>
             <Select
               value={newRepoDraft.timeHorizon}
-              onChange={(value) => setNewRepoDraft((p) => ({ ...p, timeHorizon: value as NewRepoDraft['timeHorizon'] }))}
+              onChange={(value) =>
+                setNewRepoDraft((p) => ({
+                  ...p,
+                  timeHorizon: value as NewRepoDraft['timeHorizon'],
+                }))
+              }
               options={[
                 { value: 'Current', label: 'Current' },
                 { value: '1–3 years', label: '1–3 years' },
@@ -2076,7 +2425,8 @@ const IdeMenuBar: React.FC = () => {
           </div>
 
           <div style={{ opacity: 0.75, marginTop: 4 }}>
-            Creates metadata only; no architecture elements are created automatically.
+            Creates metadata only; no architecture elements are created
+            automatically.
           </div>
         </div>
       </Modal>
@@ -2092,7 +2442,12 @@ const IdeMenuBar: React.FC = () => {
               setNewRepoDraft((p) => ({
                 ...p,
                 referenceFramework: 'Custom',
-                frameworkConfig: { custom: { enabledObjectTypes: [], enabledRelationshipTypes: [] } },
+                frameworkConfig: {
+                  custom: {
+                    enabledObjectTypes: [],
+                    enabledRelationshipTypes: [],
+                  },
+                },
               }));
               lastFrameworkRef.current = 'Custom';
               setCustomSeedModalOpen(false);
@@ -2110,7 +2465,8 @@ const IdeMenuBar: React.FC = () => {
                 frameworkConfig: {
                   custom: {
                     enabledObjectTypes: CUSTOM_CORE_EA_SEED.enabledObjectTypes,
-                    enabledRelationshipTypes: CUSTOM_CORE_EA_SEED.enabledRelationshipTypes,
+                    enabledRelationshipTypes:
+                      CUSTOM_CORE_EA_SEED.enabledRelationshipTypes,
                   },
                 },
               }));
@@ -2122,7 +2478,9 @@ const IdeMenuBar: React.FC = () => {
           </Button>,
         ]}
       >
-        <Typography.Text>Start from blank or start with core EA types?</Typography.Text>
+        <Typography.Text>
+          Start from blank or start with core EA types?
+        </Typography.Text>
       </Modal>
 
       {/* Rename modal */}
@@ -2136,8 +2494,14 @@ const IdeMenuBar: React.FC = () => {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div>New name</div>
-          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
-          <Typography.Text type="secondary">Renaming updates only this element.</Typography.Text>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            autoFocus
+          />
+          <Typography.Text type="secondary">
+            Renaming updates only this element.
+          </Typography.Text>
         </div>
       </Modal>
 
@@ -2150,7 +2514,12 @@ const IdeMenuBar: React.FC = () => {
         destroyOnClose
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Input value={findQuery} onChange={(e) => setFindQuery(e.target.value)} placeholder="Search by id, name, type…" autoFocus />
+          <Input
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            placeholder="Search by id, name, type…"
+            autoFocus
+          />
           <div style={{ maxHeight: 280, overflow: 'auto' }}>
             {findMatches.length === 0 ? (
               <div style={{ opacity: 0.7 }}>No matches.</div>
@@ -2166,10 +2535,18 @@ const IdeMenuBar: React.FC = () => {
                         type="link"
                         onClick={() => {
                           setFindOpen(false);
-                          setSelection({ kind: 'repositoryElement', keys: [`repo:entity:${m.id}`] });
+                          setSelection({
+                            kind: 'repositoryElement',
+                            keys: [`repo:entity:${m.id}`],
+                          });
                           dispatchIdeCommand({
                             type: 'navigation.openWorkspace',
-                            args: { type: 'object', objectId: m.id, objectType: m.type, name: m.name },
+                            args: {
+                              type: 'object',
+                              objectId: m.id,
+                              objectType: m.type,
+                              name: m.name,
+                            },
                           });
                         }}
                       >

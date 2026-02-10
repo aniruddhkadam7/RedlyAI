@@ -1,5 +1,8 @@
+import {
+  readRepositorySnapshot,
+  updateRepositorySnapshot,
+} from '@/repository/repositorySnapshotStore';
 import type { ViewInstance, ViewStatus } from '../viewpoints/ViewInstance';
-import { readRepositorySnapshot, updateRepositorySnapshot } from '@/repository/repositorySnapshotStore';
 
 const LEGACY_STORAGE_KEY = 'ea:diagram-views';
 
@@ -95,33 +98,19 @@ export const ViewStore = {
   replaceAll(views: ViewInstance[]): void {
     const normalized = Array.isArray(views)
       ? views.map((view) => ({
-        ...view,
-        status: 'SAVED' as ViewStatus,
-      }))
+          ...view,
+          status: 'SAVED' as ViewStatus,
+        }))
       : [];
     writeToStorage(normalized);
     dispatchViewsChanged();
   },
 
-  update(viewId: string, updater: (current: ViewInstance) => ViewInstance): ViewInstance | undefined {
-    const existing = readFromStorage();
-    const current = existing.find((v) => v.id === viewId);
-    if (!current) return undefined;
-    const next = updater(current);
-    return upsert(next);
-  },
-
-  remove(viewId: string): boolean {
-    const existing = readFromStorage();
-    const next = existing.filter((v) => v.id !== viewId);
-    if (next.length === existing.length) return false;
-    writeToStorage(next);
-    dispatchViewsChanged();
-    return true;
-  },
-
   /** Update a view in-place and mark it as SAVED. */
-  update(viewId: string, updater: (current: ViewInstance) => ViewInstance): ViewInstance | undefined {
+  update(
+    viewId: string,
+    updater: (current: ViewInstance) => ViewInstance,
+  ): ViewInstance | undefined {
     const current = readFromStorage().find((v) => v.id === viewId);
     if (!current) return undefined;
     return upsert(updater(current));

@@ -10,6 +10,10 @@
     layout: false,
   },
   {
+    path: '/catalog/applications/import',
+    component: './catalog-import',
+  },
+  {
     path: '/catalog/:domain',
     component: './catalog',
   },
@@ -20,10 +24,6 @@
   {
     path: '/applications',
     component: './applications',
-  },
-  {
-    path: '/governance',
-    component: './governance',
   },
   {
     path: '/dependency-view',

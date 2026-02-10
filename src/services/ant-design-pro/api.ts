@@ -1,8 +1,8 @@
 // @ts-ignore
 /* eslint-disable */
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
-/** 获取当前的用户 GET /api/currentUser */
+/** èŽ·å–å½“å‰çš„ç”¨æˆ· GET /api/currentUser */
 export async function currentUser(options?: { [key: string]: any }) {
   return request<{
     data: API.CurrentUser;
@@ -12,7 +12,7 @@ export async function currentUser(options?: { [key: string]: any }) {
   });
 }
 
-/** 退出登录接口 POST /api/login/outLogin */
+/** é€€å‡ºç™»å½•æŽ¥å£ POST /api/login/outLogin */
 export async function outLogin(options?: { [key: string]: any }) {
   return request<Record<string, any>>('/api/login/outLogin', {
     method: 'POST',
@@ -20,7 +20,7 @@ export async function outLogin(options?: { [key: string]: any }) {
   });
 }
 
-/** 登录接口 POST /api/login/account */
+/** ç™»å½•æŽ¥å£ POST /api/login/account */
 export async function login(body: API.LoginParams, options?: { [key: string]: any }) {
   return request<API.LoginResult>('/api/login/account', {
     method: 'POST',
@@ -32,7 +32,7 @@ export async function login(body: API.LoginParams, options?: { [key: string]: an
   });
 }
 
-/** 此处后端没有提供注释 GET /api/notices */
+/** æ­¤å¤„åŽç«¯æ²¡æœ‰æä¾›æ³¨é‡Š GET /api/notices */
 export async function getNotices(options?: { [key: string]: any }) {
   return request<API.NoticeIconList>('/api/notices', {
     method: 'GET',
@@ -40,13 +40,13 @@ export async function getNotices(options?: { [key: string]: any }) {
   });
 }
 
-/** 获取规则列表 GET /api/rule */
+/** èŽ·å–è§„åˆ™åˆ—è¡¨ GET /api/rule */
 export async function rule(
   params: {
     // query
-    /** 当前的页码 */
+    /** å½“å‰çš„é¡µç  */
     current?: number;
-    /** 页面的容量 */
+    /** é¡µé¢çš„å®¹é‡ */
     pageSize?: number;
   },
   options?: { [key: string]: any },
@@ -60,7 +60,7 @@ export async function rule(
   });
 }
 
-/** 更新规则 PUT /api/rule */
+/** æ›´æ–°è§„åˆ™ PUT /api/rule */
 export async function updateRule(options?: { [key: string]: any }) {
   return request<API.RuleListItem>('/api/rule', {
     method: 'POST',
@@ -71,7 +71,7 @@ export async function updateRule(options?: { [key: string]: any }) {
   });
 }
 
-/** 新建规则 POST /api/rule */
+/** æ–°å»ºè§„åˆ™ POST /api/rule */
 export async function addRule(options?: { [key: string]: any }) {
   return request<API.RuleListItem>('/api/rule', {
     method: 'POST',
@@ -82,7 +82,7 @@ export async function addRule(options?: { [key: string]: any }) {
   });
 }
 
-/** 删除规则 DELETE /api/rule */
+/** åˆ é™¤è§„åˆ™ DELETE /api/rule */
 export async function removeRule(options?: { [key: string]: any }) {
   return request<Record<string, any>>('/api/rule', {
     method: 'POST',

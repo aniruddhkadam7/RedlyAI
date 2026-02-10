@@ -1,6 +1,6 @@
 // @ts-ignore
 /* eslint-disable */
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
 /** Create user This can only be done by the logged in user. POST /user */
 export async function createUser(body: API.User, options?: { [key: string]: any }) {
@@ -13,7 +13,7 @@ export async function createUser(body: API.User, options?: { [key: string]: any 
 
 /** Get user by user name GET /user/${param0} */
 export async function getUserByName(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  // å åŠ ç”Ÿæˆçš„Paramç±»åž‹ (éžbodyå‚æ•°swaggeré»˜è®¤æ²¡æœ‰ç”Ÿæˆå¯¹è±¡)
   params: API.getUserByNameParams,
   options?: { [key: string]: any },
 ) {
@@ -27,7 +27,7 @@ export async function getUserByName(
 
 /** Updated user This can only be done by the logged in user. PUT /user/${param0} */
 export async function updateUser(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  // å åŠ ç”Ÿæˆçš„Paramç±»åž‹ (éžbodyå‚æ•°swaggeré»˜è®¤æ²¡æœ‰ç”Ÿæˆå¯¹è±¡)
   params: API.updateUserParams,
   body: API.User,
   options?: { [key: string]: any },
@@ -43,7 +43,7 @@ export async function updateUser(
 
 /** Delete user This can only be done by the logged in user. DELETE /user/${param0} */
 export async function deleteUser(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  // å åŠ ç”Ÿæˆçš„Paramç±»åž‹ (éžbodyå‚æ•°swaggeré»˜è®¤æ²¡æœ‰ç”Ÿæˆå¯¹è±¡)
   params: API.deleteUserParams,
   options?: { [key: string]: any },
 ) {
@@ -78,7 +78,7 @@ export async function createUsersWithListInput(body: API.User[], options?: { [ke
 
 /** Logs user into the system GET /user/login */
 export async function loginUser(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  // å åŠ ç”Ÿæˆçš„Paramç±»åž‹ (éžbodyå‚æ•°swaggeré»˜è®¤æ²¡æœ‰ç”Ÿæˆå¯¹è±¡)
   params: API.loginUserParams,
   options?: { [key: string]: any },
 ) {

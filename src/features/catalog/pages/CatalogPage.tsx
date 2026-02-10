@@ -13,6 +13,7 @@ import CatalogGrid from '../CatalogGrid';
 import CatalogToolbar from '../CatalogToolbar';
 import styles from '../catalog.module.less';
 import { CatalogFilters } from '../components/CatalogFilters';
+import ImportHistoryModal from '../import/components/ImportHistoryModal';
 import type {
   CatalogDomain,
   CatalogElement,
@@ -89,6 +90,7 @@ const CatalogPage: React.FC = () => {
     'createdAt',
   ]);
   const [scrollY, setScrollY] = React.useState(520);
+  const [importHistoryOpen, setImportHistoryOpen] = React.useState(false);
 
   const queryState: CatalogQueryState = React.useMemo(
     () => ({ search: debouncedSearch, filter: filters, sort }),
@@ -323,6 +325,16 @@ const CatalogPage: React.FC = () => {
           link.click();
           URL.revokeObjectURL(url);
         }}
+        onImportCsv={
+          domain === 'application'
+            ? () => history.push('/catalog/applications/import')
+            : undefined
+        }
+        onImportHistory={
+          domain === 'application'
+            ? () => setImportHistoryOpen(true)
+            : undefined
+        }
       />
 
       <div
@@ -381,6 +393,10 @@ const CatalogPage: React.FC = () => {
           views={inspectorElement ? getInspectorViews(inspectorElement.id) : []}
         />
       </div>
+      <ImportHistoryModal
+        open={importHistoryOpen}
+        onClose={() => setImportHistoryOpen(false)}
+      />
     </div>
   );
 };

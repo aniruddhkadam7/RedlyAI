@@ -1,4 +1,3 @@
-import { getGovernanceEnforcementMode } from '../governance/GovernanceEnforcementConfig';
 import {
   strictValidationEngine,
   type ValidationGateResult,
@@ -56,9 +55,7 @@ export function setRepository(
     mode?: 'Strict' | 'Advisory';
   },
 ): ValidationGateResult {
-  const governanceMode = getGovernanceEnforcementMode();
-  const mode =
-    options?.mode ?? (governanceMode === 'Advisory' ? 'Advisory' : 'Strict');
+  const mode = options?.mode ?? 'Advisory';
 
   const validation = strictValidationEngine.validateOnSave({
     elements: next,

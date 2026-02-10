@@ -1,32 +1,31 @@
-import type { Project } from '../../project/project';
 import { projectStore } from '../../project/ProjectStore';
+import type { Project } from '../../project/project';
+import { getRelationshipEndpointRule } from '../../relationships/RelationshipSemantics';
+import type { Application } from '../../repository/Application';
 import {
-  createArchitectureRepository,
   type ArchitectureRepository,
+  createArchitectureRepository,
   type RepositoryCollectionType,
 } from '../../repository/ArchitectureRepository';
 import type { BaseArchitectureElement } from '../../repository/BaseArchitectureElement';
-import type { Application } from '../../repository/Application';
+import type { BaseArchitectureRelationship } from '../../repository/BaseArchitectureRelationship';
 import type { BusinessProcess } from '../../repository/BusinessProcess';
 import type { Capability } from '../../repository/Capability';
 import type { Programme } from '../../repository/Programme';
-import type { Technology } from '../../repository/Technology';
 import {
   createRelationshipRepository,
   type RelationshipRepository,
 } from '../../repository/RelationshipRepository';
-import type { BaseArchitectureRelationship } from '../../repository/BaseArchitectureRelationship';
-import { getRelationshipEndpointRule } from '../../relationships/RelationshipSemantics';
-import { getRepository, setRepository } from '../../repository/RepositoryStore';
 import {
   getRelationshipRepository,
   setRelationshipRepository,
 } from '../../repository/RelationshipRepositoryStore';
-import { getGovernanceEnforcementMode } from '../../governance/GovernanceEnforcementConfig';
+import { getRepository, setRepository } from '../../repository/RepositoryStore';
+import type { Technology } from '../../repository/Technology';
 
 import type {
-  CanonicalExchangeModel,
   CanonicalEnvelope,
+  CanonicalExchangeModel,
   CanonicalRelationship,
   CanonicalRepositoryElement,
 } from '../CanonicalExchangeModel';
@@ -35,14 +34,14 @@ import {
   BUSINESS_PROCESSES_CSV_SCHEMA,
   CAPABILITIES_CSV_SCHEMA,
   CSV_IMPORT_SPECS,
-  PROGRAMMES_CSV_SCHEMA,
-  RELATIONSHIPS_CSV_SCHEMA,
-  TECHNOLOGIES_CSV_SCHEMA,
   type CsvColumnName,
   type CsvFieldSpec,
   type CsvImportSourceEntity,
   type CsvRowError,
   type CsvSchemaSpec,
+  PROGRAMMES_CSV_SCHEMA,
+  RELATIONSHIPS_CSV_SCHEMA,
+  TECHNOLOGIES_CSV_SCHEMA,
 } from './CsvImportSpecification';
 
 export type CsvImportEngineInput = {
@@ -74,7 +73,9 @@ export type CsvImportEngineFailure = {
   errors: CsvRowError[];
 };
 
-export type CsvImportEngineResult = CsvImportEngineSuccess | CsvImportEngineFailure;
+export type CsvImportEngineResult =
+  | CsvImportEngineSuccess
+  | CsvImportEngineFailure;
 
 type ParsedCsv = {
   headerLine: number;
@@ -83,7 +84,8 @@ type ParsedCsv = {
   rows: Array<{ line: number; values: string[] }>;
 };
 
-const normalizeBom = (text: string) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+const normalizeBom = (text: string) =>
+  text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 
 /** RFC4180-ish CSV parser with quote support and deterministic behavior. */
 export function parseCsvStrict(csvText: string): ParsedCsv {
@@ -189,11 +191,13 @@ const parseNumberStrict = (v: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const getCell = (row: Record<string, string>, col: string) => (row[col] ?? '').trim();
+const schemaFor = (entity: CsvImportSourceEntity): CsvSchemaSpec =>
+  CSV_IMPORT_SPECS[entity];
 
-const schemaFor = (entity: CsvImportSourceEntity): CsvSchemaSpec => CSV_IMPORT_SPECS[entity];
-
-const validateHeaders = (parsed: ParsedCsv, schema: CsvSchemaSpec): CsvRowError[] => {
+const validateHeaders = (
+  parsed: ParsedCsv,
+  schema: CsvSchemaSpec,
+): CsvRowError[] => {
   const errors: CsvRowError[] = [];
 
   const headerLine = parsed.headerLine;
@@ -241,11 +245,15 @@ const validateHeaders = (parsed: ParsedCsv, schema: CsvSchemaSpec): CsvRowError[
 const coerceCell = (
   spec: CsvFieldSpec,
   rawValue: string,
-): { ok: true; value: unknown } | { ok: false; error: string; code: 'INVALID_TYPE' | 'INVALID_ENUM' } => {
+):
+  | { ok: true; value: unknown }
+  | { ok: false; error: string; code: 'INVALID_TYPE' | 'INVALID_ENUM' } => {
   const value = (rawValue ?? '').trim();
 
   const allowEmpty =
-    spec.type.startsWith('optional-') || spec.type === 'nullable-uuid' || spec.requiredCell === false;
+    spec.type.startsWith('optional-') ||
+    spec.type === 'nullable-uuid' ||
+    spec.requiredCell === false;
 
   if (!value) {
     if (spec.requiredCell && !allowEmpty) {
@@ -253,7 +261,8 @@ const coerceCell = (
     }
 
     if (spec.type === 'nullable-uuid') return { ok: true, value: null };
-    if (spec.type.startsWith('optional-')) return { ok: true, value: undefined };
+    if (spec.type.startsWith('optional-'))
+      return { ok: true, value: undefined };
 
     // For non-required fields, treat blank as missing.
     // Rationale: keeps typed optional columns (enum/boolean/number/uuid/iso8601) out of domain objects.
@@ -284,7 +293,11 @@ const coerceCell = (
     case 'optional-iso8601':
       return isIso8601(value)
         ? { ok: true, value }
-        : { ok: false, code: 'INVALID_TYPE', error: 'Expected ISO-8601 date/timestamp.' };
+        : {
+            ok: false,
+            code: 'INVALID_TYPE',
+            error: 'Expected ISO-8601 date/timestamp.',
+          };
 
     case 'number':
     case 'optional-number': {
@@ -298,7 +311,11 @@ const coerceCell = (
       const b = parseBooleanStrict(value);
       return typeof b === 'boolean'
         ? { ok: true, value: b }
-        : { ok: false, code: 'INVALID_TYPE', error: 'Expected boolean (true/false).' };
+        : {
+            ok: false,
+            code: 'INVALID_TYPE',
+            error: 'Expected boolean (true/false).',
+          };
     }
 
     case 'enum': {
@@ -312,14 +329,20 @@ const coerceCell = (
     }
 
     default:
-      return { ok: false, code: 'INVALID_TYPE', error: `Unsupported CSV field type: ${String(spec.type)}.` };
+      return {
+        ok: false,
+        code: 'INVALID_TYPE',
+        error: `Unsupported CSV field type: ${String(spec.type)}.`,
+      };
   }
 };
 
 const rowsToObjects = (
   parsed: ParsedCsv,
-  schema: CsvSchemaSpec,
-): { rows: Array<{ line: number; obj: Record<string, string> }>; errors: CsvRowError[] } => {
+): {
+  rows: Array<{ line: number; obj: Record<string, string> }>;
+  errors: CsvRowError[];
+} => {
   const errors: CsvRowError[] = [];
 
   const headers = parsed.headers;
@@ -351,10 +374,13 @@ const rowsToObjects = (
 const validateAndCoerceRows = (
   parsed: ParsedCsv,
   schema: CsvSchemaSpec,
-): { values: Array<{ line: number; record: Record<string, unknown> }>; errors: CsvRowError[] } => {
+): {
+  values: Array<{ line: number; record: Record<string, unknown> }>;
+  errors: CsvRowError[];
+} => {
   const errors: CsvRowError[] = [];
 
-  const { rows, errors: rowShapeErrors } = rowsToObjects(parsed, schema);
+  const { rows, errors: rowShapeErrors } = rowsToObjects(parsed);
   errors.push(...rowShapeErrors);
 
   // Build map of column specs by name.
@@ -463,7 +489,8 @@ const validateRelationshipTypedFields = (
 
     for (const col of required) {
       const v = record[col];
-      const blank = v === undefined || v === null || String(v).trim().length === 0;
+      const blank =
+        v === undefined || v === null || String(v).trim().length === 0;
       if (blank) {
         errors.push({
           line,
@@ -478,7 +505,9 @@ const validateRelationshipTypedFields = (
   return errors;
 };
 
-const makeElementTypeToCollection = (elementType: string): RepositoryCollectionType | null => {
+const makeElementTypeToCollection = (
+  elementType: string,
+): RepositoryCollectionType | null => {
   switch ((elementType ?? '').trim()) {
     case 'Capability':
       return 'capabilities';
@@ -498,15 +527,23 @@ const makeElementTypeToCollection = (elementType: string): RepositoryCollectionT
 const toEnvelope = <T>(value: T): CanonicalEnvelope<T> => ({ value });
 
 const sortElements = (a: BaseArchitectureElement, b: BaseArchitectureElement) =>
-  a.elementType.localeCompare(b.elementType) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  a.elementType.localeCompare(b.elementType) ||
+  a.name.localeCompare(b.name) ||
+  a.id.localeCompare(b.id);
 
-const sortRelationships = (a: BaseArchitectureRelationship, b: BaseArchitectureRelationship) =>
+const sortRelationships = (
+  a: BaseArchitectureRelationship,
+  b: BaseArchitectureRelationship,
+) =>
   a.relationshipType.localeCompare(b.relationshipType) ||
   a.sourceElementId.localeCompare(b.sourceElementId) ||
   a.targetElementId.localeCompare(b.targetElementId) ||
   a.id.localeCompare(b.id);
 
-const cloneCurrentRepositories = (): { repo: ArchitectureRepository; relRepo: RelationshipRepository } => {
+const cloneCurrentRepositories = (): {
+  repo: ArchitectureRepository;
+  relRepo: RelationshipRepository;
+} => {
   const current = getRepository();
   const currentRel = getRelationshipRepository();
 
@@ -639,7 +676,11 @@ const validateRelationshipReferentialIntegrity = (
     }
 
     const rule = getRelationshipEndpointRule(relationshipType);
-    if (!rule || !rule.from.includes(sourceType) || !rule.to.includes(targetType)) {
+    if (
+      !rule ||
+      !rule.from.includes(sourceType) ||
+      !rule.to.includes(targetType)
+    ) {
       errors.push({
         line,
         code: 'INVALID_RELATIONSHIP_ENDPOINTS',
@@ -678,7 +719,9 @@ const buildRepositoryElement = (
   }
 };
 
-const buildRelationship = (record: Record<string, unknown>): BaseArchitectureRelationship => {
+const buildRelationship = (
+  record: Record<string, unknown>,
+): BaseArchitectureRelationship => {
   // Drop undefined optional fields deterministically.
   const out: Record<string, unknown> = {};
   const keys = Object.keys(record).sort((a, b) => a.localeCompare(b));
@@ -725,7 +768,8 @@ export function importCsvTransactional(
         {
           line: 0,
           code: 'INVALID_TYPE',
-          message: 'No project available. Provide options.project or create one in ProjectStore before import.',
+          message:
+            'No project available. Provide options.project or create one in ProjectStore before import.',
         },
       ],
     };
@@ -743,7 +787,11 @@ export function importCsvTransactional(
 
   const sortedInputs = inputs
     .slice()
-    .sort((a, b) => order.indexOf(a.entity) - order.indexOf(b.entity) || (a.sourceDescription ?? '').localeCompare(b.sourceDescription ?? ''));
+    .sort(
+      (a, b) =>
+        order.indexOf(a.entity) - order.indexOf(b.entity) ||
+        (a.sourceDescription ?? '').localeCompare(b.sourceDescription ?? ''),
+    );
 
   // Stage repositories (clone current state to support atomic swap).
   const staged = cloneCurrentRepositories();
@@ -776,7 +824,12 @@ export function importCsvTransactional(
 
     if (input.entity === 'Relationships') {
       // Validate referential integrity against staged elements.
-      allErrors.push(...validateRelationshipReferentialIntegrity(coerced.values, staged.repo));
+      allErrors.push(
+        ...validateRelationshipReferentialIntegrity(
+          coerced.values,
+          staged.repo,
+        ),
+      );
       if (allErrors.length > 0) continue;
 
       for (const { line, record } of coerced.values) {
@@ -828,7 +881,13 @@ export function importCsvTransactional(
     }
 
     // Cross-field referential integrity within elements (e.g., parentCapabilityId).
-    allErrors.push(...validateElementReferentialIntegrity(input.entity, coerced.values, staged.repo));
+    allErrors.push(
+      ...validateElementReferentialIntegrity(
+        input.entity,
+        coerced.values,
+        staged.repo,
+      ),
+    );
   }
 
   const errors = normalizeErrors(allErrors);
@@ -837,8 +896,13 @@ export function importCsvTransactional(
   // Build canonical model (deterministic ordering).
   const canonicalModel: CanonicalExchangeModel = {
     projectMetadata: toEnvelope({ ...project, canonicalModelVersion: 'cem/1' }),
-    repositoryElements: importedElements.slice().sort(sortElements).map(toEnvelope),
-    relationships: (importedRelationships as unknown as BaseArchitectureRelationship[])
+    repositoryElements: importedElements
+      .slice()
+      .sort(sortElements)
+      .map(toEnvelope),
+    relationships: (
+      importedRelationships as unknown as BaseArchitectureRelationship[]
+    )
       .slice()
       .sort(sortRelationships)
       .map(toEnvelope),
@@ -848,10 +912,12 @@ export function importCsvTransactional(
 
   if (applyToRepository) {
     // Transactional swap: staged contains current+imported.
-    const governanceMode = getGovernanceEnforcementMode();
-    const mode = governanceMode === 'Advisory' ? 'Advisory' : 'Strict';
+    const mode = 'Advisory';
 
-    const validation = setRepository(staged.repo, { relationships: staged.relRepo, mode });
+    const validation = setRepository(staged.repo, {
+      relationships: staged.relRepo,
+      mode,
+    });
     if (!validation.ok) {
       return {
         ok: false,
@@ -868,7 +934,10 @@ export function importCsvTransactional(
     // In advisory mode we still surface warnings to the caller.
     if (validation.warnings?.length) {
       // eslint-disable-next-line no-console
-      console.warn('[governance] advisory repository warnings:', validation.warnings);
+      console.warn(
+        '[governance] advisory repository warnings:',
+        validation.warnings,
+      );
     }
 
     setRelationshipRepository(staged.relRepo);

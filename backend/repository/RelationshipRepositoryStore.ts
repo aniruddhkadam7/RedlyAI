@@ -1,4 +1,3 @@
-import { getGovernanceEnforcementMode } from '../governance/GovernanceEnforcementConfig';
 import { strictValidationEngine } from '../validation/StrictValidationEngine';
 import type { BaseArchitectureRelationship } from './BaseArchitectureRelationship';
 import {
@@ -53,8 +52,7 @@ export function addRelationship(relationship: BaseArchitectureRelationship) {
   const elements = getRepository();
   const relationships = getRelationshipRepository();
 
-  const governanceMode = getGovernanceEnforcementMode();
-  const mode = governanceMode === 'Advisory' ? 'Advisory' : 'Strict';
+  const mode = 'Advisory';
 
   const validation = strictValidationEngine.validateRelationshipCreation({
     elements,

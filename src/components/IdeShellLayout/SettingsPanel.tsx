@@ -1,9 +1,6 @@
 import React from 'react';
-import { Tag } from 'antd';
-
-import { dispatchIdeCommand } from '@/ide/ideCommands';
-import { ENABLE_RBAC } from '@/repository/accessControl';
 import { message } from '@/ea/eaConsole';
+import { dispatchIdeCommand } from '@/ide/ideCommands';
 
 const SettingsPanel: React.FC = () => {
   return (
@@ -12,13 +9,6 @@ const SettingsPanel: React.FC = () => {
       <div style={{ opacity: 0.75, marginBottom: 12 }}>
         Workspace-level preferences and layout controls.
       </div>
-
-      {!ENABLE_RBAC ? (
-        <Tag color="default" style={{ alignSelf: 'flex-start' }}>
-          Single-user mode (RBAC disabled)
-        </Tag>
-      ) : null}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <a
           onClick={() => {

@@ -1,8 +1,3 @@
-import React from 'react';
-import { v4 as uuid } from 'uuid';
-import { history, useModel } from '@umijs/max';
-import { Button, Dropdown, Form, Input, Modal, Segmented } from 'antd';
-import DarkDropdown from './DarkDropdown';
 import {
   AppstoreOutlined,
   FolderOpenOutlined,
@@ -10,33 +5,28 @@ import {
   PlusOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-
-import styles from './index.module.less';
-import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { history } from '@umijs/max';
+import { Dropdown, Form, Input, Modal } from 'antd';
+import React from 'react';
+import { v4 as uuid } from 'uuid';
+import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
+import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
+import { DesignWorkspaceStore } from '@/ea/DesignWorkspaceStore';
 import { useEaProject } from '@/ea/EaProjectContext';
+import { useEaRepository } from '@/ea/EaRepositoryContext';
+import { message } from '@/ea/eaConsole';
 import {
   ARCHITECTURE_SCOPES,
-  GOVERNANCE_MODES,
-  LIFECYCLE_COVERAGE_OPTIONS,
-  REFERENCE_FRAMEWORKS,
-  TIME_HORIZONS,
   type ArchitectureScope,
-  type GovernanceMode,
+  LIFECYCLE_COVERAGE_OPTIONS,
   type LifecycleCoverage,
+  REFERENCE_FRAMEWORKS,
   type ReferenceFramework,
+  TIME_HORIZONS,
   type TimeHorizon,
 } from '@/repository/repositoryMetadata';
-import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
-import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
-import { DesignWorkspaceStore } from '@/ea/DesignWorkspaceStore';
-import { message } from '@/ea/eaConsole';
-
-const safeSlug = (value: string) =>
-  (value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '') || 'export';
+import DarkDropdown from './DarkDropdown';
+import styles from './index.module.less';
 
 const safeParseJson = <T,>(raw: string | null, fallback: T): T => {
   if (!raw) return fallback;
@@ -56,8 +46,12 @@ const readLocalStorage = (key: string): string | null => {
 };
 
 const FirstLaunch: React.FC = () => {
-  const { initialState } = useModel('@@initialState');
-  const { createNewRepository, loadRepositoryFromJsonText, eaRepository, metadata } = useEaRepository();
+  const {
+    createNewRepository,
+    loadRepositoryFromJsonText,
+    eaRepository,
+    metadata,
+  } = useEaRepository();
   const { createProject, refreshProject } = useEaProject();
 
   const ACTIVE_REPO_ID_KEY = 'ea.repository.activeId';
@@ -69,10 +63,16 @@ const FirstLaunch: React.FC = () => {
   const LEGACY_RECENT_PROJECTS_KEY = 'ea.project.recent';
 
   const [mode, setMode] = React.useState<'home' | 'create'>('home');
-  const [legacyImportAvailable, setLegacyImportAvailable] = React.useState(false);
-  const [legacyImporting, setLegacyImporting] = React.useState(false);
+  const [legacyImportAvailable, setLegacyImportAvailable] =
+    React.useState(false);
+  const [_legacyImporting, setLegacyImporting] = React.useState(false);
   const [recentProjects, setRecentProjects] = React.useState<
-    Array<{ id: string; name: string; description?: string | null; lastOpened?: string | null }>
+    Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+      lastOpened?: string | null;
+    }>
   >([]);
   const [createFormReady, setCreateFormReady] = React.useState(false);
   const [form] = Form.useForm<{
@@ -80,7 +80,6 @@ const FirstLaunch: React.FC = () => {
     organizationName: string;
     architectureScope: ArchitectureScope;
     referenceFramework: ReferenceFramework;
-    governanceMode: GovernanceMode;
     lifecycleCoverage: LifecycleCoverage;
     timeHorizon: TimeHorizon;
   }>();
@@ -97,7 +96,12 @@ const FirstLaunch: React.FC = () => {
   }, [eaRepository, metadata]);
 
   const updateProjectStatus = React.useCallback(
-    (opts: { repositoryId?: string | null; repositoryName?: string | null; dirty?: boolean | null; clear?: boolean }) => {
+    (opts: {
+      repositoryId?: string | null;
+      repositoryName?: string | null;
+      dirty?: boolean | null;
+      clear?: boolean;
+    }) => {
       if (opts.clear) {
         try {
           localStorage.removeItem(ACTIVE_REPO_ID_KEY);
@@ -150,24 +154,40 @@ const FirstLaunch: React.FC = () => {
         // ignore
       }
     },
-    [ACTIVE_REPO_ID_KEY, ACTIVE_REPO_NAME_KEY, PROJECT_DIRTY_KEY, PROJECT_STATUS_EVENT],
+    [
+      ACTIVE_REPO_ID_KEY,
+      ACTIVE_REPO_NAME_KEY,
+      PROJECT_DIRTY_KEY,
+      PROJECT_STATUS_EVENT,
+    ],
   );
 
   const applyProjectPayload = React.useCallback(
     (payload: any) => {
       const snapshot = payload?.repository?.snapshot ?? null;
       if (!snapshot || typeof snapshot !== 'object') {
-        return { ok: false, error: 'Invalid repository data: missing snapshot.' } as const;
+        return {
+          ok: false,
+          error: 'Invalid repository data: missing snapshot.',
+        } as const;
       }
 
       const snapshotText = JSON.stringify(snapshot);
       const loadRes = loadRepositoryFromJsonText(snapshotText);
       if (!loadRes.ok) return loadRes;
 
-      const snapshotViews = Array.isArray((snapshot as any)?.views) ? (snapshot as any).views : [];
-      const viewItems = snapshotViews.length > 0 ? snapshotViews : Array.isArray(payload?.views?.items) ? payload.views.items : [];
+      const snapshotViews = Array.isArray((snapshot as any)?.views)
+        ? (snapshot as any).views
+        : [];
+      const viewItems =
+        snapshotViews.length > 0
+          ? snapshotViews
+          : Array.isArray(payload?.views?.items)
+            ? payload.views.items
+            : [];
       const snapshotStudio = (snapshot as any)?.studioState ?? null;
-      const viewLayouts = snapshotStudio?.viewLayouts ?? payload?.studioState?.viewLayouts ?? {};
+      const viewLayouts =
+        snapshotStudio?.viewLayouts ?? payload?.studioState?.viewLayouts ?? {};
 
       const existingViews = ViewStore.list();
       for (const v of existingViews) {
@@ -181,7 +201,10 @@ const FirstLaunch: React.FC = () => {
         if (!id) continue;
         const layout = viewLayouts?.[id];
         if (layout && typeof layout === 'object') {
-          ViewLayoutStore.set(id, layout as Record<string, { x: number; y: number }>);
+          ViewLayoutStore.set(
+            id,
+            layout as Record<string, { x: number; y: number }>,
+          );
         } else {
           ViewLayoutStore.remove(id);
         }
@@ -220,7 +243,10 @@ const FirstLaunch: React.FC = () => {
       if (prefs && typeof prefs === 'object') {
         const prefMap: Array<[string, string | null | undefined]> = [
           ['ea.applicationGrouping', prefs.applicationGrouping],
-          ['ea.programmeScope.showTechnology', prefs.programmeScopeShowTechnology],
+          [
+            'ea.programmeScope.showTechnology',
+            prefs.programmeScopeShowTechnology,
+          ],
           ['ea.seed.banner.dismissed', prefs.seedBannerDismissed],
           ['ea.catalogDefined', prefs.catalogDefined],
         ];
@@ -250,7 +276,14 @@ const FirstLaunch: React.FC = () => {
     (entry: { id: string; name: string; description?: string | null }) => {
       try {
         const raw = localStorage.getItem(RECENT_REPOSITORIES_KEY);
-        const existing = safeParseJson<Array<{ id: string; name: string; description?: string; lastOpened?: string }>>(raw, []);
+        const existing = safeParseJson<
+          Array<{
+            id: string;
+            name: string;
+            description?: string;
+            lastOpened?: string;
+          }>
+        >(raw, []);
         const next = [
           {
             id: entry.id,
@@ -273,7 +306,14 @@ const FirstLaunch: React.FC = () => {
     (id: string) => {
       try {
         const raw = localStorage.getItem(RECENT_REPOSITORIES_KEY);
-        const existing = safeParseJson<Array<{ id: string; name: string; description?: string; lastOpened?: string }>>(raw, []);
+        const existing = safeParseJson<
+          Array<{
+            id: string;
+            name: string;
+            description?: string;
+            lastOpened?: string;
+          }>
+        >(raw, []);
         const next = existing.filter((item) => item.id !== id);
         localStorage.setItem(RECENT_REPOSITORIES_KEY, JSON.stringify(next));
         setRecentProjects(next);
@@ -286,7 +326,10 @@ const FirstLaunch: React.FC = () => {
 
   const waitForRepositoryReady = React.useCallback(async () => {
     for (let i = 0; i < 8; i += 1) {
-      if (repositoryRef.current.eaRepository && repositoryRef.current.metadata) {
+      if (
+        repositoryRef.current.eaRepository &&
+        repositoryRef.current.metadata
+      ) {
         return repositoryRef.current;
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -316,7 +359,9 @@ const FirstLaunch: React.FC = () => {
       },
       preferences: {
         applicationGrouping: readLocalStorage('ea.applicationGrouping'),
-        programmeScopeShowTechnology: readLocalStorage('ea.programmeScope.showTechnology'),
+        programmeScopeShowTechnology: readLocalStorage(
+          'ea.programmeScope.showTechnology',
+        ),
         seedBannerDismissed: readLocalStorage('ea.seed.banner.dismissed'),
         catalogDefined: readLocalStorage('ea.catalogDefined'),
       },
@@ -396,7 +441,11 @@ const FirstLaunch: React.FC = () => {
   }, []);
 
   const handleOpenRecentProject = React.useCallback(
-    async (entry: { id: string; name: string; description?: string | null }) => {
+    async (entry: {
+      id: string;
+      name: string;
+      description?: string | null;
+    }) => {
       if (!entry.id) return;
       if (!window.eaDesktop?.loadManagedRepository) {
         message.info('Open Repository is available in the desktop app.');
@@ -409,7 +458,10 @@ const FirstLaunch: React.FC = () => {
         return;
       }
       if (!res.content) {
-        Modal.error({ title: 'Open Repository failed', content: 'Empty repository data.' });
+        Modal.error({
+          title: 'Open Repository failed',
+          content: 'Empty repository data.',
+        });
         return;
       }
 
@@ -417,7 +469,10 @@ const FirstLaunch: React.FC = () => {
         const payload = JSON.parse(res.content);
         const applied = applyProjectPayload(payload);
         if (!applied.ok) {
-          Modal.error({ title: 'Open Repository failed', content: applied.error });
+          Modal.error({
+            title: 'Open Repository failed',
+            content: applied.error,
+          });
           return;
         }
 
@@ -430,7 +485,9 @@ const FirstLaunch: React.FC = () => {
         try {
           await createProject({
             name,
-            description: payload?.meta?.organizationName ? `${payload.meta.organizationName} EA repository` : '',
+            description: payload?.meta?.organizationName
+              ? `${payload.meta.organizationName} EA repository`
+              : '',
           });
         } catch {
           // Best-effort only.
@@ -438,13 +495,25 @@ const FirstLaunch: React.FC = () => {
 
         const description = payload?.meta?.organizationName
           ? `${payload.meta.organizationName} EA repository`
-          : entry.description ?? null;
-        updateProjectStatus({ repositoryId: res.repositoryId ?? entry.id, repositoryName: name, dirty: false });
-        updateRecentProjects({ id: res.repositoryId ?? entry.id, name, description });
+          : (entry.description ?? null);
+        updateProjectStatus({
+          repositoryId: res.repositoryId ?? entry.id,
+          repositoryName: name,
+          dirty: false,
+        });
+        updateRecentProjects({
+          id: res.repositoryId ?? entry.id,
+          name,
+          description,
+        });
         message.success('Repository opened.');
         history.push('/workspace');
       } catch (err) {
-        Modal.error({ title: 'Open Repository failed', content: err instanceof Error ? err.message : 'Invalid repository data.' });
+        Modal.error({
+          title: 'Open Repository failed',
+          content:
+            err instanceof Error ? err.message : 'Invalid repository data.',
+        });
       }
     },
     [applyProjectPayload, updateProjectStatus, updateRecentProjects],
@@ -477,7 +546,10 @@ const FirstLaunch: React.FC = () => {
       if (window.eaDesktop?.saveManagedRepository) {
         const nextPayload = await buildProjectPayload();
         if (nextPayload) {
-          const saveRes = await window.eaDesktop.saveManagedRepository({ payload: nextPayload, repositoryId });
+          const saveRes = await window.eaDesktop.saveManagedRepository({
+            payload: nextPayload,
+            repositoryId,
+          });
           if (!saveRes.ok) {
             message.error(saveRes.error);
             return;
@@ -489,7 +561,13 @@ const FirstLaunch: React.FC = () => {
       message.success('Repository imported.');
       history.push('/workspace');
     },
-    [applyProjectPayload, buildProjectPayload, updateProjectStatus, updateRecentProjects, waitForRepositoryReady],
+    [
+      applyProjectPayload,
+      buildProjectPayload,
+      updateProjectStatus,
+      updateRecentProjects,
+      waitForRepositoryReady,
+    ],
   );
 
   const resolveLegacyProjectPath = React.useCallback((): string | null => {
@@ -497,7 +575,9 @@ const FirstLaunch: React.FC = () => {
     if (direct) return direct;
     const raw = readLocalStorage(LEGACY_RECENT_PROJECTS_KEY);
     const parsed = safeParseJson<Array<{ path?: string }>>(raw, []);
-    const candidate = parsed.find((item) => typeof item.path === 'string' && item.path.trim());
+    const candidate = parsed.find(
+      (item) => typeof item.path === 'string' && item.path.trim(),
+    );
     return candidate?.path?.trim() || null;
   }, [LEGACY_PROJECT_PATH_KEY, LEGACY_RECENT_PROJECTS_KEY]);
 
@@ -568,7 +648,14 @@ const FirstLaunch: React.FC = () => {
     try {
       const raw = localStorage.getItem(RECENT_REPOSITORIES_KEY);
       if (raw) {
-        const parsed = safeParseJson<Array<{ id: string; name: string; description?: string; lastOpened?: string }>>(raw, []);
+        const parsed = safeParseJson<
+          Array<{
+            id: string;
+            name: string;
+            description?: string;
+            lastOpened?: string;
+          }>
+        >(raw, []);
         if (parsed.length) {
           setRecentProjects(
             parsed.map((item) => ({
@@ -588,12 +675,13 @@ const FirstLaunch: React.FC = () => {
         setRecentProjects([]);
         return;
       }
-      setRecentProjects([{ id: activeId, name: activeName, description: null, lastOpened: null }]);
+      setRecentProjects([
+        { id: activeId, name: activeName, description: null, lastOpened: null },
+      ]);
     } catch {
       setRecentProjects([]);
     }
   }, [ACTIVE_REPO_ID_KEY, ACTIVE_REPO_NAME_KEY, RECENT_REPOSITORIES_KEY]);
-
 
   React.useEffect(() => {
     void readRecentProjects();
@@ -603,7 +691,10 @@ const FirstLaunch: React.FC = () => {
     window.addEventListener(PROJECT_STATUS_EVENT, onStatus as EventListener);
     window.addEventListener('storage', onStatus as EventListener);
     return () => {
-      window.removeEventListener(PROJECT_STATUS_EVENT, onStatus as EventListener);
+      window.removeEventListener(
+        PROJECT_STATUS_EVENT,
+        onStatus as EventListener,
+      );
       window.removeEventListener('storage', onStatus as EventListener);
     };
   }, [PROJECT_STATUS_EVENT, readRecentProjects]);
@@ -649,17 +740,33 @@ const FirstLaunch: React.FC = () => {
         {/* ── LEFT SIDEBAR — action anchor ── */}
         <div className={styles.sidebar}>
           <div className={styles.sidebarActions}>
-            <button type="button" className={styles.sidebarBtn} onClick={() => setMode('create')}>
+            <button
+              type="button"
+              className={styles.sidebarBtn}
+              onClick={() => setMode('create')}
+            >
               <PlusOutlined /> Create New Repository
             </button>
-            <button type="button" className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`} onClick={handleOpenProject}>
+            <button
+              type="button"
+              className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`}
+              onClick={handleOpenProject}
+            >
               <FolderOpenOutlined /> Open Repository
             </button>
-            <button type="button" className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`} onClick={() => importFileInputRef.current?.click()}>
+            <button
+              type="button"
+              className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`}
+              onClick={() => importFileInputRef.current?.click()}
+            >
               <ImportOutlined /> Import Repository
             </button>
             {legacyImportAvailable ? (
-              <button type="button" className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`} onClick={handleLegacyImport}>
+              <button
+                type="button"
+                className={`${styles.sidebarBtn} ${styles.sidebarBtnSecondary}`}
+                onClick={handleLegacyImport}
+              >
                 <ImportOutlined /> Import Legacy
               </button>
             ) : null}
@@ -667,7 +774,9 @@ const FirstLaunch: React.FC = () => {
           <div className={styles.sidebarDivider} />
           <div className={styles.sidebarSection}>Explorer</div>
           <div className={styles.sidebarStatus}>
-            <span className={styles.sidebarStatusLabel}>No Repository Opened</span>
+            <span className={styles.sidebarStatusLabel}>
+              No Repository Opened
+            </span>
             Open or create a repository to begin.
           </div>
           <input
@@ -689,14 +798,19 @@ const FirstLaunch: React.FC = () => {
               {/* branding */}
               <div className={styles.brand}>
                 <h1 className={styles.brandTitle}>Welcome</h1>
-                <p className={styles.brandSubtitle}>Enterprise Architecture Modeling Environment</p>
+                <p className={styles.brandSubtitle}>
+                  Enterprise Architecture Modeling Environment
+                </p>
               </div>
 
               {/* workspace context */}
               <div className={styles.workspaceContext}>
-                <h2 className={styles.workspaceContextTitle}>Workspace Context</h2>
+                <h2 className={styles.workspaceContextTitle}>
+                  Workspace Context
+                </h2>
                 <p className={styles.workspaceContextText}>
-                  Repositories store your enterprise models, views, and relationships.
+                  Repositories store your enterprise models, views, and
+                  relationships.
                 </p>
                 <p className={styles.workspaceContextHint}>
                   Create or open a repository to start modeling.
@@ -723,12 +837,18 @@ const FirstLaunch: React.FC = () => {
                               { key: 'open', label: 'Open' },
                               { key: 'remove', label: 'Remove from Recent' },
                               { type: 'divider' },
-                              { key: 'reveal', label: 'Reveal in Explorer', disabled: true },
+                              {
+                                key: 'reveal',
+                                label: 'Reveal in Explorer',
+                                disabled: true,
+                              },
                             ],
                             onClick: ({ key, domEvent }) => {
                               domEvent.stopPropagation();
-                              if (key === 'open') void handleOpenRecentProject(item);
-                              else if (key === 'remove') removeRecentProject(item.id);
+                              if (key === 'open')
+                                void handleOpenRecentProject(item);
+                              else if (key === 'remove')
+                                removeRecentProject(item.id);
                             },
                           }}
                           trigger={['contextMenu']}
@@ -742,16 +862,24 @@ const FirstLaunch: React.FC = () => {
                               <AppstoreOutlined />
                             </div>
                             <div className={styles.recentRowCenter}>
-                              <span className={styles.recentRowName} title={item.name}>
+                              <span
+                                className={styles.recentRowName}
+                                title={item.name}
+                              >
                                 {item.name}
                               </span>
-                              <span className={styles.recentRowMeta} title={desc}>
+                              <span
+                                className={styles.recentRowMeta}
+                                title={desc}
+                              >
                                 {desc}
                               </span>
                             </div>
                             <div className={styles.recentRowRight}>
                               {timeStr && (
-                                <span className={styles.recentRowTime}>{timeStr}</span>
+                                <span className={styles.recentRowTime}>
+                                  {timeStr}
+                                </span>
                               )}
                               <span className={styles.recentRowHint}>
                                 <RightOutlined />
@@ -763,7 +891,8 @@ const FirstLaunch: React.FC = () => {
                     })
                   ) : (
                     <div className={styles.emptyRecent}>
-                      No recent repositories. Create or open a repository to get started.
+                      No recent repositories. Create or open a repository to get
+                      started.
                     </div>
                   )}
                 </div>
@@ -781,8 +910,8 @@ const FirstLaunch: React.FC = () => {
                 <div>
                   <h2 className={styles.createFormTitle}>New Repository</h2>
                   <p className={styles.createFormHint}>
-                    Create a repository to store architecture models, views,
-                    and relationships for your organization.
+                    Create a repository to store architecture models, views, and
+                    relationships for your organization.
                   </p>
                 </div>
               </div>
@@ -795,14 +924,14 @@ const FirstLaunch: React.FC = () => {
                 initialValues={{
                   architectureScope: 'Enterprise',
                   referenceFramework: 'Custom',
-                  governanceMode: 'Strict',
                   lifecycleCoverage: 'Both',
                   timeHorizon: '1–3 years',
                 }}
                 onValuesChange={() => {
                   const v = form.getFieldsValue();
                   setCreateFormReady(
-                    Boolean(v.repositoryName?.trim()) && Boolean(v.organizationName?.trim()),
+                    Boolean(v.repositoryName?.trim()) &&
+                      Boolean(v.organizationName?.trim()),
                   );
                 }}
                 onFinish={(values) => {
@@ -827,14 +956,20 @@ const FirstLaunch: React.FC = () => {
                   }
 
                   void (async () => {
-                    try { await refreshProject(); } catch { /* ignore */ }
+                    try {
+                      await refreshProject();
+                    } catch {
+                      /* ignore */
+                    }
 
                     try {
                       await createProject({
                         name: values.repositoryName,
                         description: `${values.organizationName} EA repository`,
                       });
-                    } catch { /* ignore */ }
+                    } catch {
+                      /* ignore */
+                    }
 
                     const repositoryId = uuid();
                     updateProjectStatus({
@@ -850,14 +985,17 @@ const FirstLaunch: React.FC = () => {
                     }
 
                     if (!window.eaDesktop?.saveManagedRepository) {
-                      message.info('Managed repositories are available in the desktop app.');
+                      message.info(
+                        'Managed repositories are available in the desktop app.',
+                      );
                       return;
                     }
 
-                    const saveRes = await window.eaDesktop.saveManagedRepository({
-                      payload,
-                      repositoryId,
-                    });
+                    const saveRes =
+                      await window.eaDesktop.saveManagedRepository({
+                        payload,
+                        repositoryId,
+                      });
 
                     if (!saveRes.ok) {
                       message.error(saveRes.error);
@@ -867,7 +1005,11 @@ const FirstLaunch: React.FC = () => {
                     const description = values.organizationName
                       ? `${values.organizationName} EA repository`
                       : null;
-                    updateRecentProjects({ id: saveRes.repositoryId ?? repositoryId, name: values.repositoryName, description });
+                    updateRecentProjects({
+                      id: saveRes.repositoryId ?? repositoryId,
+                      name: values.repositoryName,
+                      description,
+                    });
                     history.push('/workspace');
                   })();
 
@@ -875,7 +1017,9 @@ const FirstLaunch: React.FC = () => {
                 }}
               >
                 {/* ── Section 1: Basic Information ── */}
-                <div className={styles.createFormSectionLabel}>Basic Information</div>
+                <div className={styles.createFormSectionLabel}>
+                  Basic Information
+                </div>
                 <Form.Item
                   name="repositoryName"
                   rules={[{ required: true, whitespace: true, message: '' }]}
@@ -891,38 +1035,73 @@ const FirstLaunch: React.FC = () => {
 
                 {/* ── Section 2: Architecture Defaults ── */}
                 <div className={styles.createFormSectionDivider} />
-                <div className={styles.createFormSectionLabel}>Architecture Defaults</div>
+                <div className={styles.createFormSectionLabel}>
+                  Architecture Defaults
+                </div>
                 <div className={styles.createFormFieldRow}>
-                  <Form.Item label="Scope" name="architectureScope" className={styles.createFormFieldHalf}>
-                    <DarkDropdown options={ARCHITECTURE_SCOPES.map((v) => ({ value: v, label: v }))} />
+                  <Form.Item
+                    label="Scope"
+                    name="architectureScope"
+                    className={styles.createFormFieldHalf}
+                  >
+                    <DarkDropdown
+                      options={ARCHITECTURE_SCOPES.map((v) => ({
+                        value: v,
+                        label: v,
+                      }))}
+                    />
                   </Form.Item>
-                  <Form.Item label="Framework" name="referenceFramework" className={styles.createFormFieldHalf}>
-                    <DarkDropdown options={REFERENCE_FRAMEWORKS.map((v) => ({ value: v, label: v }))} />
+                  <Form.Item
+                    label="Framework"
+                    name="referenceFramework"
+                    className={styles.createFormFieldHalf}
+                  >
+                    <DarkDropdown
+                      options={REFERENCE_FRAMEWORKS.map((v) => ({
+                        value: v,
+                        label: v,
+                      }))}
+                    />
                   </Form.Item>
                 </div>
 
-                {/* ── Section 3: Governance & Planning ── */}
+                {/* ── Section 3: Planning ── */}
                 <div className={styles.createFormSectionDivider} />
-                <div className={styles.createFormSectionLabel}>Governance & Planning</div>
-                <Form.Item label="Governance" name="governanceMode">
-                  <Segmented
-                    options={GOVERNANCE_MODES}
-                    className={styles.createFormSegmented}
-                  />
-                </Form.Item>
+                <div className={styles.createFormSectionLabel}>Planning</div>
                 <div className={styles.createFormFieldRow}>
-                  <Form.Item label="Lifecycle" name="lifecycleCoverage" className={styles.createFormFieldHalf}>
-                    <DarkDropdown options={LIFECYCLE_COVERAGE_OPTIONS.map((v) => ({ value: v, label: v }))} />
+                  <Form.Item
+                    label="Lifecycle"
+                    name="lifecycleCoverage"
+                    className={styles.createFormFieldHalf}
+                  >
+                    <DarkDropdown
+                      options={LIFECYCLE_COVERAGE_OPTIONS.map((v) => ({
+                        value: v,
+                        label: v,
+                      }))}
+                    />
                   </Form.Item>
-                  <Form.Item label="Horizon" name="timeHorizon" className={styles.createFormFieldHalf}>
-                    <DarkDropdown options={TIME_HORIZONS.map((v) => ({ value: v, label: v }))} />
+                  <Form.Item
+                    label="Horizon"
+                    name="timeHorizon"
+                    className={styles.createFormFieldHalf}
+                  >
+                    <DarkDropdown
+                      options={TIME_HORIZONS.map((v) => ({
+                        value: v,
+                        label: v,
+                      }))}
+                    />
                   </Form.Item>
                 </div>
                 <div className={styles.createFormActions}>
                   <button
                     type="button"
                     className={styles.createFormBackBtn}
-                    onClick={() => { setMode('home'); setCreateFormReady(false); }}
+                    onClick={() => {
+                      setMode('home');
+                      setCreateFormReady(false);
+                    }}
                   >
                     Cancel
                   </button>

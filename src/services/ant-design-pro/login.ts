@@ -1,12 +1,12 @@
 // @ts-ignore
 /* eslint-disable */
-import { request } from '@umijs/max';
+import { request } from 'umi';
 
-/** 发送验证码 POST /api/login/captcha */
+/** å‘é€éªŒè¯ç  POST /api/login/captcha */
 export async function getFakeCaptcha(
   params: {
     // query
-    /** 手机号 */
+    /** æ‰‹æœºå· */
     phone?: string;
   },
   options?: { [key: string]: any },

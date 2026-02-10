@@ -1,0 +1,119 @@
+/* ─── CSV Import Page Styles ─────────────────────────────────────────────── */
+/* Consistent with existing IDE theme variables.                              */
+
+.importPage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ide-bg-layout);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.importHeader {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  background: var(--ide-bg-container);
+  border-bottom: 1px solid var(--ide-border);
+  box-shadow: var(--ide-shadow-subtle);
+}
+
+.importHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.importBody {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.stepperContainer {
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  box-shadow: var(--ide-shadow-subtle);
+}
+
+.stepContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--ide-bg-container);
+  border: 1px solid var(--ide-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  box-shadow: var(--ide-shadow-subtle);
+}
+
+.stepHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stepAlert {
+  margin-top: 4px;
+}
+
+.stepActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ide-border);
+}
+
+.dragger {
+  margin-top: 12px;
+}
+
+.mappingTable {
+  margin-top: 8px;
+}
+
+.statsRow {
+  display: flex;
+  gap: 24px;
+  padding: 12px 0;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  background: var(--ide-bg-panel, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--ide-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* ─── Import History ──────────────────────────────────────────────────────── */
+
+.historyModal .ant-modal-body {
+  padding: 0;
+}
+
+.historyTable {
+  margin-top: 8px;
+}

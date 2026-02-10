@@ -8,6 +8,7 @@ import proxy from './proxy';
 import routes from './routes';
 
 const { UMI_ENV = 'dev' } = process.env;
+const umiExportsPath = join(__dirname, '../src/.umi/exports.ts');
 const isJest =
   process.env.UMI_SKIP_OPENAPI === '1' ||
   process.env.NODE_ENV === 'test' ||
@@ -22,12 +23,16 @@ const PUBLIC_PATH: string = '/';
 
 export default defineConfig({
   ...(UMI_ENV === 'dev' ? { mfsu: false } : {}),
+  plugins: [join(__dirname, './ensureUmiTmpDir')],
   alias: {
-    umi: join(__dirname, '../src/.umi/exports'),
+    umi: umiExportsPath,
+    '@umijs/max': umiExportsPath,
   },
   chainWebpack(memo) {
-    memo.resolve.alias.set('umi', join(__dirname, '../src/.umi/exports'));
+    memo.resolve.alias.set('umi', umiExportsPath);
+    memo.resolve.alias.set('@umijs/max', umiExportsPath);
     memo.resolve.modules.add(join(__dirname, '../node_modules'));
+    memo.resolve.extensions.add('.ts').add('.tsx');
   },
   /**
    * @name 开启 hash 模式
@@ -147,14 +152,6 @@ export default defineConfig({
    * @doc https://umijs.org/docs/max/access
    */
   access: {},
-  /**
-   * @name <head> 中额外的 script
-   * @description 配置 <head> 中额外的 script
-   */
-  headScripts: [
-    // 解决首次加载时白屏的问题
-    { src: join(PUBLIC_PATH, 'scripts/loading.js'), async: true },
-  ],
   //================ pro 插件配置 =================
   presets: ['umi-presets-pro'],
   /**
