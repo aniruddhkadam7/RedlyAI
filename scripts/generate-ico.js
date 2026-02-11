@@ -7,18 +7,28 @@
  * Requires:  npm install --save-dev sharp
  *
  * Usage:  node scripts/generate-ico.js
- * Output: build/icons/app.ico, app.png, eapkg-icon.ico, eapkg-icon.png
+ * Output: build/icons/app.ico, app.png, eapkg.ico, eapkg.png
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
 const sharp = require('sharp');
+let png2icons = null;
+
+try {
+  // Optional dependency for cross-platform ICNS generation.
+  // Install with: npm i -D png2icons
+  png2icons = require('png2icons');
+} catch {
+  png2icons = null;
+}
 
 const ROOT = path.resolve(__dirname, '..');
 
 // Source images
 const APP_SRC = path.join(ROOT, 'build', 'icons', 'app.png');
 const EAPKG_SRC = path.join(ROOT, 'build', 'icons', 'eapkg.png');
+const EAPKG_ICON_SRC = path.join(ROOT, 'build', 'icons', 'eapkg-icon.png');
 
 const OUT_DIR = path.join(ROOT, 'build', 'icons');
 
@@ -102,16 +112,8 @@ async function main() {
 
   // ── 1. App icon (multi-size ICO) ──────────────────────────────────
   if (!fs.existsSync(APP_SRC)) {
-    const fallback = path.join(
-      ROOT,
-      'vecteezy_a-colorful-abstract-swirl-logo-on-transparent-background_48041693.png',
-    );
-    if (fs.existsSync(fallback)) {
-      fs.copyFileSync(fallback, APP_SRC);
-    } else {
-      console.error('ERROR: app.png not found at', APP_SRC);
-      process.exit(1);
-    }
+    console.error('ERROR: app.png not found at', APP_SRC);
+    process.exit(1);
   }
 
   console.log('Generating multi-size app icon…');
@@ -169,8 +171,64 @@ async function main() {
 
   const eapkgPng = fs.readFileSync(EAPKG_SRC);
   const eapkgIco = singlePngToIco(eapkgPng);
-  fs.writeFileSync(path.join(OUT_DIR, 'eapkg-icon.ico'), eapkgIco);
-  fs.copyFileSync(EAPKG_SRC, path.join(OUT_DIR, 'eapkg-icon.png'));
+  fs.writeFileSync(path.join(OUT_DIR, 'eapkg.ico'), eapkgIco);
+  fs.copyFileSync(EAPKG_SRC, path.join(OUT_DIR, 'eapkg.png'));
+
+  // ── 2b. .eapkg file-type icon — multi-size ICO from eapkg-icon.png ─
+  if (fs.existsSync(EAPKG_ICON_SRC)) {
+    console.log('Generating multi-size eapkg-icon…');
+    const eapkgIconPngs = [];
+    for (const size of APP_ICO_SIZES) {
+      const buf = await sharp(EAPKG_ICON_SRC)
+        .resize(size, size, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .png()
+        .toBuffer();
+      eapkgIconPngs.push(buf);
+    }
+    const eapkgIconIco = buildIco(eapkgIconPngs, APP_ICO_SIZES);
+    fs.writeFileSync(path.join(OUT_DIR, 'eapkg-icon.ico'), eapkgIconIco);
+  } else {
+    console.warn(
+      'eapkg-icon.png not found – skipping eapkg-icon.ico generation',
+    );
+  }
+
+  // ── 3. ICNS generation (cross-platform via png2icons) ───────────
+  if (png2icons) {
+    try {
+      const appIcns = png2icons.createICNS(png512, png2icons.BICUBIC, 0);
+      if (appIcns) {
+        fs.writeFileSync(path.join(OUT_DIR, 'app.icns'), appIcns);
+      }
+
+      const eapkgIcns = png2icons.createICNS(eapkgPng, png2icons.BICUBIC, 0);
+      if (eapkgIcns) {
+        fs.writeFileSync(path.join(OUT_DIR, 'eapkg.icns'), eapkgIcns);
+      }
+
+      if (fs.existsSync(EAPKG_ICON_SRC)) {
+        const eapkgIconPngBuf = fs.readFileSync(EAPKG_ICON_SRC);
+        const eapkgIconIcns = png2icons.createICNS(
+          eapkgIconPngBuf,
+          png2icons.BICUBIC,
+          0,
+        );
+        if (eapkgIconIcns) {
+          fs.writeFileSync(
+            path.join(OUT_DIR, 'eapkg-icon.icns'),
+            eapkgIconIcns,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('ICNS generation failed:', err.message);
+    }
+  } else {
+    console.warn('png2icons not installed. Skipping ICNS generation.');
+  }
 
   console.log('Generated:');
   console.log(
@@ -179,8 +237,14 @@ async function main() {
   console.log('  build/icons/app-256.png     (256px app icon)');
   console.log('  build/icons/icon.ico        (legacy alias → app.ico)');
   console.log('  build/icons/icon.png        (512px app icon)');
-  console.log('  build/icons/eapkg-icon.ico  (.eapkg file icon)');
-  console.log('  build/icons/eapkg-icon.png');
+  console.log('  build/icons/app.icns        (macOS app icon)');
+  console.log('  build/icons/eapkg.ico       (.eapkg file icon)');
+  console.log('  build/icons/eapkg.png');
+  console.log('  build/icons/eapkg.icns');
+  console.log(
+    `  build/icons/eapkg-icon.ico  (multi-size: ${APP_ICO_SIZES.join(',')})`,
+  );
+  console.log('  build/icons/eapkg-icon.icns');
 }
 
 main().catch((err) => {

@@ -1,28 +1,43 @@
 import { strToU8 } from 'fflate';
 
-const stableStringify = (value: unknown): string => {
-  if (value === null) return 'null';
-  const t = typeof value;
-  if (t === 'string') return JSON.stringify(value);
-  if (t === 'bigint') return JSON.stringify(value.toString());
-  if (t === 'function' || t === 'symbol') return JSON.stringify(String(value));
-  if (t === 'number' || t === 'boolean') return String(value);
-  if (t === 'undefined') return 'null';
-  if (t !== 'object') return JSON.stringify(value);
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+/**
+ * Recursively sort all object keys so that `JSON.stringify` produces
+ * deterministic output suitable for checksumming.  Primitives, arrays
+ * and `null` pass through unchanged.
+ */
+const deepSortKeys = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(deepSortKeys);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort((a, b) => a.localeCompare(b))) {
+      sorted[key] = deepSortKeys(obj[key]);
+    }
+    return sorted;
   }
-
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`)
-    .join(',')}}`;
+  return value;
 };
 
-export const jsonToBytes = (value: unknown): Uint8Array =>
-  strToU8(stableStringify(value), true);
+/**
+ * Serialise any value to a UTF-8 `Uint8Array` containing valid JSON.
+ *
+ * - Uses `JSON.stringify` exclusively — never builds JSON by hand —
+ *   so all special characters (newlines, tabs, backslashes, quotes, etc.)
+ *   are escaped correctly.
+ * - Object keys are sorted for deterministic checksums.
+ * - A round-trip `JSON.parse` validation is performed before encoding,
+ *   ensuring the archive will never contain corrupt JSON.
+ */
+export const jsonToBytes = (value: unknown): Uint8Array => {
+  const sorted = deepSortKeys(value);
+  const json = JSON.stringify(sorted);
+
+  // Round-trip validation: catch any corruption before it reaches the archive.
+  JSON.parse(json);
+
+  return strToU8(json, true);
+};
 
 export const concatBytes = (chunks: Uint8Array[]): Uint8Array => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);

@@ -3,11 +3,7 @@ import {
   AppstoreOutlined,
   ArrowsAltOutlined,
   CloseOutlined,
-  DragOutlined,
-  EditOutlined,
-  EllipsisOutlined,
   InfoCircleOutlined,
-  LinkOutlined,
   LogoutOutlined,
   NodeIndexOutlined,
   PlusSquareOutlined,
@@ -472,14 +468,22 @@ const normalizeAttributesForCompare = (
   return raw;
 };
 
+const deepSortKeys = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(deepSortKeys);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort((a, b) => a.localeCompare(b))) {
+      if (obj[key] !== undefined) sorted[key] = deepSortKeys(obj[key]);
+    }
+    return sorted;
+  }
+  return value;
+};
+
 const stableStringify = (value: unknown): string => {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value))
-    return `[${value.map((v) => stableStringify(v)).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`;
+  return JSON.stringify(deepSortKeys(value));
 };
 
 const nameForObject = (obj: {
@@ -758,26 +762,6 @@ const StudioShell: React.FC<StudioShellProps> = ({
   viewContext,
 }) => {
   const { token } = theme.useToken();
-  const { initialState } = useModel('@@initialState');
-  const { openPropertiesPanel, openRouteTab } = useIdeShell();
-  const { selection, setSelectedElement } = useIdeSelection();
-  const {
-    eaRepository,
-    metadata,
-    trySetEaRepository,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-  } = useEaRepository();
-  const resolveToolboxIcon = React.useCallback(
-    (item: EaVisual) => item.icon,
-    [],
-  );
-  const actor =
-    initialState?.currentUser?.name ||
-    initialState?.currentUser?.userid ||
-    'studio';
   const rightPanelStorageKey = React.useMemo(() => {
     const rawId =
       initialState?.currentUser?.userid ||
@@ -822,7 +806,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     commitContextLocked ||
     !eaRepository;
   const iterativeModeling = designWorkspace.mode === 'ITERATIVE';
-  const modeBadge = React.useMemo(() => {
+  const _modeBadge = React.useMemo(() => {
     if (!hasModelingAccess)
       return { label: 'Read-only', color: 'default' as const };
     if (designWorkspace.status === 'DRAFT')
@@ -863,18 +847,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
     () => `ea.studio.designPrompts.ignore.${designWorkspace.id}`,
     [designWorkspace.id],
   );
-  const [ignoredGuidance, setIgnoredGuidance] = React.useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(guidanceIgnoreStorageKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as string[];
-      return Array.isArray(parsed)
-        ? parsed.filter((m) => typeof m === 'string')
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [ignoredGuidance, _setIgnoredGuidance] = React.useState<string[]>(
+    () => {
+      try {
+        const raw = localStorage.getItem(guidanceIgnoreStorageKey);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw) as string[];
+        return Array.isArray(parsed)
+          ? parsed.filter((m) => typeof m === 'string')
+          : [];
+      } catch {
+        return [];
+      }
+    },
+  );
   const [ignoredDesignPrompts, setIgnoredDesignPrompts] = React.useState<
     string[]
   >(() => {
@@ -1108,7 +1094,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const canDiagramMode =
     (studioModeLevel === 'Design' || studioModeLevel === 'Model') &&
     !presentationView;
-  const canModelMode = studioModeLevel === 'Model' && !presentationView;
+  const _canModelMode = studioModeLevel === 'Model' && !presentationView;
   const presentationReadOnly = viewReadOnly || presentationView;
   const showToolbox = canDiagramMode;
   const toolboxInteractionDisabled = viewReadOnly || !canDiagramMode;
@@ -1377,19 +1363,19 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const studioLeftRef = React.useRef<HTMLDivElement | null>(null);
   const studioRightRef = React.useRef<HTMLDivElement | null>(null);
   const [placementModeActive, setPlacementModeActive] = React.useState(false);
-  const [placementGuide, setPlacementGuide] = React.useState<{
+  const [_placementGuide, setPlacementGuide] = React.useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [createHintPos, setCreateHintPos] = React.useState<{
+  const [_createHintPos, setCreateHintPos] = React.useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [elementDragAnchor, setElementDragAnchor] = React.useState<{
+  const [_elementDragAnchor, setElementDragAnchor] = React.useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [elementDragGhost, setElementDragGhost] = React.useState<{
+  const [_elementDragGhost, setElementDragGhost] = React.useState<{
     x: number;
     y: number;
     width: number;
@@ -1893,7 +1879,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const relationshipEligibilityRef = React.useRef<Map<string, Set<string>>>(
     new Map(),
   );
-  const [alignmentGuides, setAlignmentGuides] = React.useState<{
+  const [_alignmentGuides, setAlignmentGuides] = React.useState<{
     x: number | null;
     y: number | null;
   }>({
@@ -1903,15 +1889,15 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const [commitOpen, setCommitOpen] = React.useState(false);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [repoEndpointOpen, setRepoEndpointOpen] = React.useState(false);
-  const [repoEndpointMode, setRepoEndpointMode] = React.useState<
+  const [repoEndpointMode, _setRepoEndpointMode] = React.useState<
     'source' | 'target'
   >('target');
   const [toolMode, setToolMode] = React.useState<StudioToolMode>('SELECT');
-  const [lastAutoSaveAt, setLastAutoSaveAt] = React.useState<string | null>(
+  const [_lastAutoSaveAt, setLastAutoSaveAt] = React.useState<string | null>(
     null,
   );
   const [isLargeGraph, setIsLargeGraph] = React.useState(false);
-  const dragThrottleRef = React.useRef(0);
+  const _dragThrottleRef = React.useRef(0);
   const [relationshipDraft, setRelationshipDraft] = React.useState<{
     sourceId: string | null;
     targetId: string | null;
@@ -2051,11 +2037,11 @@ const StudioShell: React.FC<StudioShellProps> = ({
         : null,
     [pendingElementType, pendingElementVisualKind, resolveElementVisualLabel],
   );
-  const createElementHelperText = React.useMemo(() => {
+  const _createElementHelperText = React.useMemo(() => {
     if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
     return `Click on canvas to name and place ${pendingElementLabel ?? pendingElementType}`;
   }, [pendingElementLabel, pendingElementType, toolMode]);
-  const createElementFloatingHint = React.useMemo(() => {
+  const _createElementFloatingHint = React.useMemo(() => {
     if (toolMode !== 'CREATE_ELEMENT' || !pendingElementType) return null;
     return `Naming: ${pendingElementLabel ?? pendingElementType}`;
   }, [pendingElementLabel, pendingElementType, toolMode]);
@@ -2081,12 +2067,13 @@ const StudioShell: React.FC<StudioShellProps> = ({
     placement: { x: number; y: number } | null;
     visualKind?: string | null;
   } | null>(null);
-  const [pendingElementNameDraft, setPendingElementNameDraft] = React.useState<{
-    type: ObjectType;
-    name: string;
-    description: string;
-    visualKind?: string | null;
-  } | null>(null);
+  const [_pendingElementNameDraft, setPendingElementNameDraft] =
+    React.useState<{
+      type: ObjectType;
+      name: string;
+      description: string;
+      visualKind?: string | null;
+    } | null>(null);
   const [inlineNamePrompt, setInlineNamePrompt] =
     React.useState<InlineNamePrompt | null>(null);
   const [inlineNameValue, setInlineNameValue] = React.useState('');
@@ -2633,7 +2620,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [rejectVisualOnlyAction, repositoryOnlyCanvas, viewReadOnly],
   );
 
-  const openFreeShapeCreate = React.useCallback(
+  const _openFreeShapeCreate = React.useCallback(
     (kind: FreeShapeKind, position: { x: number; y: number }) => {
       if (repositoryOnlyCanvas) {
         rejectVisualOnlyAction('Free shape');
@@ -2843,7 +2830,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     [activeViewpoint?.allowedElementTypes, hierarchyRelationshipType],
   );
 
-  const childPlacementForParent = React.useCallback(
+  const _childPlacementForParent = React.useCallback(
     (parentId: string) => {
       if (!cyRef.current) return getCanvasCenter();
       const node = cyRef.current.getElementById(parentId);
@@ -3160,7 +3147,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         const positions = (layoutMetadata as any)?.positions as
           | Record<string, { x: number; y: number }>
           | undefined;
-        if (positions && positions[elementId]) {
+        if (positions?.[elementId]) {
           const nextPositions = { ...positions };
           delete nextPositions[elementId];
           nextView = {
@@ -3296,7 +3283,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       const positions = (layoutMetadata as any)?.positions as
         | Record<string, { x: number; y: number }>
         | undefined;
-      if (positions && positions[elementId]) {
+      if (positions?.[elementId]) {
         const nextPositions = { ...positions };
         delete nextPositions[elementId];
         next = {
@@ -3820,7 +3807,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     const activeRelationships = stagedRelationships.filter(
       (rel) => !isMarkedForRemoval(rel.attributes),
     );
-    const traceabilityCheckEnabled = activeElements.some(
+    const _traceabilityCheckEnabled = activeElements.some(
       (el) =>
         el.modelingState === 'REVIEW_READY' || el.modelingState === 'APPROVED',
     );
@@ -4181,7 +4168,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     return issues;
   }, [eaRepository, iterativeModeling, stagedElements, stagedRelationships]);
 
-  const mandatoryCommitRelationshipErrors = React.useMemo(
+  const _mandatoryCommitRelationshipErrors = React.useMemo(
     () => mandatoryCommitRelationshipIssues.map((issue) => issue.message),
     [mandatoryCommitRelationshipIssues],
   );
@@ -7031,7 +7018,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     ],
   );
 
-  const confirmRelationshipDraft = React.useCallback(() => {
+  const _confirmRelationshipDraft = React.useCallback(() => {
     if (
       !pendingRelationshipType ||
       !relationshipSourceId ||
@@ -7080,7 +7067,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     stageRelationship,
   ]);
 
-  const startChildCreation = React.useCallback((parentId: string) => {
+  const startChildCreation = React.useCallback((_parentId: string) => {
     message.info(
       'Create new elements from the EA Toolbox, then connect them to create child relationships.',
     );
@@ -7170,7 +7157,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
     ],
   );
 
-  const updateWorkspaceStatus = React.useCallback(
+  const _updateWorkspaceStatus = React.useCallback(
     (status: DesignWorkspaceStatus) => {
       const layout = buildLayoutFromCanvas();
       const next: DesignWorkspace = {
@@ -9152,7 +9139,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
         if (targetId && targetId !== sourceId) {
           // Resolution-based hover: check if ANY path (direct or indirect) exists
           const resolution = connectionResolutionCacheRef.current.get(targetId);
-          if (resolution && resolution.hasAnyPath) {
+          if (resolution?.hasAnyPath) {
             hoverNode.addClass('validTarget');
           }
           // No 'invalidTarget' class — neutral means no visual change, no error
@@ -9238,7 +9225,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
             // ── User-first connection resolution pipeline ──
             const resolution = resolutions.get(targetId);
 
-            if (resolution && resolution.hasAnyPath) {
+            if (resolution?.hasAnyPath) {
               // Pipeline: auto-create / choose-direct / choose-any
               switch (resolution.recommendation) {
                 case 'auto-create': {

@@ -26,7 +26,10 @@ import {
   type TimeHorizon,
 } from '@/repository/repositoryMetadata';
 import { buildLegacyPayloadFromPackage } from '@/repository/repositoryPackageAdapter';
-import { replaceBaselines } from '../../../backend/baselines/BaselineStore';
+import {
+  listBaselines,
+  replaceBaselines,
+} from '../../../backend/baselines/BaselineStore';
 import { parseRepositoryPackageBytes } from '../../../backend/services/repository/importService';
 import DarkDropdown from './DarkDropdown';
 import styles from './index.module.less';
@@ -272,7 +275,15 @@ const FirstLaunch: React.FC = () => {
         }
       }
 
+      const baselines = Array.isArray(payload?.baselines)
+        ? payload.baselines
+        : Array.isArray(payload?.repository?.baselines)
+          ? payload.repository.baselines
+          : [];
+      replaceBaselines(baselines);
+
       try {
+        window.dispatchEvent(new Event('ea:repositoryChanged'));
         window.dispatchEvent(new Event('ea:viewsChanged'));
         window.dispatchEvent(new Event('ea:workspacesChanged'));
       } catch {
@@ -419,6 +430,7 @@ const FirstLaunch: React.FC = () => {
         metamodel: repoState.metadata.frameworkConfig ?? null,
         snapshot: repositorySnapshot,
       },
+      baselines: listBaselines(),
       views: {
         items: views,
       },
@@ -646,8 +658,9 @@ const FirstLaunch: React.FC = () => {
 
   const onImportFileSelected = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.eapkg')) {
-      message.info('Please choose an .eapkg repository package.');
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.eapkg') && !lower.endsWith('.zip')) {
+      message.info('Please choose an .eapkg or .zip repository package.');
       return;
     }
     try {
@@ -827,7 +840,7 @@ const FirstLaunch: React.FC = () => {
           <input
             ref={importFileInputRef}
             type="file"
-            accept="application/octet-stream,.eapkg"
+            accept=".eapkg,.zip,application/zip,application/x-zip-compressed,application/octet-stream"
             style={{ display: 'none' }}
             onChange={(e) => {
               void onImportFileSelected(e.target.files?.[0]);

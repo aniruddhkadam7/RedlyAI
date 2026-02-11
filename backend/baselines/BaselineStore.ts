@@ -12,9 +12,19 @@ const baselines: Baseline[] = [];
 let baselineRevision = 0;
 
 const BASELINES_STORAGE_KEY = 'ea.baselines.v1';
+const BASELINES_CHANGED_EVENT = 'ea:baselinesChanged';
 
 const canUseStorage = (): boolean =>
   typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const notifyBaselinesChanged = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new Event(BASELINES_CHANGED_EVENT));
+  } catch {
+    // Best-effort only.
+  }
+};
 
 /** Persist current baselines to localStorage. */
 const persistBaselines = (): void => {
@@ -22,6 +32,7 @@ const persistBaselines = (): void => {
   try {
     const serialized = JSON.stringify(baselines);
     window.localStorage.setItem(BASELINES_STORAGE_KEY, serialized);
+    notifyBaselinesChanged();
   } catch {
     // Best-effort — storage may be full.
   }

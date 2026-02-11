@@ -12,10 +12,15 @@ if (process.platform !== 'win32') {
 }
 
 const projectRoot = path.resolve(__dirname, '..');
-const icoPath = path.join(projectRoot, 'build', 'icons', 'eapkg-icon.ico');
+const iconCandidates = [
+  path.join(projectRoot, 'build', 'icons', 'eapkg-icon.ico'),
+  path.join(projectRoot, 'build', 'icons', 'eapkg.ico'),
+];
 
-if (!fs.existsSync(icoPath)) {
-  console.error('ICO not found at:', icoPath);
+const icoPath = iconCandidates.find((candidate) => fs.existsSync(candidate));
+
+if (!icoPath) {
+  console.error('ICO not found at:', iconCandidates.join(', '));
   console.error('Run "node scripts/generate-ico.js" first.');
   process.exit(1);
 }
@@ -39,20 +44,21 @@ function regAdd(key, data) {
   execSync(cmd, { stdio: 'inherit' });
 }
 
+function registerFileType(extension, progId, friendlyName) {
+  regAdd(`HKCU\\Software\\Classes\\.${extension}`, progId);
+  regAdd(`HKCU\\Software\\Classes\\${progId}`, friendlyName);
+  regAdd(`HKCU\\Software\\Classes\\${progId}\\DefaultIcon`, icoPath);
+  regAdd(
+    `HKCU\\Software\\Classes\\${progId}\\shell\\open\\command`,
+    openCommand,
+  );
+}
+
 // 1. .eapkg extension → RedlyAI.EAPkg
-regAdd('HKCU\\Software\\Classes\\.eapkg', 'RedlyAI.EAPkg');
+registerFileType('eapkg', 'RedlyAI.EAPkg', 'EA Repository Package');
 
-// 2. Friendly type name
-regAdd('HKCU\\Software\\Classes\\RedlyAI.EAPkg', 'EA Repository Package');
-
-// 3. Default icon
-regAdd('HKCU\\Software\\Classes\\RedlyAI.EAPkg\\DefaultIcon', icoPath);
-
-// 4. Open command
-regAdd(
-  'HKCU\\Software\\Classes\\RedlyAI.EAPkg\\shell\\open\\command',
-  openCommand,
-);
+// 2. .eaproj extension → RedlyAI.EAProj
+registerFileType('eaproj', 'RedlyAI.EAProj', 'EA Project');
 
 // 5. Notify Explorer to refresh icons
 try {
@@ -67,7 +73,7 @@ try {
   );
 }
 
-console.log('\nDone! .eapkg files should now show the RedlyAI icon.');
+console.log('\nDone! .eapkg/.eaproj files should now show the RedlyAI icon.');
 console.log('If the icon does not appear immediately, try:');
 console.log('  1. Right-click desktop → Refresh');
 console.log('  2. Or restart Windows Explorer');

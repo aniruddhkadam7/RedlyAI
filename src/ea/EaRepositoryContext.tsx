@@ -40,6 +40,7 @@ import {
   readRepositorySnapshot,
   writeRepositorySnapshot,
 } from '@/repository/repositorySnapshotStore';
+import { listBaselines } from '../../backend/baselines/BaselineStore';
 
 // governance removed â€” imports kept as no-ops for type compatibility
 
@@ -92,19 +93,22 @@ const readLocalStorage = (key: string): string | null => {
   }
 };
 
+const deepSortKeys = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(deepSortKeys);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort((a, b) => a.localeCompare(b))) {
+      sorted[key] = deepSortKeys(obj[key]);
+    }
+    return sorted;
+  }
+  return value;
+};
+
 const stableStringify = (value: unknown): string => {
-  if (value === null) return 'null';
-  const t = typeof value;
-  if (t === 'string') return JSON.stringify(value);
-  if (t === 'number' || t === 'boolean') return String(value);
-  if (t === 'undefined') return 'undefined';
-  if (t !== 'object') return JSON.stringify(value);
-
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+  return JSON.stringify(deepSortKeys(value));
 };
 
 const hasReadOnlyObjectChanges = (
@@ -818,12 +822,41 @@ export const EaRepositoryProvider: React.FC<{ children: React.ReactNode }> = ({
         metamodel: metadata.frameworkConfig ?? null,
         snapshot: repositorySnapshot,
       },
+      baselines: listBaselines(),
       views: {
         items: views,
       },
       studioState,
     };
   }, [eaRepository, metadata]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handler = () => {
+      if (!eaRepository || !metadata) return;
+      if (!window.eaDesktop?.saveManagedRepository) return;
+      const payload = buildManagedRepositoryPayload();
+      if (!payload) return;
+
+      try {
+        const repositoryId = ensureActiveRepositoryId(
+          metadata.repositoryName || 'Repository',
+        );
+        void window.eaDesktop.saveManagedRepository({ payload, repositoryId });
+      } catch {
+        // Best-effort only.
+      }
+    };
+
+    window.addEventListener('ea:baselinesChanged', handler);
+    return () => window.removeEventListener('ea:baselinesChanged', handler);
+  }, [
+    buildManagedRepositoryPayload,
+    eaRepository,
+    ensureActiveRepositoryId,
+    metadata,
+  ]);
 
   const initializationState = React.useMemo(() => {
     if (!eaRepository) {

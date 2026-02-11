@@ -2217,13 +2217,6 @@ const ExplorerTree: React.FC = () => {
                     <Typography.Text type="secondary" style={{ margin: 0 }}>
                       Capture a read-only snapshot of the repository.
                     </Typography.Text>
-                    <Button
-                      type="primary"
-                      size="small"
-                      onClick={openCreateBaselineModal}
-                    >
-                      Create Baseline
-                    </Button>
                   </div>
                 ),
                 icon: <FileTextOutlined />,

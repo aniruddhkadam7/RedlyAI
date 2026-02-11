@@ -26,6 +26,11 @@ import { useSeedSampleData } from '@/ea/useSeedSampleData';
 import { useIdeSelection } from '@/ide/IdeSelectionContext';
 import { dispatchIdeCommand } from '@/ide/ideCommands';
 import { applyEaImportBatch } from '@/pages/dependency-view/utils/eaImportUtils';
+import {
+  type EaObject,
+  type EaRelationship,
+  EaRepository,
+} from '@/pages/dependency-view/utils/eaRepository';
 import { parseAndValidateApplicationsCsv } from '@/pages/dependency-view/utils/parseApplicationsCsv';
 import { parseAndValidateCapabilitiesCsv } from '@/pages/dependency-view/utils/parseCapabilitiesCsv';
 import { parseAndValidateDependenciesCsv } from '@/pages/dependency-view/utils/parseDependenciesCsv';
@@ -37,7 +42,10 @@ import {
 } from '@/repository/architectureScopePolicy';
 import { CUSTOM_CORE_EA_SEED } from '@/repository/customFrameworkConfig';
 import type { FrameworkConfig } from '@/repository/repositoryMetadata';
-import { buildLegacyPayloadFromPackage } from '@/repository/repositoryPackageAdapter';
+import {
+  buildLegacyPayloadFromPackage,
+  buildSnapshotFromPackage,
+} from '@/repository/repositoryPackageAdapter';
 import { readRepositorySnapshot } from '@/repository/repositorySnapshotStore';
 import {
   listBaselines,
@@ -296,6 +304,7 @@ const IdeMenuBar: React.FC = () => {
   >([]);
 
   const openRepoInputRef = React.useRef<HTMLInputElement | null>(null);
+  const importRepoInputRef = React.useRef<HTMLInputElement | null>(null);
   const importCapabilitiesInputRef = React.useRef<HTMLInputElement | null>(
     null,
   );
@@ -453,9 +462,36 @@ const IdeMenuBar: React.FC = () => {
     message.success('Repository created.');
   }, [createNewRepository, newRepoDraft, setSelection, updateProjectStatus]);
 
-  const handleOpenRepo = React.useCallback(() => {
-    console.log('[IDE] File > Import Repository');
-    openRepoInputRef.current?.click();
+  const handleImportRepository = React.useCallback(() => {
+    console.log('[IDE] File > Import Repository (merge)');
+    importRepoInputRef.current?.click();
+  }, []);
+
+  const confirmDuplicateElements = React.useCallback((count: number) => {
+    return new Promise<'overwrite' | 'skip' | 'cancel'>((resolve) => {
+      const modal = Modal.confirm({
+        title: 'Duplicate elements found',
+        content: `Found ${count} elements with IDs that already exist. Overwrite or skip duplicates?`,
+        okText: 'Overwrite',
+        cancelText: 'Cancel',
+        onOk: () => resolve('overwrite'),
+        onCancel: () => resolve('cancel'),
+        footer: (_, { OkBtn, CancelBtn }) => (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button
+              onClick={() => {
+                modal.destroy();
+                resolve('skip');
+              }}
+            >
+              Skip
+            </Button>
+            <CancelBtn />
+            <OkBtn />
+          </div>
+        ),
+      });
+    });
   }, []);
 
   const applyProjectPayload = React.useCallback(
@@ -556,7 +592,15 @@ const IdeMenuBar: React.FC = () => {
         }
       }
 
+      const baselines = Array.isArray(payload?.baselines)
+        ? payload.baselines
+        : Array.isArray(payload?.repository?.baselines)
+          ? payload.repository.baselines
+          : [];
+      replaceBaselines(baselines);
+
       try {
+        window.dispatchEvent(new Event('ea:repositoryChanged'));
         window.dispatchEvent(new Event('ea:viewsChanged'));
         window.dispatchEvent(new Event('ea:workspacesChanged'));
       } catch {
@@ -624,42 +668,6 @@ const IdeMenuBar: React.FC = () => {
     [],
   );
 
-  const handleOpenProject = React.useCallback(async () => {
-    console.log('[IDE] File > Open Repository');
-    if (
-      !window.eaDesktop?.listManagedRepositories ||
-      !window.eaDesktop?.loadManagedRepository
-    ) {
-      message.info('Open Repository is available in the desktop app.');
-      return;
-    }
-
-    if (studioMode) {
-      const decision = await confirmStudioExit();
-      if (decision === 'cancel') return;
-      if (decision === 'save' || decision === 'discard') {
-        await requestStudioAction(decision);
-      }
-    }
-
-    const res = await window.eaDesktop.listManagedRepositories();
-    if (!res.ok) {
-      Modal.error({ title: 'Open Repository failed', content: res.error });
-      return;
-    }
-
-    if (!res.items.length) {
-      message.info('No repositories found.');
-      return;
-    }
-
-    setManagedRepositories(
-      res.items.map((item) => ({ id: item.id, name: item.name })),
-    );
-    setOpenRepoSelection(res.items[0]?.id ?? null);
-    setOpenRepoModalOpen(true);
-  }, [confirmStudioExit, requestStudioAction, studioMode]);
-
   const handleConfirmOpenManagedRepository = React.useCallback(async () => {
     const target = managedRepositories.find(
       (repo) => repo.id === openRepoSelection,
@@ -702,6 +710,10 @@ const IdeMenuBar: React.FC = () => {
       dispatchIdeCommand({ type: 'workspace.resetTabs' });
       dispatchIdeCommand({ type: 'studio.exit' });
       setSelection({ kind: 'none', keys: [] });
+      dispatchIdeCommand({
+        type: 'view.showActivity',
+        activity: 'explorer',
+      });
 
       const name =
         payload?.meta?.repositoryName ||
@@ -714,6 +726,20 @@ const IdeMenuBar: React.FC = () => {
         repositoryName: name,
         dirty: false,
       });
+
+      // Navigate to first diagram if available
+      try {
+        const views = ViewStore.list();
+        if (views.length > 0) {
+          dispatchIdeCommand({
+            type: 'navigation.openWorkspace',
+            args: { type: 'view', viewId: views[0].id },
+          });
+        }
+      } catch {
+        // Best-effort only.
+      }
+
       message.success('Repository opened.');
       setOpenRepoModalOpen(false);
     } catch (err) {
@@ -820,6 +846,7 @@ const IdeMenuBar: React.FC = () => {
         metamodel: metadata.frameworkConfig ?? null,
         snapshot: repositorySnapshot,
       },
+      baselines: listBaselines(),
       views: {
         items: views,
       },
@@ -947,6 +974,10 @@ const IdeMenuBar: React.FC = () => {
       dispatchIdeCommand({ type: 'workspace.resetTabs' });
       dispatchIdeCommand({ type: 'studio.exit' });
       setSelection({ kind: 'none', keys: [] });
+      dispatchIdeCommand({
+        type: 'view.showActivity',
+        activity: 'explorer',
+      });
 
       const repositoryName =
         payload?.meta?.repositoryName ||
@@ -970,6 +1001,19 @@ const IdeMenuBar: React.FC = () => {
         }
       }
 
+      // Navigate to first diagram if available
+      try {
+        const views = ViewStore.list();
+        if (views.length > 0) {
+          dispatchIdeCommand({
+            type: 'navigation.openWorkspace',
+            args: { type: 'view', viewId: views[0].id },
+          });
+        }
+      } catch {
+        // Best-effort only.
+      }
+
       message.success('Repository imported.');
     },
     [
@@ -977,6 +1021,283 @@ const IdeMenuBar: React.FC = () => {
       buildProjectPayload,
       setSelection,
       updateProjectStatus,
+    ],
+  );
+
+  const handleOpenRepo = React.useCallback(async () => {
+    console.log('[IDE] File > Open Repository');
+
+    // Desktop: use native file dialog via Electron IPC
+    if (window.eaDesktop?.openFileDialog) {
+      try {
+        const res = await window.eaDesktop.openFileDialog();
+        if (!res.ok) {
+          if (!res.canceled) {
+            Modal.error({
+              title: 'Open Repository failed',
+              content: res.error || 'Failed to open repository file.',
+            });
+          }
+          return;
+        }
+        if (res.canceled) return;
+
+        const bytes = base64ToBytes(res.content ?? '');
+        await importRepositoryPackage(bytes, res.name);
+      } catch (err) {
+        Modal.error({
+          title: 'Open Repository failed',
+          content:
+            err instanceof Error
+              ? err.message
+              : 'Failed to open repository file.',
+        });
+      }
+      return;
+    }
+
+    // Browser fallback: click hidden file input
+    openRepoInputRef.current?.click();
+  }, [importRepositoryPackage]);
+
+  const handleOpenProject = React.useCallback(async () => {
+    console.log('[IDE] File > Open Repository');
+    if (
+      !window.eaDesktop?.listManagedRepositories ||
+      !window.eaDesktop?.loadManagedRepository
+    ) {
+      // Browser fallback: open file picker directly
+      handleOpenRepo();
+      return;
+    }
+
+    if (studioMode) {
+      const decision = await confirmStudioExit();
+      if (decision === 'cancel') return;
+      if (decision === 'save' || decision === 'discard') {
+        await requestStudioAction(decision);
+      }
+    }
+
+    const res = await window.eaDesktop.listManagedRepositories();
+    if (!res.ok) {
+      Modal.error({ title: 'Open Repository failed', content: res.error });
+      return;
+    }
+
+    if (!res.items.length) {
+      message.info('No repositories found.');
+      return;
+    }
+
+    setManagedRepositories(
+      res.items.map((item) => ({ id: item.id, name: item.name })),
+    );
+    setOpenRepoSelection(res.items[0]?.id ?? null);
+    setOpenRepoModalOpen(true);
+  }, [confirmStudioExit, handleOpenRepo, requestStudioAction, studioMode]);
+
+  const importRepositoryPackageMerge = React.useCallback(
+    async (rawBytes: Uint8Array, sourceName?: string) => {
+      if (!eaRepository || !metadata) {
+        await importRepositoryPackage(rawBytes, sourceName);
+        return;
+      }
+
+      const parsed = await parseRepositoryPackageBytes(rawBytes);
+      if (!parsed.ok) {
+        Modal.error({
+          title: 'Import Repository failed',
+          content: parsed.error,
+        });
+        return;
+      }
+
+      if (parsed.warnings.length > 0) {
+        message.warning(parsed.warnings[0]);
+      }
+
+      const snapshot = buildSnapshotFromPackage(parsed.data);
+      const incomingObjects = snapshot.objects ?? [];
+      const incomingRelationships = snapshot.relationships ?? [];
+
+      const existingIds = new Set(eaRepository.objects.keys());
+      const duplicateIds = incomingObjects
+        .filter((obj) => existingIds.has(obj.id))
+        .map((obj) => obj.id);
+
+      let duplicateMode: 'overwrite' | 'skip' = 'skip';
+      if (duplicateIds.length > 0) {
+        const decision = await confirmDuplicateElements(duplicateIds.length);
+        if (decision === 'cancel') return;
+        duplicateMode = decision;
+      }
+
+      const mergedObjects = new Map<string, EaObject>();
+      for (const [id, obj] of eaRepository.objects) {
+        mergedObjects.set(id, {
+          ...obj,
+          attributes: { ...(obj.attributes ?? {}) },
+        });
+      }
+
+      for (const obj of incomingObjects) {
+        if (mergedObjects.has(obj.id)) {
+          if (duplicateMode === 'overwrite') mergedObjects.set(obj.id, obj);
+          continue;
+        }
+        mergedObjects.set(obj.id, obj);
+      }
+
+      const mergedRelationships = new Map<string, EaRelationship>();
+      for (const rel of eaRepository.relationships) {
+        mergedRelationships.set(rel.id, {
+          ...rel,
+          attributes: { ...(rel.attributes ?? {}) },
+        });
+      }
+
+      let skippedRelationships = 0;
+      for (const rel of incomingRelationships) {
+        const relId = (rel.id ?? '').trim();
+        if (!relId) {
+          skippedRelationships += 1;
+          continue;
+        }
+        if (!mergedObjects.has(rel.fromId) || !mergedObjects.has(rel.toId)) {
+          skippedRelationships += 1;
+          continue;
+        }
+        if (mergedRelationships.has(relId)) {
+          if (duplicateMode === 'overwrite')
+            mergedRelationships.set(relId, rel);
+          else skippedRelationships += 1;
+          continue;
+        }
+        mergedRelationships.set(relId, rel);
+      }
+
+      const nextRepo = new EaRepository();
+      const errors: string[] = [];
+      for (const obj of mergedObjects.values()) {
+        const res = nextRepo.addObject(obj);
+        if (!res.ok) errors.push(res.error);
+      }
+      for (const rel of mergedRelationships.values()) {
+        const res = nextRepo.addRelationship(rel);
+        if (!res.ok) errors.push(res.error);
+      }
+
+      if (errors.length > 0) {
+        Modal.error({
+          title: 'Import Repository failed',
+          content:
+            'Import validation failed:\n' +
+            errors.slice(0, 5).join('\n') +
+            (errors.length > 5 ? '\n...' : ''),
+        });
+        return;
+      }
+
+      const applied = trySetEaRepository(nextRepo);
+      if (!applied.ok) {
+        Modal.error({
+          title: 'Import Repository failed',
+          content: applied.error,
+        });
+        return;
+      }
+
+      const existingViews = ViewStore.list();
+      const existingViewIds = new Set(existingViews.map((v) => v.id));
+      const incomingViews = snapshot.views ?? [];
+      for (const view of incomingViews) {
+        if (existingViewIds.has(view.id) && duplicateMode === 'skip') continue;
+        ViewStore.save(view);
+      }
+
+      const incomingLayouts = snapshot.studioState?.viewLayouts ?? {};
+      for (const [viewId, layout] of Object.entries(incomingLayouts)) {
+        if (existingViewIds.has(viewId) && duplicateMode === 'skip') continue;
+        if (layout && typeof layout === 'object') {
+          ViewLayoutStore.set(
+            viewId,
+            layout as Record<
+              string,
+              { x: number; y: number; width?: number; height?: number }
+            >,
+          );
+        }
+      }
+
+      const repositoryName = metadata.repositoryName || 'default';
+      const existingWorkspaces = DesignWorkspaceStore.list(repositoryName);
+      const workspacesById = new Map(
+        existingWorkspaces.map((w) => [w.id, w] as const),
+      );
+      const incomingWorkspaces = Array.isArray(
+        snapshot.studioState?.designWorkspaces,
+      )
+        ? snapshot.studioState?.designWorkspaces
+        : [];
+      for (const workspace of incomingWorkspaces) {
+        const id = String((workspace as any)?.id ?? '').trim();
+        if (!id) continue;
+        if (workspacesById.has(id) && duplicateMode === 'skip') continue;
+        workspacesById.set(id, workspace as any);
+      }
+      DesignWorkspaceStore.replaceAll(
+        repositoryName,
+        Array.from(workspacesById.values()),
+      );
+
+      const incomingBaselines = Array.isArray(parsed.data.baselines)
+        ? parsed.data.baselines
+        : Array.isArray(parsed.data.workspace?.baselines)
+          ? parsed.data.workspace.baselines
+          : [];
+      if (incomingBaselines.length > 0) {
+        const existingBaselines = listBaselines();
+        const baselinesById = new Map(
+          existingBaselines.map((b) => [b.id, b] as const),
+        );
+        for (const baseline of incomingBaselines) {
+          const id = String((baseline as any)?.id ?? '').trim();
+          if (!id) continue;
+          if (baselinesById.has(id) && duplicateMode === 'skip') continue;
+          baselinesById.set(id, baseline as any);
+        }
+        replaceBaselines(Array.from(baselinesById.values()) as any);
+      }
+
+      clearAnalysisResults();
+      try {
+        window.dispatchEvent(new Event('ea:viewsChanged'));
+        window.dispatchEvent(new Event('ea:workspacesChanged'));
+      } catch {
+        // Best-effort only.
+      }
+
+      const detail =
+        duplicateIds.length > 0
+          ? duplicateMode === 'overwrite'
+            ? ' (duplicates overwritten)'
+            : ' (duplicates skipped)'
+          : '';
+      message.success(`Repository imported${detail}.`);
+
+      if (skippedRelationships > 0) {
+        message.warning(
+          `Skipped ${skippedRelationships} relationships that reference missing elements.`,
+        );
+      }
+    },
+    [
+      confirmDuplicateElements,
+      eaRepository,
+      importRepositoryPackage,
+      metadata,
+      trySetEaRepository,
     ],
   );
 
@@ -1041,6 +1362,69 @@ const IdeMenuBar: React.FC = () => {
         }
       },
       [importRepositoryPackage],
+    );
+
+  const handleImportRepoFileSelected: React.ChangeEventHandler<HTMLInputElement> =
+    React.useCallback(
+      async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        console.log('[IDE] Importing repository package (merge)', {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+
+        if (
+          !file.name.toLowerCase().endsWith('.eapkg') &&
+          !file.name.toLowerCase().endsWith('.zip')
+        ) {
+          message.warning({
+            content:
+              'Unsupported file type. Please choose an .eapkg or .zip repository package.',
+            duration: 5,
+          });
+          return;
+        }
+
+        if (file.size === 0) {
+          message.error('The selected file is empty.');
+          return;
+        }
+
+        try {
+          const buffer = await file.arrayBuffer();
+          const fileBytes = new Uint8Array(buffer);
+
+          // Validate ZIP header before passing to import
+          if (
+            fileBytes.length < 4 ||
+            fileBytes[0] !== 0x50 ||
+            fileBytes[1] !== 0x4b
+          ) {
+            Modal.error({
+              title: 'Import Repository failed',
+              content:
+                'The selected file is not a valid repository archive. ' +
+                'It does not have a ZIP header. The file may be corrupted.',
+            });
+            return;
+          }
+
+          await importRepositoryPackageMerge(fileBytes, file.name);
+        } catch (err) {
+          Modal.error({
+            title: 'Import Repository failed',
+            content:
+              err instanceof Error
+                ? err.message
+                : 'Failed to read repository package.',
+          });
+        }
+      },
+      [importRepositoryPackageMerge],
     );
 
   React.useEffect(() => {
@@ -2084,6 +2468,12 @@ const IdeMenuBar: React.FC = () => {
             onClick: handleOpenRepo,
           },
           {
+            key: 'file.importRepository',
+            label: 'Import Repository…',
+            disabled: !hasRepo,
+            onClick: handleImportRepository,
+          },
+          {
             key: 'file.openProject',
             label: (
               <span title="Use the Repository Hub to create or open repositories.">
@@ -2392,6 +2782,7 @@ const IdeMenuBar: React.FC = () => {
       handleImportApplicationsCsv,
       handleImportCapabilitiesCsv,
       handleImportDependenciesCsv,
+      handleImportRepository,
       handleImportProgrammesCsv,
       handleImportTechnologyCsv,
       handleNewRepo,
@@ -2471,6 +2862,14 @@ const IdeMenuBar: React.FC = () => {
         accept=".eapkg,.zip,application/zip,application/x-zip-compressed,application/octet-stream"
         style={{ display: 'none' }}
         onChange={handleOpenRepoFileSelected}
+      />
+
+      <input
+        ref={importRepoInputRef}
+        type="file"
+        accept=".eapkg,.zip,application/zip,application/x-zip-compressed,application/octet-stream"
+        style={{ display: 'none' }}
+        onChange={handleImportRepoFileSelected}
       />
 
       <input

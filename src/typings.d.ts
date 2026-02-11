@@ -30,8 +30,25 @@ declare global {
         | { ok: false; error: string }
       >;
       openProject: () => Promise<
-        | { ok: true; filePath?: string; content?: string; canceled?: boolean }
-        | { ok: false; error: string }
+        | {
+            ok: true;
+            filePath?: string;
+            content?: string;
+            name?: string;
+            format?: string;
+            canceled?: boolean;
+          }
+        | { ok: false; error: string; canceled?: boolean }
+      >;
+      openFileDialog: () => Promise<
+        | {
+            ok: true;
+            name?: string;
+            content?: string;
+            format?: string;
+            canceled?: boolean;
+          }
+        | { ok: false; error: string; canceled?: boolean }
       >;
       openProjectAtPath: (
         filePath: string,

@@ -181,6 +181,7 @@ export default defineConfig({
   mock: {
     include: ['mock/**/*', 'src/pages/**/_mock.ts'],
   },
+  esbuildMinifyIIFE: true,
   utoopack: false,
   requestRecord: {},
   exportStatic: {},

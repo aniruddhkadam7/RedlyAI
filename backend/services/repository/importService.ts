@@ -56,8 +56,16 @@ const readJson = <T>(
       `Missing required file: ${filePath}. Available files: [${available}]`,
     );
   }
-  const raw = strFromU8(bytes);
-  return JSON.parse(raw) as T;
+  const content = strFromU8(bytes);
+  try {
+    return JSON.parse(content) as T;
+  } catch (err) {
+    throw new Error(
+      `Failed to parse JSON in "${filePath}": ${
+        err instanceof Error ? err.message : 'Unknown parse error'
+      }`,
+    );
+  }
 };
 
 const readJsonOptional = <T>(
@@ -67,8 +75,16 @@ const readJsonOptional = <T>(
 ): T => {
   const bytes = files[normalizePath(filePath)];
   if (!bytes) return fallback;
-  const raw = strFromU8(bytes);
-  return JSON.parse(raw) as T;
+  const content = strFromU8(bytes);
+  try {
+    return JSON.parse(content) as T;
+  } catch (err) {
+    console.warn(
+      `[Import] Failed to parse optional file "${filePath}", using fallback:`,
+      err instanceof Error ? err.message : err,
+    );
+    return fallback;
+  }
 };
 
 const normalizeSchemaVersion = (value: unknown): number | null => {
@@ -355,6 +371,8 @@ export const parseRepositoryPackageBytes = async (
       'manifest.json',
       'model/elements.json',
       'model/relationships.json',
+      'views/diagrams.json',
+      'views/layouts.json',
     ];
     const missingRequired = requiredFiles.filter((f) => !files[f]);
     if (missingRequired.length > 0) {
@@ -400,15 +418,13 @@ export const parseRepositoryPackageBytes = async (
     );
 
     // These files are important but may be absent in older packages
-    const diagrams = readJsonOptional<RepositoryDiagramRecord[]>(
+    const diagrams = readJson<RepositoryDiagramRecord[]>(
       files,
       'views/diagrams.json',
-      [],
     );
-    const layouts = readJsonOptional<RepositoryLayoutsRecord>(
+    const layouts = readJson<RepositoryLayoutsRecord>(
       files,
       'views/layouts.json',
-      { viewLayouts: {} },
     );
     const workspace = readJsonOptional<RepositoryWorkspaceRecord>(
       files,
@@ -482,14 +498,66 @@ export const parseRepositoryPackageBytes = async (
       layouts: safeLayouts,
     });
     if (refError) {
-      console.warn('[Import] Reference integrity warning:', refError);
-      manifestCheck.warnings.push(refError);
+      return {
+        ok: false,
+        error: `Invalid repository references: ${refError}`,
+      };
     }
 
     const baselineError = validateBaselines(baselines);
     if (baselineError) {
-      console.warn('[Import] Baseline warning:', baselineError);
-      manifestCheck.warnings.push(baselineError);
+      return {
+        ok: false,
+        error: `Invalid baseline references: ${baselineError}`,
+      };
+    }
+
+    const layoutCount = Object.keys(safeLayouts.viewLayouts ?? {}).length;
+    const designWorkspaceCount = Array.isArray(safeWorkspace.designWorkspaces)
+      ? safeWorkspace.designWorkspaces.length
+      : 0;
+    const baselineCount = Array.isArray(baselines) ? baselines.length : 0;
+
+    if (manifest.elementCount !== elements.length) {
+      return {
+        ok: false,
+        error: `Manifest elementCount (${manifest.elementCount}) does not match elements (${elements.length}).`,
+      };
+    }
+
+    if (manifest.relationshipCount !== relationships.length) {
+      return {
+        ok: false,
+        error: `Manifest relationshipCount (${manifest.relationshipCount}) does not match relationships (${relationships.length}).`,
+      };
+    }
+
+    if (manifest.diagramCount !== diagrams.length) {
+      return {
+        ok: false,
+        error: `Manifest diagramCount (${manifest.diagramCount}) does not match diagrams (${diagrams.length}).`,
+      };
+    }
+
+    if (manifest.layoutCount !== layoutCount) {
+      return {
+        ok: false,
+        error: `Manifest layoutCount (${manifest.layoutCount}) does not match layouts (${layoutCount}).`,
+      };
+    }
+
+    if (manifest.baselineCount !== baselineCount) {
+      return {
+        ok: false,
+        error: `Manifest baselineCount (${manifest.baselineCount}) does not match baselines (${baselineCount}).`,
+      };
+    }
+
+    if (manifest.designWorkspaceCount !== designWorkspaceCount) {
+      return {
+        ok: false,
+        error: `Manifest designWorkspaceCount (${manifest.designWorkspaceCount}) does not match design workspaces (${designWorkspaceCount}).`,
+      };
     }
 
     // -----------------------------------------------------------------------

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.redlyai.architecturestudio",
-  "productName": "RedlyAI Architecture Studio",
+  "appId": "com.yourcompany.redlyai",
+  "productName": "RedlyAI",
   "directories": {
     "output": "release",
     "buildResources": "build"
@@ -14,7 +14,7 @@
     {
       "ext": "eapkg",
       "name": "EA Repository Package",
-      "description": "Enterprise Architecture Repository Package",
+      "description": "Enterprise Architecture Repository",
       "mimeType": "application/x-eapkg",
       "icon": "build/icons/eapkg-icon",
       "role": "Editor"
@@ -28,7 +28,7 @@
       {
         "ext": "eapkg",
         "name": "EA Repository Package",
-        "description": "Enterprise Architecture Repository Package",
+        "description": "Enterprise Architecture Repository",
         "icon": "build/icons/eapkg-icon.ico",
         "role": "Editor"
       }
@@ -44,13 +44,13 @@
   },
   "mac": {
     "target": ["dmg", "zip"],
-    "icon": "build/icons/app.png",
+    "icon": "build/icons/app.icns",
     "category": "public.app-category.developer-tools",
     "fileAssociations": [
       {
         "ext": "eapkg",
         "name": "EA Repository Package",
-        "description": "Enterprise Architecture Repository Package",
+        "description": "Enterprise Architecture Repository",
         "icon": "build/icons/eapkg-icon.icns",
         "role": "Editor"
       }

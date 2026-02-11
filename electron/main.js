@@ -10,28 +10,102 @@ const userDataDir =
   path.join(app.getPath('temp'), 'ea-app-profile');
 app.setPath('userData', userDataDir);
 
+const appIconPath = path.join(__dirname, '..', 'build', 'icons', 'app.png');
+const appIcoPath = path.join(__dirname, '..', 'build', 'icons', 'app.ico');
+const fileIconCandidates = [
+  path.join(__dirname, '..', 'build', 'icons', 'eapkg-icon.ico'),
+  path.join(__dirname, '..', 'build', 'icons', 'eapkg.ico'),
+  path.join(__dirname, '..', 'public', 'favicon.ico'),
+];
+const fileIconPngCandidates = [
+  path.join(__dirname, '..', 'build', 'icons', 'eapkg-icon.png'),
+  path.join(__dirname, '..', 'build', 'icons', 'eapkg.png'),
+  path.join(__dirname, '..', 'code-file_16591933.png'),
+];
+
+if (process.platform === 'win32') {
+  // Helps Windows associate the taskbar icon with this app in dev.
+  app.setAppUserModelId('com.redlyai.desktop');
+}
+
+const buildIcoFromPngBuffer = (pngBuffer) => {
+  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length < 24) return null;
+  const signature = pngBuffer.subarray(0, 8).toString('hex');
+  if (signature !== '89504e470d0a1a0a') return null;
+  const width = pngBuffer.readUInt32BE(16);
+  const height = pngBuffer.readUInt32BE(20);
+  if (!width || !height) return null;
+  const size = Math.min(Math.max(width, 1), 256);
+  const icoSize = size >= 256 ? 0 : size;
+
+  const headerSize = 6;
+  const entrySize = 16;
+  const dataOffset = headerSize + entrySize;
+  const totalSize = dataOffset + pngBuffer.length;
+  const ico = Buffer.alloc(totalSize);
+  let offset = 0;
+
+  ico.writeUInt16LE(0, offset);
+  offset += 2;
+  ico.writeUInt16LE(1, offset);
+  offset += 2;
+  ico.writeUInt16LE(1, offset);
+  offset += 2;
+
+  ico.writeUInt8(icoSize, offset);
+  offset += 1;
+  ico.writeUInt8(icoSize, offset);
+  offset += 1;
+  ico.writeUInt8(0, offset);
+  offset += 1;
+  ico.writeUInt8(0, offset);
+  offset += 1;
+  ico.writeUInt16LE(1, offset);
+  offset += 2;
+  ico.writeUInt16LE(32, offset);
+  offset += 2;
+  ico.writeUInt32LE(pngBuffer.length, offset);
+  offset += 4;
+  ico.writeUInt32LE(dataOffset, offset);
+  offset += 4;
+
+  pngBuffer.copy(ico, dataOffset);
+  return ico;
+};
+
+const resolveFileTypeIconPath = () => {
+  const icoCandidate = fileIconCandidates.find((candidate) =>
+    fs.existsSync(candidate),
+  );
+  if (icoCandidate) return icoCandidate;
+
+  const pngCandidate = fileIconPngCandidates.find((candidate) =>
+    fs.existsSync(candidate),
+  );
+  if (!pngCandidate) return null;
+
+  try {
+    const pngBuffer = fs.readFileSync(pngCandidate);
+    const icoBuffer = buildIcoFromPngBuffer(pngBuffer);
+    if (!icoBuffer) return null;
+    const tempIcoPath = path.join(app.getPath('temp'), 'redlyai-ea-file.ico');
+    fs.writeFileSync(tempIcoPath, icoBuffer);
+    return tempIcoPath;
+  } catch {
+    return null;
+  }
+};
+
 // ---------------------------------------------------------------------------
-// .eapkg file-type registration (Windows)
+// .eapkg/.eaproj file-type registration (Windows)
 // Writes to HKCU\Software\Classes so no admin elevation is needed.
 // ---------------------------------------------------------------------------
-const registerEapkgFileType = () => {
+const registerEaFileTypes = () => {
   if (process.platform !== 'win32') return;
 
   try {
-    // Determine icon path — prefer build/icons, fall back to public/favicon.ico
-    const buildIco = path.join(
-      __dirname,
-      '..',
-      'build',
-      'icons',
-      'eapkg-icon.ico',
-    );
-    const fallbackIco = path.join(__dirname, '..', 'public', 'favicon.ico');
-    const icoPath = fs.existsSync(buildIco)
-      ? buildIco
-      : fs.existsSync(fallbackIco)
-        ? fallbackIco
-        : null;
+    // Determine icon path — prefer generated .ico, else derive from PNG
+    const icoPath = resolveFileTypeIconPath();
 
     // Determine the command to open .eapkg files
     // In packaged app: process.execPath is the .exe
@@ -46,31 +120,21 @@ const registerEapkgFileType = () => {
       });
     };
 
-    // HKCU\Software\Classes\.eapkg → RedlyAI.EAPkg
-    regAdd('HKCU\\Software\\Classes\\.eapkg', '', 'RedlyAI.EAPkg');
-
-    // HKCU\Software\Classes\RedlyAI.EAPkg → friendly name
-    regAdd(
-      'HKCU\\Software\\Classes\\RedlyAI.EAPkg',
-      '',
-      'EA Repository Package',
-    );
-
-    // DefaultIcon
-    if (icoPath) {
+    const registerFileType = (extension, progId, friendlyName) => {
+      regAdd(`HKCU\\Software\\Classes\\.${extension}`, '', progId);
+      regAdd(`HKCU\\Software\\Classes\\${progId}`, '', friendlyName);
+      if (icoPath) {
+        regAdd(`HKCU\\Software\\Classes\\${progId}\\DefaultIcon`, '', icoPath);
+      }
       regAdd(
-        'HKCU\\Software\\Classes\\RedlyAI.EAPkg\\DefaultIcon',
+        `HKCU\\Software\\Classes\\${progId}\\shell\\open\\command`,
         '',
-        icoPath,
+        openCommand,
       );
-    }
+    };
 
-    // shell\open\command
-    regAdd(
-      'HKCU\\Software\\Classes\\RedlyAI.EAPkg\\shell\\open\\command',
-      '',
-      openCommand,
-    );
+    registerFileType('eapkg', 'RedlyAI.EAPkg', 'EA Repository Package');
+    registerFileType('eaproj', 'RedlyAI.EAProj', 'EA Project');
 
     // Notify Windows Explorer of the change so icons refresh
     try {
@@ -87,9 +151,9 @@ const registerEapkgFileType = () => {
       // Not critical — icon may not refresh until next Explorer restart
     }
 
-    console.log('[EA] .eapkg file type registered (HKCU)');
+    console.log('[EA] .eapkg/.eaproj file types registered (HKCU)');
   } catch (err) {
-    console.warn('[EA] Failed to register .eapkg file type:', err.message);
+    console.warn('[EA] Failed to register file types:', err.message);
   }
 };
 
@@ -154,9 +218,16 @@ const buildMetaRecord = (repoId, payload, existingMeta) => {
   };
 };
 
-const startUrl =
-  process.env.ELECTRON_START_URL ||
-  `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
+const isDev = !!process.env.ELECTRON_START_URL;
+
+const resolveAppIcon = () => {
+  const fallbackIco = path.join(__dirname, '..', 'public', 'favicon.ico');
+  if (process.platform === 'win32' && fs.existsSync(appIcoPath))
+    return appIcoPath;
+  if (fs.existsSync(appIconPath)) return appIconPath;
+  if (fs.existsSync(fallbackIco)) return fallbackIco;
+  return undefined;
+};
 
 let mainWindow;
 const pendingRepositoryImports = [];
@@ -236,7 +307,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    icon: path.join(__dirname, '..', 'build', 'icons', 'app.ico'),
+    icon: resolveAppIcon(),
     frame: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     titleBarOverlay,
@@ -248,7 +319,12 @@ function createWindow() {
   });
 
   win.removeMenu();
-  win.loadURL(startUrl);
+
+  if (isDev) {
+    win.loadURL(process.env.ELECTRON_START_URL);
+  } else {
+    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  }
 
   mainWindow = win;
 
@@ -409,19 +485,74 @@ ipcMain.handle('ea:saveManagedRepository', async (_event, args) => {
 });
 
 ipcMain.handle('ea:openProject', async () => {
-  return {
-    ok: false,
-    error:
-      'Repository packages must be imported into the managed repository store. Use Import Repository to create a managed repository.',
-  };
+  try {
+    const res = await dialog.showOpenDialog({
+      title: 'Open EA Repository',
+      properties: ['openFile'],
+      filters: [{ name: 'EA Repository', extensions: ['eapkg', 'zip'] }],
+    });
+    if (res.canceled || !res.filePaths.length)
+      return { ok: true, canceled: true };
+
+    const filePath = res.filePaths[0];
+    const content = await fs.promises.readFile(filePath);
+
+    // Validate ZIP header (PK\x03\x04)
+    if (
+      content.length < 4 ||
+      content[0] !== 0x50 ||
+      content[1] !== 0x4b ||
+      content[2] !== 0x03 ||
+      content[3] !== 0x04
+    ) {
+      return {
+        ok: false,
+        error:
+          'The selected file is not a valid repository archive (invalid ZIP header).',
+      };
+    }
+
+    const name = path.basename(filePath);
+    const base64 = content.toString('base64');
+    return { ok: true, name, content: base64, format: 'eapkg' };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.message || 'Failed to open repository file.',
+    };
+  }
 });
 
-ipcMain.handle('ea:openProjectAtPath', async (_event, _args) => {
-  return {
-    ok: false,
-    error:
-      'Repository packages must be imported into the managed repository store. Use Import Repository to create a managed repository.',
-  };
+ipcMain.handle('ea:openProjectAtPath', async (_event, args) => {
+  try {
+    const filePath = typeof args?.filePath === 'string' ? args.filePath : '';
+    if (!filePath) return { ok: false, error: 'Missing file path.' };
+
+    const content = await fs.promises.readFile(filePath);
+
+    if (
+      content.length < 4 ||
+      content[0] !== 0x50 ||
+      content[1] !== 0x4b ||
+      content[2] !== 0x03 ||
+      content[3] !== 0x04
+    ) {
+      return {
+        ok: false,
+        error:
+          'The selected file is not a valid repository archive (invalid ZIP header).',
+      };
+    }
+
+    const name = path.basename(filePath);
+    const base64 = content.toString('base64');
+    return { ok: true, name, content: base64, format: 'eapkg' };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.message || 'Failed to open repository at path.',
+    };
+  }
 });
 
 ipcMain.handle('ea:importLegacyProjectAtPath', async (_event, args) => {
@@ -574,8 +705,8 @@ app.whenReady().then(() => {
     return;
   }
 
-  // Register .eapkg file type in Windows registry (icons + open-with)
-  registerEapkgFileType();
+  // Register .eapkg/.eaproj file types in Windows registry (icons + open-with)
+  registerEaFileTypes();
 
   // Windows/Linux: handle .eapkg file passed as CLI argument on initial launch.
   // When the OS opens a file with the associated app it passes the path as argv.
