@@ -546,6 +546,16 @@ const FALLBACK_ICON_BY_SHAPE: Record<EaVisualShape, string> = {
 
 const fallbackIconForShape = (shape: EaVisualShape) =>
   FALLBACK_ICON_BY_SHAPE[shape] ?? FALLBACK_ICON_BY_SHAPE.rectangle;
+
+const resolveToolboxIcon = (visual: {
+  icon?: string;
+  shape: EaVisualShape;
+}): string => {
+  if (typeof visual.icon === 'string' && visual.icon)
+    return encodeURI(visual.icon);
+  return fallbackIconForShape(visual.shape);
+};
+
 type EaVisualKind = string;
 type EaVisual = {
   kind: EaVisualKind;
@@ -762,6 +772,22 @@ const StudioShell: React.FC<StudioShellProps> = ({
   viewContext,
 }) => {
   const { token } = theme.useToken();
+  const { initialState } = useModel('@@initialState');
+  const { selection, setSelectedElement } = useIdeSelection();
+  const {
+    eaRepository,
+    metadata,
+    trySetEaRepository,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+  } = useEaRepository();
+  const { openPropertiesPanel, openRouteTab } = useIdeShell();
+  const actor =
+    initialState?.currentUser?.name ||
+    initialState?.currentUser?.userid ||
+    'ui';
   const rightPanelStorageKey = React.useMemo(() => {
     const rawId =
       initialState?.currentUser?.userid ||
