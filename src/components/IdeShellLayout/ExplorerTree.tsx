@@ -30,6 +30,10 @@ import {
 } from 'antd';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 import React from 'react';
+import {
+  setRoadmapDragPayload,
+  setViewDragPayload,
+} from '@/diagram-studio/drag-drop/DragDropConstants';
 import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import type { ViewInstance } from '@/diagram-studio/viewpoints/ViewInstance';
 import { ViewpointRegistry } from '@/diagram-studio/viewpoints/ViewpointRegistry';
@@ -1720,6 +1724,7 @@ const ExplorerTree: React.FC = () => {
         ),
         icon: <FileTextOutlined />,
         isLeaf: true,
+        data: { viewId: v.id },
       };
     };
 
@@ -3954,34 +3959,58 @@ const ExplorerTree: React.FC = () => {
           const isPathAncestor =
             typeof node.key === 'string' && activePathAncestors.has(node.key);
           const data = (node as any)?.data as
-            | { elementId?: string; elementType?: string }
+            | {
+                elementId?: string;
+                elementType?: string;
+                viewId?: string;
+                roadmapId?: string;
+              }
             | undefined;
           const obj = data?.elementId
             ? eaRepository?.objects.get(data.elementId)
             : undefined;
           const frameworkTags = frameworksForObject(obj);
-          const canDrag = Boolean(
-            (node as any)?.data?.elementId && (node as any)?.data?.elementType,
-          );
+          const canDragElement = Boolean(data?.elementId && data?.elementType);
+          const canDragView = Boolean(data?.viewId);
+          const canDragRoadmap = Boolean(data?.roadmapId);
+          const canDrag = canDragElement || canDragView || canDragRoadmap;
           const handleDragStart = (event: React.DragEvent<HTMLSpanElement>) => {
             if (!canDrag) return;
-            const dragData = (node as any)?.data as
-              | { elementId?: string; elementType?: string }
-              | undefined;
-            if (!dragData?.elementId || !dragData?.elementType) return;
             event.stopPropagation();
+
+            // View drag payload
+            if (canDragView && data?.viewId) {
+              setViewDragPayload(event.dataTransfer, data.viewId);
+              return;
+            }
+
+            // Roadmap drag payload
+            if (canDragRoadmap && data?.roadmapId) {
+              setRoadmapDragPayload(event.dataTransfer, data.roadmapId);
+              return;
+            }
+
+            // Element drag payload (existing behaviour)
+            if (!data?.elementId || !data?.elementType) return;
             event.dataTransfer.setData(
               'application/x-ea-element-id',
-              dragData.elementId,
+              data.elementId,
             );
             event.dataTransfer.setData(
               'application/x-ea-element-type',
-              dragData.elementType,
+              data.elementType,
             );
-            event.dataTransfer.setData('text/plain', dragData.elementId);
+            event.dataTransfer.setData('text/plain', data.elementId);
             event.dataTransfer.effectAllowed = 'copy';
             event.dataTransfer.dropEffect = 'copy';
           };
+          const dragTitle = canDragView
+            ? 'Drag to canvas to open this view'
+            : canDragRoadmap
+              ? 'Drag to canvas to open this roadmap'
+              : canDragElement
+                ? 'Drag to canvas to reuse this element'
+                : undefined;
           return (
             <Dropdown trigger={['contextMenu']} menu={menuForKey(k)}>
               <span
@@ -3995,9 +4024,7 @@ const ExplorerTree: React.FC = () => {
                   event.stopPropagation();
                   toggleExpandedKey(k);
                 }}
-                title={
-                  canDrag ? 'Drag to canvas to reuse this element' : undefined
-                }
+                title={dragTitle}
               >
                 {frameworkTags.length > 0 ? (
                   <Space size={6}>

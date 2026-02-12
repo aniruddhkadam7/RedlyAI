@@ -33,6 +33,11 @@ import {
 } from 'antd';
 import cytoscape, { type Core } from 'cytoscape';
 import React from 'react';
+import {
+  hasRoadmapDragPayload,
+  hasViewDragPayload,
+} from '@/diagram-studio/drag-drop/DragDropConstants';
+import { useStudioDropHandler } from '@/diagram-studio/drag-drop/useStudioDropHandler';
 import { ViewLayoutStore } from '@/diagram-studio/view-runtime/ViewLayoutStore';
 import { ViewStore } from '@/diagram-studio/view-runtime/ViewStore';
 import { resolveViewScope } from '@/diagram-studio/viewpoints/resolveViewScope';
@@ -1104,6 +1109,9 @@ const StudioShell: React.FC<StudioShellProps> = ({
   const viewReadOnly = Boolean(
     activeViewTab?.readOnly ?? viewContext?.readOnly,
   );
+  // ── View drag-and-drop from Explorer ──────────────────────────────────
+  const { state: viewDropState, handlers: viewDropHandlers } =
+    useStudioDropHandler({ enabled: true });
   const [studioModeLevel, setStudioModeLevel] =
     React.useState<StudioMode>('Model');
   const [presentationView, setPresentationView] = React.useState(false);
@@ -12560,7 +12568,7 @@ const StudioShell: React.FC<StudioShellProps> = ({
       >
         <div className={styles.studioCenter}>
           <div
-            className={styles.studioCanvas}
+            className={`${styles.studioCanvas}${viewDropState.isDropTargetActive ? ` ${styles.studioCanvasDropHighlight}` : ''}`}
             style={{
               cursor:
                 toolMode === 'CREATE_ELEMENT'
@@ -12574,6 +12582,8 @@ const StudioShell: React.FC<StudioShellProps> = ({
               backgroundSize: `${gridSize}px ${gridSize}px`,
             }}
             ref={containerRef}
+            onDragEnter={viewDropHandlers.onDragEnter}
+            onDragLeave={viewDropHandlers.onDragLeave}
             onPointerDownCapture={(e) => {
               if (
                 toolModeRef.current !== 'CREATE_RELATIONSHIP' ||
@@ -13244,10 +13254,20 @@ const StudioShell: React.FC<StudioShellProps> = ({
               toolModeRef.current = 'SELECT';
             }}
             onDragOver={(e) => {
+              // Let the view drop handler set dropEffect for view payloads.
+              viewDropHandlers.onDragOver(e);
               e.preventDefault();
             }}
             onDrop={(e) => {
               e.preventDefault();
+              // ── Handle VIEW drops from Explorer (opens view in tab) ──
+              if (
+                hasViewDragPayload(e.nativeEvent.dataTransfer) ||
+                hasRoadmapDragPayload(e.nativeEvent.dataTransfer)
+              ) {
+                viewDropHandlers.onDrop(e);
+                return;
+              }
               if (viewReadOnly) return;
               if (!canDiagramMode) return;
               if (designWorkspace.status !== 'DRAFT') {
