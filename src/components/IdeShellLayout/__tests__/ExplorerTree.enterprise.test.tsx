@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import ExplorerTree from '../ExplorerTree';
+import { ExplorerTree } from '../explorer';
 import { EaRepository } from '@/pages/dependency-view/utils/eaRepository';
 
 let mockEaRepositoryState: any = {};

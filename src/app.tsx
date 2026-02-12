@@ -13,7 +13,7 @@ import { Checkbox, Collapse, Descriptions, Drawer, Dropdown, Form, Input, Modal,
 import type { DataNode } from 'antd/es/tree';
 import { AvatarDropdown, AvatarName } from '@/components';
 import IdeShellLayout from '@/components/IdeShellLayout';
-import ExplorerTree from '@/components/IdeShellLayout/ExplorerTree';
+import { ExplorerTree } from '@/components/IdeShellLayout/explorer';
 import DiagramsTree from '@/components/IdeShellLayout/DiagramsTree';
 import AnalysisTree from '@/components/IdeShellLayout/AnalysisTree';
 import MetamodelSidebar from '@/components/IdeShellLayout/MetamodelSidebar';
@@ -46,6 +46,7 @@ import { isCustomFrameworkModelingEnabled, isObjectTypeEnabledForFramework } fro
 import { runtimeEnv } from '@/runtime/runtimeEnv';
 import { message } from '@/ea/eaConsole';
 import { ThemeProvider } from '@/theme/ThemeContext';
+import { ContextMenuProvider, GlobalContextMenu } from '@/components/ContextMenu';
 
 const isDev = process.env.NODE_ENV === 'development';
 const isDevOrTest = isDev || process.env.CI;
@@ -1249,7 +1250,12 @@ export function rootContainer(container: React.ReactNode) {
     <ThemeProvider>
       <EaProjectProvider>
         <EaRepositoryProvider>
-          <IdeSelectionProvider>{container}</IdeSelectionProvider>
+          <IdeSelectionProvider>
+            <ContextMenuProvider>
+              {container}
+              <GlobalContextMenu />
+            </ContextMenuProvider>
+          </IdeSelectionProvider>
         </EaRepositoryProvider>
       </EaProjectProvider>
     </ThemeProvider>
